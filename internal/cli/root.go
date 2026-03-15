@@ -17,6 +17,10 @@ func NewRootCommand() *cobra.Command {
 		Long: `git-chain manages development work as a dependency graph with
 built-in telemetry. All state lives in git refs under refs/chain/.
 No external services required.`,
+		// SilenceUsage prevents Cobra from dumping usage on every error.
+		// SilenceErrors prevents Cobra from printing errors (we do it in Execute).
+		// Subcommands that want to show usage on bad arguments must call
+		// cmd.Usage() explicitly before returning their error.
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

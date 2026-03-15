@@ -9,7 +9,7 @@ git-chain is a git-native task graph that manages development work as a dependen
 ## Build & Run
 
 ```bash
-go build -o git-chain .
+go build -o git-chain ./cmd/git-chain/
 go install github.com/perigrin/git-chain@latest
 ```
 

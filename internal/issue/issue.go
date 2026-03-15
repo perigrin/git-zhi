@@ -40,6 +40,7 @@ type Issue struct {
 	Updated   time.Time   `yaml:"updated" json:"updated"`
 	Sessions  []Session   `yaml:"sessions,omitempty" json:"sessions,omitempty"`
 	// Body is the raw markdown below the YAML frontmatter separator.
-	// Handled separately from YAML marshaling.
-	Body string `yaml:"-" json:"-"`
+	// Handled separately from YAML marshaling. Included in JSON output
+	// so --format json consumers get the full issue content.
+	Body string `yaml:"-" json:"body,omitempty"`
 }
