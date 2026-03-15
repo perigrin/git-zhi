@@ -1,6 +1,8 @@
 // ABOUTME: Chain configuration stored at refs/chain/_/config. Minimal for v0.1:
-// ABOUTME: just version and default_milestone. Read/write via config command.
+// ABOUTME: just version and default_milestone. Supports read/write via MarshalConfig.
 package config
+
+import "github.com/goccy/go-yaml"
 
 // Config represents the chain configuration.
 type Config struct {
@@ -14,4 +16,9 @@ func Default() *Config {
 		Version:          1,
 		DefaultMilestone: "v0.1",
 	}
+}
+
+// MarshalConfig serializes a Config to YAML.
+func MarshalConfig(cfg *Config) ([]byte, error) {
+	return yaml.Marshal(cfg)
 }
