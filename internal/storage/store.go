@@ -208,3 +208,43 @@ func (s *Store) RefExists(refPath string) bool {
 	_, err := s.repo.Storer.Reference(plumbing.ReferenceName(refPath))
 	return err == nil
 }
+
+// RepoHEAD returns the current HEAD commit SHA of the working repository.
+func (s *Store) RepoHEAD() (string, error) {
+	ref, err := s.repo.Head()
+	if err != nil {
+		return "", fmt.Errorf("get HEAD: %w", err)
+	}
+	return ref.Hash().String(), nil
+}
+
+// CountCommits counts the number of commits between startSHA (exclusive) and
+// endSHA (inclusive) by walking the commit log backward from endSHA.
+// Returns 0 if startSHA == endSHA.
+func (s *Store) CountCommits(startSHA, endSHA string) (int, error) {
+	if startSHA == endSHA {
+		return 0, nil
+	}
+
+	endHash := plumbing.NewHash(endSHA)
+	startHash := plumbing.NewHash(startSHA)
+
+	iter, err := s.repo.Log(&git.LogOptions{From: endHash})
+	if err != nil {
+		return 0, fmt.Errorf("get commit log from %s: %w", endSHA, err)
+	}
+	defer iter.Close()
+
+	count := 0
+	err = iter.ForEach(func(c *object.Commit) error {
+		if c.Hash == startHash {
+			return storer.ErrStop
+		}
+		count++
+		return nil
+	})
+	if err != nil && err != storer.ErrStop {
+		return 0, fmt.Errorf("walk commit log: %w", err)
+	}
+	return count, nil
+}

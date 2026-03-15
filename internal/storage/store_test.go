@@ -1,11 +1,15 @@
 // ABOUTME: Tests for the storage Store: write/read entities on git refs,
-// ABOUTME: list refs by prefix, and check ref existence. Uses real on-disk repos.
+// ABOUTME: list refs by prefix, check ref existence, and repo HEAD/commit counting.
 package storage_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/perigrin/git-chain/internal/storage"
 )
@@ -22,6 +26,49 @@ func initTestRepo(t *testing.T) *storage.Store {
 		t.Fatalf("failed to create store: %v", err)
 	}
 	return store
+}
+
+// initTestRepoWithGit returns both the underlying *git.Repository and the Store,
+// needed for tests that create real worktree commits (e.g., RepoHEAD, CountCommits).
+func initTestRepoWithGit(t *testing.T) (*git.Repository, *storage.Store) {
+	t.Helper()
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+	store, err := storage.NewStore(repo)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	return repo, store
+}
+
+// makeCommit creates a real worktree commit in the repo with the given file content.
+// Returns the commit SHA.
+func makeCommit(t *testing.T, repo *git.Repository, dir, filename, content, message string) string {
+	t.Helper()
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("get worktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, filename), []byte(content), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, err := wt.Add(filename); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	hash, err := wt.Commit(message, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "test",
+			Email: "test@test",
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+	return hash.String()
 }
 
 func TestWriteEntity_CreatesRef(t *testing.T) {
@@ -112,5 +159,74 @@ func TestRefExists(t *testing.T) {
 	}
 	if !store.RefExists("refs/chain/_/issues/test-id") {
 		t.Fatal("expected RefExists to return true after WriteEntity")
+	}
+}
+
+func TestRepoHEAD(t *testing.T) {
+	repo, store := initTestRepoWithGit(t)
+	dir := t.TempDir()
+	// Reinitialize into the same dir so makeCommit has the right path.
+	// Actually, get the repo's worktree path directly.
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("get worktree: %v", err)
+	}
+	dir = wt.Filesystem.Root()
+
+	sha := makeCommit(t, repo, dir, "test.txt", "v1", "first commit")
+	if sha == "" {
+		t.Fatal("expected non-empty SHA from makeCommit")
+	}
+
+	head, err := store.RepoHEAD()
+	if err != nil {
+		t.Fatalf("RepoHEAD failed: %v", err)
+	}
+	if head == "" {
+		t.Fatal("expected non-empty SHA from RepoHEAD")
+	}
+	if head != sha {
+		t.Fatalf("RepoHEAD returned %q, expected %q", head, sha)
+	}
+}
+
+func TestCountCommits(t *testing.T) {
+	repo, store := initTestRepoWithGit(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("get worktree: %v", err)
+	}
+	dir := wt.Filesystem.Root()
+
+	sha1 := makeCommit(t, repo, dir, "a.txt", "v1", "first")
+	makeCommit(t, repo, dir, "b.txt", "v2", "second")
+	sha3 := makeCommit(t, repo, dir, "c.txt", "v3", "third")
+
+	count, err := store.CountCommits(sha1, sha3)
+	if err != nil {
+		t.Fatalf("CountCommits failed: %v", err)
+	}
+	// sha1 is exclusive, sha3 is inclusive: counts sha2 and sha3 = 2
+	if count != 2 {
+		t.Fatalf("expected 2 commits, got %d", count)
+	}
+}
+
+func TestCountCommits_SameSHA(t *testing.T) {
+	repo, store := initTestRepoWithGit(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("get worktree: %v", err)
+	}
+	dir := wt.Filesystem.Root()
+
+	sha := makeCommit(t, repo, dir, "a.txt", "v1", "first")
+
+	count, err := store.CountCommits(sha, sha)
+	if err != nil {
+		t.Fatalf("CountCommits same SHA failed: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 commits when start==end, got %d", count)
 	}
 }
