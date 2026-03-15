@@ -58,5 +58,7 @@ func newMilestoneEditCommand() *cobra.Command {
 	}
 	cmd.Flags().String("due", "", "set due date (YYYY-MM-DD) or 'none' to clear")
 	cmd.Flags().String("name", "", "rename the milestone")
+	cmd.Flags().String("tag", "", "create a named tag pointing to this milestone")
+	cmd.Flags().String("untag", "", "delete a named tag")
 	return cmd
 }

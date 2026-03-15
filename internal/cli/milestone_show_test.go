@@ -79,6 +79,35 @@ func TestMilestoneShow_Json(t *testing.T) {
 	}
 }
 
+// TestMilestoneShow_DefaultsToHeadIssueMilestone verifies that when no
+// milestone name is provided, milestone show resolves to the milestone of
+// the current HEAD issue rather than scanning for the first with pending issues.
+func TestMilestoneShow_DefaultsToHeadIssueMilestone(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	// Create a second milestone.
+	if _, err := run("milestone", "add", "v0.2"); err != nil {
+		t.Fatalf("milestone add v0.2 failed: %v", err)
+	}
+
+	// Add a pending issue in v0.1 (earlier, would win by scan-order).
+	createTestIssueWithMilestone(t, app, "Old milestone work", issue.StatePending, "v0.1", "")
+
+	// Add an in-progress issue in v0.2 (HEAD resolves here).
+	createTestIssueWithMilestone(t, app, "Current work", issue.StateInProgress, "v0.2", "")
+
+	// No arg — should resolve to v0.2 (HEAD issue's milestone), not v0.1.
+	stdout, err := run("milestone", "show")
+	if err != nil {
+		t.Fatalf("milestone show (no arg) failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "v0.2") {
+		t.Errorf("expected 'v0.2' (HEAD issue's milestone) in output, got:\n%s", output)
+	}
+}
+
 func TestMilestoneShow_NotFound(t *testing.T) {
 	_, run := setupMilestoneTest(t)
 

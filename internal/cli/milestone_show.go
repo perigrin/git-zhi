@@ -10,6 +10,7 @@ import (
 
 	"github.com/perigrin/git-chain/internal/issue"
 	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-chain/internal/resolve"
 	"github.com/perigrin/git-chain/internal/telemetry"
 )
 
@@ -53,15 +54,35 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load issues: %w", err)
 	}
 
-	// If no name given, find the current milestone (first with pending/in-progress issues).
+	// If no name given, resolve via the HEAD issue's milestone. Fall back to
+	// scanning for the first milestone with pending/in-progress issues, then
+	// to the first milestone in the list.
 	var ms *milestone.Milestone
 	if name == "" {
-		ms = findCurrentMilestone(milestones, allIssues)
-		if ms == nil {
-			// Fall back to the first milestone if none have active issues.
-			ms = milestones[0]
+		// Attempt to derive the milestone from the current HEAD issue.
+		headRef, headErr := resolve.ResolveRef(app.Store, "")
+		if headErr == nil {
+			headData, _ := app.Store.ReadEntity(headRef, "issue.md")
+			if headData != nil {
+				headIss, _ := issue.Parse(headData)
+				if headIss != nil && headIss.Milestone != "" {
+					name = headIss.Milestone
+				}
+			}
 		}
-	} else {
+		// Fall back to first milestone with pending/in-progress issues.
+		if name == "" {
+			found := findCurrentMilestone(milestones, allIssues)
+			if found != nil {
+				ms = found
+			} else {
+				// Last resort: the first milestone in the list.
+				ms = milestones[0]
+			}
+		}
+	}
+	// If name was resolved (either from HEAD or provided by the caller), load it.
+	if ms == nil {
 		loaded, err := milestone.LoadMilestone(app.Store, name)
 		if err != nil {
 			return fmt.Errorf("milestone %q not found: %w", name, err)

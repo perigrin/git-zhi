@@ -116,6 +116,56 @@ func TestMilestoneEdit_NotFound(t *testing.T) {
 	}
 }
 
+// TestMilestoneEdit_Tag verifies that --tag creates a tag ref pointing to the milestone.
+func TestMilestoneEdit_Tag(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	_, err := run("milestone", "edit", "v0.1", "--tag", "current-sprint")
+	if err != nil {
+		t.Fatalf("milestone edit --tag failed: %v", err)
+	}
+
+	tagRef := "refs/chain/_/tags/current-sprint"
+	if !app.Store.RefExists(tagRef) {
+		t.Fatalf("expected tag ref %s to exist after --tag", tagRef)
+	}
+
+	// The tag should point to the milestone ref path.
+	data, err := app.Store.ReadEntity(tagRef, "tag.txt")
+	if err != nil {
+		t.Fatalf("ReadEntity tag.txt: %v", err)
+	}
+	content := strings.TrimSpace(string(data))
+	expectedTarget := "refs/chain/_/milestones/v0.1"
+	if content != expectedTarget {
+		t.Fatalf("tag content = %q, want %q", content, expectedTarget)
+	}
+}
+
+// TestMilestoneEdit_Untag verifies that --untag deletes the tag ref.
+func TestMilestoneEdit_Untag(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	// Tag first.
+	if _, err := run("milestone", "edit", "v0.1", "--tag", "release"); err != nil {
+		t.Fatalf("milestone edit --tag failed: %v", err)
+	}
+
+	tagRef := "refs/chain/_/tags/release"
+	if !app.Store.RefExists(tagRef) {
+		t.Fatalf("expected tag ref to exist after --tag")
+	}
+
+	// Then untag.
+	if _, err := run("milestone", "edit", "v0.1", "--untag", "release"); err != nil {
+		t.Fatalf("milestone edit --untag failed: %v", err)
+	}
+
+	if app.Store.RefExists(tagRef) {
+		t.Fatalf("expected tag ref %s to be deleted after --untag", tagRef)
+	}
+}
+
 func TestMilestoneEdit_OutputFormat(t *testing.T) {
 	_, run := setupMilestoneTest(t)
 
