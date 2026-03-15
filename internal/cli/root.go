@@ -23,6 +23,28 @@ No external services required.`,
 		// cmd.Usage() explicitly before returning their error.
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// If an App was already injected (e.g., by test harness), keep it.
+			if GetApp(cmd.Context()) != nil {
+				return nil
+			}
+			// Skip repo opening for help requests
+			if cmd.Name() == "help" || cmd.Flags().Changed("help") {
+				return nil
+			}
+			dir, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("get working directory: %w", err)
+			}
+			app, err := OpenRepo(dir)
+			if err != nil {
+				// Not in a git repo — commands will fail when they try to use the store,
+				// but --help and other non-repo commands should still work.
+				return nil
+			}
+			cmd.SetContext(WithApp(cmd.Context(), app))
+			return nil
+		},
 	}
 
 	root.PersistentFlags().String("format", "", "output format (json)")
