@@ -1,3 +1,5 @@
+// ABOUTME: Tests for telemetry types: fever chart status constants
+// ABOUTME: and Stats struct zero-value behavior.
 package telemetry_test
 
 import (

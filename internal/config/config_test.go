@@ -1,3 +1,5 @@
+// ABOUTME: Tests for the Config default values: version 1 and
+// ABOUTME: default milestone "v0.1".
 package config_test
 
 import (

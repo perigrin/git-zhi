@@ -1,3 +1,5 @@
+// ABOUTME: Tests for ref resolution helpers: IsHead recognizes "HEAD"
+// ABOUTME: and empty string, rejects UUID prefixes.
 package resolve_test
 
 import (

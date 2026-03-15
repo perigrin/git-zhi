@@ -1,3 +1,5 @@
+// ABOUTME: Tests for the storage Store constructor. Uses a bare in-memory repo
+// ABOUTME: for validation only; write-path tests require a non-bare repo.
 package storage_test
 
 import (

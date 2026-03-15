@@ -1,3 +1,5 @@
+// ABOUTME: Tests for the Issue domain model: struct construction with UUIDv7
+// ABOUTME: and verification of all four state constant string values.
 package issue_test
 
 import (

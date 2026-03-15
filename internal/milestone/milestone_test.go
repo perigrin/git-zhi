@@ -1,3 +1,5 @@
+// ABOUTME: Tests for the Milestone domain model: struct construction
+// ABOUTME: with name and description fields.
 package milestone_test
 
 import (

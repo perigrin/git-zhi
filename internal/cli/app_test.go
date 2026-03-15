@@ -1,3 +1,5 @@
+// ABOUTME: Tests for the App context helpers: nil safety on bare context
+// ABOUTME: and round-trip through WithApp/GetApp.
 package cli_test
 
 import (

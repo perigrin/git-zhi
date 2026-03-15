@@ -1,3 +1,5 @@
+// ABOUTME: Tests for the Graph constructor: verifies an empty issue set
+// ABOUTME: produces a valid non-nil graph.
 package graph_test
 
 import (

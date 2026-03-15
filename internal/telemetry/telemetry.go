@@ -13,10 +13,10 @@ const (
 
 // Stats holds the derived telemetry indicators for a milestone.
 type Stats struct {
-	MPG          float64
-	Speed        float64
-	BufferTotal  float64
-	BufferBurned float64
-	TimeInChain  float64
-	FeverStatus  Status
+	MPG          float64 `yaml:"mpg" json:"mpg"`
+	Speed        float64 `yaml:"speed" json:"speed"`
+	BufferTotal  float64 `yaml:"buffer_total" json:"buffer_total"`
+	BufferBurned float64 `yaml:"buffer_burned" json:"buffer_burned"`
+	TimeInChain  float64 `yaml:"time_in_chain" json:"time_in_chain"`
+	FeverStatus  Status  `yaml:"fever_status" json:"fever_status"`
 }

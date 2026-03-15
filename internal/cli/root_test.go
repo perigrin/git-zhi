@@ -1,3 +1,5 @@
+// ABOUTME: Tests for the Cobra root command: help output, subcommand registration,
+// ABOUTME: persistent flag presence, and flag inheritance by subcommands.
 package cli_test
 
 import (
