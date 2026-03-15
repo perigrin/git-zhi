@@ -170,14 +170,15 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 }
 
 func newIssueListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List issues",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("issue list: not yet implemented")
-			return nil
-		},
+		RunE:  runIssueList,
 	}
+	cmd.Flags().Bool("all", false, "include done and cancelled issues")
+	cmd.Flags().String("milestone", "", "filter by milestone")
+	cmd.Flags().String("state", "", "filter by state (pending, in-progress, done, cancelled)")
+	return cmd
 }
 
 func newIssueShowCommand() *cobra.Command {
