@@ -1,5 +1,5 @@
 // ABOUTME: Tests for ref resolution helpers: IsHead recognizes "HEAD"
-// ABOUTME: and empty string; ResolveRef dispatches HEAD and UUID prefix scans.
+// ABOUTME: and empty string; ResolveRef dispatches HEAD, tag, and UUID prefix scans.
 package resolve_test
 
 import (
@@ -174,5 +174,43 @@ func TestResolveRef_HEAD_SkipsDoneAndCancelled(t *testing.T) {
 	expected := "refs/chain/_/issues/" + idPending.String()
 	if resolved != expected {
 		t.Fatalf("ResolveRef(HEAD) = %q, want %q (pending issue, skipping done and cancelled)", resolved, expected)
+	}
+}
+
+func TestResolveRef_Tag(t *testing.T) {
+	store := initTestStore(t)
+
+	gen := uuid.NewGen()
+	id, _ := gen.NewV7()
+	writeTestIssue(t, store, id, issue.StatePending, "Tagged Issue")
+
+	// Write a tag pointing to the issue ref.
+	issueRef := "refs/chain/_/issues/" + id.String()
+	tagRef := "refs/chain/_/tags/my-feature"
+	if err := store.WriteEntity(tagRef, "tag.txt", []byte(issueRef+"\n"), "create tag"); err != nil {
+		t.Fatalf("failed to write tag: %v", err)
+	}
+
+	resolved, err := resolve.ResolveRef(store, "my-feature")
+	if err != nil {
+		t.Fatalf("ResolveRef(my-feature) unexpected error: %v", err)
+	}
+	if resolved != issueRef {
+		t.Fatalf("ResolveRef(my-feature) = %q, want %q", resolved, issueRef)
+	}
+}
+
+func TestResolveRef_TagNotFound(t *testing.T) {
+	store := initTestStore(t)
+
+	gen := uuid.NewGen()
+	id, _ := gen.NewV7()
+	writeTestIssue(t, store, id, issue.StatePending, "Some Issue")
+
+	// A nonexistent tag name should fall through to UUID prefix resolution,
+	// which also fails since the name is not a UUID prefix.
+	_, err := resolve.ResolveRef(store, "nonexistent-tag")
+	if err == nil {
+		t.Fatal("expected error for nonexistent tag name, got nil")
 	}
 }

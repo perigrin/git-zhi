@@ -21,13 +21,33 @@ func IsHead(input string) bool {
 
 // ResolveRef resolves a user-supplied ref argument to a full issue ref path.
 // HEAD (and empty string) resolve to the current in-progress issue, or the
-// first pending issue by UUID sort order. Any other input is treated as a
-// UUID prefix and matched against all issue refs.
+// first pending issue by UUID sort order. Any other input is first tried as a
+// tag name, then treated as a UUID prefix and matched against all issue refs.
 func ResolveRef(store *storage.Store, input string) (string, error) {
 	if IsHead(input) {
 		return resolveHead(store)
 	}
+	// Try tag resolution before falling back to UUID prefix.
+	if ref, err := resolveTag(store, input); err == nil {
+		return ref, nil
+	}
 	return resolveUUIDPrefix(store, input)
+}
+
+// resolveTag reads the tag entity at refs/chain/_/tags/<input> and returns
+// the target ref path stored in tag.txt. Returns an error if the tag does
+// not exist or points to a nonexistent ref.
+func resolveTag(store *storage.Store, input string) (string, error) {
+	tagRef := "refs/chain/_/tags/" + input
+	data, err := store.ReadEntity(tagRef, "tag.txt")
+	if err != nil {
+		return "", fmt.Errorf("tag %q not found: %w", input, err)
+	}
+	targetRef := strings.TrimSpace(string(data))
+	if !store.RefExists(targetRef) {
+		return "", fmt.Errorf("tag %q points to nonexistent ref %s", input, targetRef)
+	}
+	return targetRef, nil
 }
 
 // resolveHead returns the ref path for the first in-progress issue, or the
