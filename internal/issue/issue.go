@@ -1,10 +1,15 @@
 // ABOUTME: Issue domain model for git-chain. Defines the Issue struct, state
-// ABOUTME: constants, and Session type. Parsing and marshaling added in issue 2.
+// ABOUTME: constants, and Session type, and Parse/Marshal/SplitBatch functions.
 package issue
 
 import (
+	"bytes"
+	"fmt"
+	"strings"
 	"time"
 
+	"github.com/adrg/frontmatter"
+	"github.com/goccy/go-yaml"
 	"github.com/gofrs/uuid/v5"
 )
 
@@ -43,4 +48,108 @@ type Issue struct {
 	// Handled separately from YAML marshaling. Included in JSON output
 	// so --format json consumers get the full issue content.
 	Body string `yaml:"-" json:"body,omitempty"`
+}
+
+// Parse splits raw markdown into YAML frontmatter and body, then
+// unmarshals the frontmatter into an Issue. The ID field is not in
+// the frontmatter — the caller sets it from the ref path.
+func Parse(raw []byte) (*Issue, error) {
+	var iss Issue
+	rest, err := frontmatter.Parse(bytes.NewReader(raw), &iss, frontmatter.NewFormat("---", "---", yaml.Unmarshal))
+	if err != nil {
+		return nil, fmt.Errorf("parse frontmatter: %w", err)
+	}
+	// frontmatter.Parse returns the body as []byte
+	iss.Body = strings.TrimSpace(string(rest))
+	return &iss, nil
+}
+
+// Marshal serializes an Issue back to YAML frontmatter + markdown body.
+func Marshal(iss *Issue) ([]byte, error) {
+	frontmatterBytes, err := yaml.Marshal(iss)
+	if err != nil {
+		return nil, fmt.Errorf("marshal frontmatter: %w", err)
+	}
+	var buf bytes.Buffer
+	buf.WriteString("---\n")
+	buf.Write(frontmatterBytes)
+	buf.WriteString("---\n")
+	if iss.Body != "" {
+		buf.WriteString("\n")
+		buf.WriteString(iss.Body)
+		buf.WriteString("\n")
+	}
+	return buf.Bytes(), nil
+}
+
+// SplitBatch splits a multi-issue input (separated by ---) into
+// individual issue blocks. Each block includes its own frontmatter.
+// A --- in the body area starts a new issue only if the next non-empty
+// line looks like a YAML key (lowercase_word: value).
+func SplitBatch(raw []byte) [][]byte {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+	text := string(raw)
+	var blocks [][]byte
+	lines := strings.Split(text, "\n")
+	var current []string
+	inFrontmatter := false
+	frontmatterSeen := false
+
+	for i := 0; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "---" {
+			if !frontmatterSeen {
+				inFrontmatter = true
+				frontmatterSeen = true
+				current = append(current, lines[i])
+			} else if inFrontmatter {
+				inFrontmatter = false
+				current = append(current, lines[i])
+			} else {
+				isNewIssue := false
+				for j := i + 1; j < len(lines); j++ {
+					nextTrimmed := strings.TrimSpace(lines[j])
+					if nextTrimmed == "" {
+						continue
+					}
+					if isYAMLKey(nextTrimmed) {
+						isNewIssue = true
+					}
+					break
+				}
+				if isNewIssue {
+					blocks = append(blocks, []byte(strings.Join(current, "\n")))
+					current = []string{lines[i]}
+					inFrontmatter = true
+				} else {
+					current = append(current, lines[i])
+				}
+			}
+		} else {
+			current = append(current, lines[i])
+		}
+	}
+	if len(current) > 0 {
+		blocks = append(blocks, []byte(strings.Join(current, "\n")))
+	}
+	return blocks
+}
+
+// isYAMLKey returns true if the line looks like a YAML key-value pair.
+// Matches "title: value", "state: pending", "title:" (key only).
+// Rejects prose like "Note: something" or URLs like "https://example.com".
+func isYAMLKey(line string) bool {
+	idx := strings.Index(line, ":")
+	if idx <= 0 {
+		return false
+	}
+	key := line[:idx]
+	for _, c := range key {
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+	return true
 }
