@@ -85,7 +85,10 @@ func Marshal(iss *Issue) ([]byte, error) {
 // SplitBatch splits a multi-issue input (separated by ---) into
 // individual issue blocks. Each block includes its own frontmatter.
 // A --- in the body area starts a new issue only if the next non-empty
-// line looks like a YAML key (lowercase_word: value).
+// line starts with "title:" (the one mandatory frontmatter field).
+// Note: frontmatterSeen is not reset between blocks. This works because
+// the closing --- of each new block hits the "else if inFrontmatter"
+// branch, which correctly toggles inFrontmatter off.
 func SplitBatch(raw []byte) [][]byte {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
@@ -114,7 +117,7 @@ func SplitBatch(raw []byte) [][]byte {
 					if nextTrimmed == "" {
 						continue
 					}
-					if isYAMLKey(nextTrimmed) {
+					if looksLikeIssueStart(nextTrimmed) {
 						isNewIssue = true
 					}
 					break
@@ -137,19 +140,12 @@ func SplitBatch(raw []byte) [][]byte {
 	return blocks
 }
 
-// isYAMLKey returns true if the line looks like a YAML key-value pair.
-// Matches "title: value", "state: pending", "title:" (key only).
-// Rejects prose like "Note: something" or URLs like "https://example.com".
-func isYAMLKey(line string) bool {
-	idx := strings.Index(line, ":")
-	if idx <= 0 {
-		return false
-	}
-	key := line[:idx]
-	for _, c := range key {
-		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
-			return false
-		}
-	}
-	return true
+// looksLikeIssueStart returns true if the line starts with "title:",
+// which is the one mandatory field in every issue's frontmatter.
+// This is the most conservative heuristic for detecting a new issue
+// boundary in batch input — it eliminates false positives from body
+// content containing --- followed by prose with colons (e.g.,
+// "status: active", "note: see above", URLs).
+func looksLikeIssueStart(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), "title:")
 }

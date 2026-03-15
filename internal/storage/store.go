@@ -178,6 +178,10 @@ func (s *Store) ReadEntity(refPath, filename string) ([]byte, error) {
 }
 
 // ListRefs returns all ref names that start with the given prefix.
+// Note: go-git's IterReferences walks ALL refs in the repo (branches, tags,
+// remote tracking refs, chain refs). This is O(total refs) per call.
+// Acceptable for v0.1 scale (tens to low hundreds of issues) but should be
+// revisited if performance becomes a concern with large repos.
 func (s *Store) ListRefs(prefix string) ([]string, error) {
 	iter, err := s.repo.Storer.IterReferences()
 	if err != nil {

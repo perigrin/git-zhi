@@ -52,32 +52,39 @@ func OpenRepo(dir string) (*App, error) {
 }
 
 // EnsureInitialized checks for chain state and creates it if missing.
-// Writes default config and default milestone on first use.
+// Writes default config and default milestone on first use. Checks both
+// refs to handle partial init (e.g., config written but milestone failed).
 func (a *App) EnsureInitialized() error {
-	if a.Store.RefExists("refs/chain/_/config") {
+	cfg := config.Default()
+	configExists := a.Store.RefExists("refs/chain/_/config")
+	milestoneExists := a.Store.RefExists("refs/chain/_/milestones/" + cfg.DefaultMilestone)
+	if configExists && milestoneExists {
 		return nil
 	}
 
-	cfg := config.Default()
-	cfgData, err := config.MarshalConfig(cfg)
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	if err := a.Store.WriteEntity("refs/chain/_/config", "config.yaml", cfgData, "Initialize chain config"); err != nil {
-		return fmt.Errorf("write config: %w", err)
+	if !configExists {
+		cfgData, err := config.MarshalConfig(cfg)
+		if err != nil {
+			return fmt.Errorf("marshal config: %w", err)
+		}
+		if err := a.Store.WriteEntity("refs/chain/_/config", "config.yaml", cfgData, "Initialize chain config"); err != nil {
+			return fmt.Errorf("write config: %w", err)
+		}
 	}
 
-	ms := &milestone.Milestone{
-		Name:    cfg.DefaultMilestone,
-		Created: time.Now(),
-	}
-	msData, err := milestone.MarshalMilestone(ms)
-	if err != nil {
-		return fmt.Errorf("marshal milestone: %w", err)
-	}
-	refPath := "refs/chain/_/milestones/" + cfg.DefaultMilestone
-	if err := a.Store.WriteEntity(refPath, "milestone.yaml", msData, "Create default milestone: "+cfg.DefaultMilestone); err != nil {
-		return fmt.Errorf("write milestone: %w", err)
+	if !milestoneExists {
+		ms := &milestone.Milestone{
+			Name:    cfg.DefaultMilestone,
+			Created: time.Now(),
+		}
+		msData, err := milestone.MarshalMilestone(ms)
+		if err != nil {
+			return fmt.Errorf("marshal milestone: %w", err)
+		}
+		refPath := "refs/chain/_/milestones/" + cfg.DefaultMilestone
+		if err := a.Store.WriteEntity(refPath, "milestone.yaml", msData, "Create default milestone: "+cfg.DefaultMilestone); err != nil {
+			return fmt.Errorf("write milestone: %w", err)
+		}
 	}
 
 	return nil

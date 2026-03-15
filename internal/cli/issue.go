@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -67,7 +68,7 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Determine default milestone from config
-	defaultMilestone := "v0.1"
+	defaultMilestone := config.Default().DefaultMilestone
 	cfgData, err := app.Store.ReadEntity("refs/chain/_/config", "config.yaml")
 	if err == nil {
 		var cfg config.Config
@@ -95,10 +96,14 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 	now := time.Now()
 	var created []*issue.Issue
 
-	for _, block := range blocks {
+	for i, block := range blocks {
 		iss, parseErr := issue.Parse(block)
 		if parseErr != nil {
 			return fmt.Errorf("parse issue: %w", parseErr)
+		}
+
+		if strings.TrimSpace(iss.Title) == "" {
+			return fmt.Errorf("issue %d: title is required", i+1)
 		}
 
 		// Generate UUIDv7 for stable, time-ordered identity

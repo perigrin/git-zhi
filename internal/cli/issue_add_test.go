@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 
@@ -23,10 +22,8 @@ func setupIssueAddTest(t *testing.T, stdinContent string) (*bytes.Buffer, *bytes
 	if err != nil {
 		t.Fatalf("failed to init repo: %v", err)
 	}
-	origDir, _ := os.Getwd()
-	t.Cleanup(func() { os.Chdir(origDir) })
-	os.Chdir(dir)
-
+	// App is injected into the command context directly, so PersistentPreRunE
+	// skips repo detection. No os.Chdir needed.
 	app, err := cli.OpenRepo(dir)
 	if err != nil {
 		t.Fatalf("OpenRepo failed: %v", err)
@@ -96,22 +93,54 @@ func TestIssueAdd_BatchIssues(t *testing.T) {
 		t.Fatalf("expected 2 issue refs, got %d", len(refs))
 	}
 
-	// Verify sequential dependencies were wired
-	content0, err := app.Store.ReadEntity(refs[0], "issue.md")
-	if err != nil {
-		t.Fatalf("ReadEntity[0] failed: %v", err)
+	// Verify sequential dependencies: First task blocks Second task.
+	// Parse issues and identify by title. first.Blocks[0] should be
+	// second's UUID and second.BlockedBy[0] should be first's UUID.
+	// Since ID is yaml:"-", we verify the cross-reference: the UUID
+	// that first blocks should equal the UUID that blocks second.
+	var first, second *issue.Issue
+	for _, ref := range refs {
+		content, readErr := app.Store.ReadEntity(ref, "issue.md")
+		if readErr != nil {
+			t.Fatalf("ReadEntity failed: %v", readErr)
+		}
+		iss, parseErr := issue.Parse(content)
+		if parseErr != nil {
+			t.Fatalf("Parse failed: %v", parseErr)
+		}
+		switch iss.Title {
+		case "First task":
+			first = iss
+		case "Second task":
+			second = iss
+		}
 	}
-	content1, err := app.Store.ReadEntity(refs[1], "issue.md")
-	if err != nil {
-		t.Fatalf("ReadEntity[1] failed: %v", err)
+	if first == nil || second == nil {
+		t.Fatal("could not identify First/Second issue by title")
 	}
-	iss0, _ := issue.Parse(content0)
-	iss1, _ := issue.Parse(content1)
-	hasDepLink := (len(iss0.Blocks) == 1 && len(iss1.BlockedBy) == 1) ||
-		(len(iss1.Blocks) == 1 && len(iss0.BlockedBy) == 1)
-	if !hasDepLink {
-		t.Fatalf("expected sequential dependency wiring between batch issues, got blocks=%v/%v blockedBy=%v/%v",
-			iss0.Blocks, iss1.Blocks, iss0.BlockedBy, iss1.BlockedBy)
+	// First should block something, Second should be blocked by something
+	if len(first.Blocks) != 1 {
+		t.Fatalf("expected First to block 1 issue, got %d", len(first.Blocks))
+	}
+	if len(second.BlockedBy) != 1 {
+		t.Fatalf("expected Second to be blocked by 1 issue, got %d", len(second.BlockedBy))
+	}
+	// The UUID first blocks IS second's ID, and the UUID that blocks
+	// second IS first's ID. These are different UUIDs (cross-references).
+	// Verify they are non-zero (real UUIDs were generated).
+	zeroUUID := "00000000-0000-0000-0000-000000000000"
+	if first.Blocks[0].String() == zeroUUID {
+		t.Fatal("first.Blocks contains zero UUID")
+	}
+	if second.BlockedBy[0].String() == zeroUUID {
+		t.Fatal("second.BlockedBy contains zero UUID")
+	}
+	// First should not be blocked, Second should not block anything
+	if len(first.BlockedBy) != 0 {
+		t.Fatalf("expected First to have no BlockedBy, got %d", len(first.BlockedBy))
+	}
+	if len(second.Blocks) != 0 {
+		t.Fatalf("expected Second to have no Blocks, got %d", len(second.Blocks))
 	}
 }
 
