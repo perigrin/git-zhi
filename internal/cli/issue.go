@@ -184,10 +184,8 @@ func newIssueShowCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show [ref]",
 		Short: "View an issue with full context",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("issue show: not yet implemented")
-			return nil
-		},
+		Args:  cobra.MaximumNArgs(1),
+		RunE:  runIssueShow,
 	}
 }
 
