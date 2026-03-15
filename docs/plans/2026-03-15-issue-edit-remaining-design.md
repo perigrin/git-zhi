@@ -13,8 +13,8 @@ Non-interactive edit flags for `issue edit`: `--block`, `--unblock`, `--mileston
 | `--milestone <name>` | Move to different milestone | Update Milestone field |
 | `--tag <name>` | Add tag | Create tag ref pointing at issue |
 | `--untag <name>` | Remove tag | Delete tag ref |
-| `--before <ref>` | Position before another issue | Add blocked_by edge (this is blocked by ref) |
-| `--after <ref>` | Position after another issue | Add blocks edge (this blocks ref's downstream) |
+| `--before <ref>` | Position before another issue (this blocks ref) | Add blocks edge: this.Blocks += ref, ref.BlockedBy += this |
+| `--after <ref>` | Position after another issue (ref blocks this) | Add blocked_by edge: this.BlockedBy += ref, ref.Blocks += this |
 
 ## Deferred (return "not yet implemented")
 

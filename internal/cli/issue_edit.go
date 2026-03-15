@@ -62,6 +62,12 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	if cmd.Flags().Changed("state") {
+		for _, name := range []string{"block", "unblock", "milestone", "tag", "untag", "before", "after"} {
+			if cmd.Flags().Changed(name) {
+				return fmt.Errorf("--%s cannot be combined with --state; run them as separate commands", name)
+			}
+		}
+
 		stateAction, _ := cmd.Flags().GetString("state")
 
 		refPath, err := resolve.ResolveRef(app.Store, refInput)
@@ -181,7 +187,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// Adds target's UUID to this.Blocks and this UUID to target.BlockedBy.
 	if cmd.Flags().Changed("block") {
 		targetInput, _ := cmd.Flags().GetString("block")
-		if err := addBlockEdge(app, iss, uuidStr, targetInput, refPath); err != nil {
+		if err := addBlockEdge(app, iss, uuidStr, targetInput); err != nil {
 			return fmt.Errorf("--block: %w", err)
 		}
 	}
@@ -189,7 +195,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --unblock <target>: remove the block edge in both directions.
 	if cmd.Flags().Changed("unblock") {
 		targetInput, _ := cmd.Flags().GetString("unblock")
-		if err := removeBlockEdge(app, iss, uuidStr, targetInput, refPath); err != nil {
+		if err := removeBlockEdge(app, iss, uuidStr, targetInput); err != nil {
 			return fmt.Errorf("--unblock: %w", err)
 		}
 	}
@@ -197,7 +203,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --before <target>: this issue comes before target (same as --block).
 	if cmd.Flags().Changed("before") {
 		targetInput, _ := cmd.Flags().GetString("before")
-		if err := addBlockEdge(app, iss, uuidStr, targetInput, refPath); err != nil {
+		if err := addBlockEdge(app, iss, uuidStr, targetInput); err != nil {
 			return fmt.Errorf("--before: %w", err)
 		}
 	}
@@ -205,7 +211,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --after <target>: this issue comes after target (target blocks this issue).
 	if cmd.Flags().Changed("after") {
 		targetInput, _ := cmd.Flags().GetString("after")
-		if err := addBlockedByEdge(app, iss, uuidStr, targetInput, refPath); err != nil {
+		if err := addBlockedByEdge(app, iss, uuidStr, targetInput); err != nil {
 			return fmt.Errorf("--after: %w", err)
 		}
 	}
@@ -214,6 +220,9 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("tag") {
 		tagName, _ := cmd.Flags().GetString("tag")
 		tagRef := "refs/chain/_/tags/" + tagName
+		if app.Store.RefExists(tagRef) {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: tag %q already exists, overwriting\n", tagName)
+		}
 		commitMsg := fmt.Sprintf("Tag: %s", tagName)
 		if err := app.Store.WriteEntity(tagRef, "tag.txt", []byte(refPath), commitMsg); err != nil {
 			return fmt.Errorf("write tag ref: %w", err)
@@ -255,7 +264,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 // addBlockEdge makes `this` block `targetInput`: adds target's UUID to
 // this.Blocks and this UUID to target.BlockedBy. Writes the target issue.
 // The caller is responsible for writing the primary issue.
-func addBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput, _ string) error {
+func addBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string) error {
 	targetRef, err := resolve.ResolveRef(app.Store, targetInput)
 	if err != nil {
 		return fmt.Errorf("resolve target ref: %w", err)
@@ -268,6 +277,10 @@ func addBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput, _ string)
 	issUUID, err := uuid.FromString(issUUIDStr)
 	if err != nil {
 		return fmt.Errorf("parse issue uuid: %w", err)
+	}
+
+	if issUUID == targetUUID {
+		return fmt.Errorf("cannot create dependency: issue cannot block itself")
 	}
 
 	// Add target to this.Blocks (deduplicated).
@@ -283,6 +296,9 @@ func addBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput, _ string)
 	tIss, err := issue.Parse(tData)
 	if err != nil {
 		return fmt.Errorf("parse target issue: %w", err)
+	}
+	if tIss.State == issue.StateDone || tIss.State == issue.StateCancelled {
+		return fmt.Errorf("cannot add dependency: target issue %s is %s (done/cancelled issues cannot gain dependencies)", targetUUIDStr[:8], tIss.State)
 	}
 	if !containsUUID(tIss.BlockedBy, issUUID) {
 		tIss.BlockedBy = append(tIss.BlockedBy, issUUID)
@@ -302,7 +318,7 @@ func addBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput, _ string)
 // addBlockedByEdge makes `targetInput` block `this`: adds target's UUID to
 // this.BlockedBy and this UUID to target.Blocks. Writes the target issue.
 // The caller is responsible for writing the primary issue.
-func addBlockedByEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput, _ string) error {
+func addBlockedByEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string) error {
 	targetRef, err := resolve.ResolveRef(app.Store, targetInput)
 	if err != nil {
 		return fmt.Errorf("resolve target ref: %w", err)
@@ -315,6 +331,14 @@ func addBlockedByEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput, _ str
 	issUUID, err := uuid.FromString(issUUIDStr)
 	if err != nil {
 		return fmt.Errorf("parse issue uuid: %w", err)
+	}
+
+	if issUUID == targetUUID {
+		return fmt.Errorf("cannot create dependency: issue cannot block itself")
+	}
+
+	if iss.State == issue.StateDone || iss.State == issue.StateCancelled {
+		return fmt.Errorf("cannot add dependency: issue %s is %s (done/cancelled issues cannot gain dependencies)", issUUIDStr[:8], iss.State)
 	}
 
 	// Add target to this.BlockedBy (deduplicated).
@@ -348,7 +372,7 @@ func addBlockedByEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput, _ str
 
 // removeBlockEdge removes the block edge between this and target in both
 // directions. Writes the target issue; caller writes the primary issue.
-func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput, _ string) error {
+func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string) error {
 	targetRef, err := resolve.ResolveRef(app.Store, targetInput)
 	if err != nil {
 		return fmt.Errorf("resolve target ref: %w", err)
@@ -363,10 +387,11 @@ func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput, _ stri
 		return fmt.Errorf("parse issue uuid: %w", err)
 	}
 
-	// Remove target from this.Blocks.
+	// Remove target from this.Blocks and this.BlockedBy (direction-agnostic).
 	iss.Blocks = removeUUID(iss.Blocks, targetUUID)
+	iss.BlockedBy = removeUUID(iss.BlockedBy, targetUUID)
 
-	// Load target and remove this from target.BlockedBy.
+	// Load target and remove this from both directions on the target side.
 	tData, err := app.Store.ReadEntity(targetRef, "issue.md")
 	if err != nil {
 		return fmt.Errorf("read target issue: %w", err)
@@ -376,6 +401,7 @@ func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput, _ stri
 		return fmt.Errorf("parse target issue: %w", err)
 	}
 	tIss.BlockedBy = removeUUID(tIss.BlockedBy, issUUID)
+	tIss.Blocks = removeUUID(tIss.Blocks, issUUID)
 	tIss.Updated = time.Now()
 	tOut, err := issue.Marshal(tIss)
 	if err != nil {
