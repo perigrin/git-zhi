@@ -178,6 +178,61 @@ func TestResolveRef_HEAD_SkipsDoneAndCancelled(t *testing.T) {
 	}
 }
 
+// writeTestIssueWithBlocks writes an issue with block relationships to the store.
+func writeTestIssueWithBlocks(t *testing.T, store *storage.Store, id uuid.UUID, state issue.State, title string, blocks []uuid.UUID) {
+	t.Helper()
+	iss := &issue.Issue{
+		ID:      id,
+		Title:   title,
+		State:   state,
+		Blocks:  blocks,
+		Created: time.Now(),
+		Updated: time.Now(),
+	}
+	raw, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("failed to marshal issue: %v", err)
+	}
+	refPath := "refs/chain/_/issues/" + id.String()
+	err = store.WriteEntity(refPath, "issue.md", raw, "create issue")
+	if err != nil {
+		t.Fatalf("failed to write issue: %v", err)
+	}
+}
+
+// TestResolveRef_HEAD_CriticalChain verifies that HEAD resolves to the
+// critical chain leader (the issue with the most downstream deps) when
+// no issue is in-progress.
+func TestResolveRef_HEAD_CriticalChain(t *testing.T) {
+	store := initTestStore(t)
+
+	gen := uuid.NewGen()
+
+	// Create three issues. id1 blocks id2 which blocks id3.
+	// The critical chain is id1 → id2 → id3; HEAD should be id1.
+	// Create id3 first so it has the smallest UUID (would be "first" by
+	// naive UUID sort), letting us verify the critical chain wins.
+	id3, _ := gen.NewV7()
+	time.Sleep(time.Millisecond)
+	id2, _ := gen.NewV7()
+	time.Sleep(time.Millisecond)
+	id1, _ := gen.NewV7()
+
+	writeTestIssueWithBlocks(t, store, id1, issue.StatePending, "Root blocker", []uuid.UUID{id2})
+	writeTestIssueWithBlocks(t, store, id2, issue.StatePending, "Middle issue", []uuid.UUID{id3})
+	writeTestIssue(t, store, id3, issue.StatePending, "Leaf issue")
+
+	resolved, err := resolve.ResolveRef(store, "HEAD")
+	if err != nil {
+		t.Fatalf("ResolveRef(HEAD) unexpected error: %v", err)
+	}
+	// id1 is the critical chain leader — it has the most downstream deps.
+	expected := "refs/chain/_/issues/" + id1.String()
+	if resolved != expected {
+		t.Fatalf("ResolveRef(HEAD) = %q, want %q (critical chain leader)", resolved, expected)
+	}
+}
+
 func TestResolveRef_Tag(t *testing.T) {
 	store := initTestStore(t)
 

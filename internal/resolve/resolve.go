@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/perigrin/git-chain/internal/graph"
 	"github.com/perigrin/git-chain/internal/issue"
 	"github.com/perigrin/git-chain/internal/storage"
 )
@@ -54,42 +55,27 @@ func resolveTag(store *storage.Store, input string) (string, error) {
 	return targetRef, nil
 }
 
-// resolveHead returns the ref path for the first in-progress issue, or the
-// first pending issue sorted lexicographically by UUID. UUIDv7 sorts by
-// creation time, so lexicographic order is chronological order.
+// resolveHead returns the ref path for the critical chain leader:
+//  1. If any issue is in-progress, return it (first by UUID sort if multiple).
+//  2. Otherwise, return the first issue on the critical chain (longest DAG path).
+//  3. If there is no critical chain, return the first pending issue by UUID sort.
+//
+// This delegates to graph.Head() which implements the full DAG scheduler logic.
 func resolveHead(store *storage.Store) (string, error) {
-	refs, err := store.ListRefs(issue.RefPrefix)
+	issues, err := issue.LoadAllIssues(store)
 	if err != nil {
-		return "", fmt.Errorf("list issue refs: %w", err)
+		return "", fmt.Errorf("load issues: %w", err)
 	}
-	if len(refs) == 0 {
+	if len(issues) == 0 {
 		return "", fmt.Errorf("no issues found")
 	}
 
-	sort.Strings(refs)
-
-	var firstPending string
-	for _, ref := range refs {
-		raw, err := store.ReadEntity(ref, "issue.md")
-		if err != nil {
-			return "", fmt.Errorf("read issue at %s: %w", ref, err)
-		}
-		iss, err := issue.Parse(raw)
-		if err != nil {
-			return "", fmt.Errorf("parse issue at %s: %w", ref, err)
-		}
-		if iss.State == issue.StateInProgress {
-			return ref, nil
-		}
-		if iss.State == issue.StatePending && firstPending == "" {
-			firstPending = ref
-		}
+	g := graph.New(issues)
+	head, err := g.Head()
+	if err != nil {
+		return "", fmt.Errorf("resolve HEAD: %w", err)
 	}
-
-	if firstPending != "" {
-		return firstPending, nil
-	}
-	return "", fmt.Errorf("no in-progress or pending issues found")
+	return issue.RefPrefix + head.ID.String(), nil
 }
 
 // resolveUUIDPrefix scans all issue refs for ones whose UUID segment starts
