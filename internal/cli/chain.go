@@ -6,14 +6,15 @@ import "github.com/spf13/cobra"
 
 // NewListCommand creates the top-level 'list' command.
 func NewListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "Show the full chain",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("list: not yet implemented")
-			return nil
-		},
+		RunE:  runChainList,
 	}
+	cmd.Flags().Bool("all", false, "include done and cancelled issues")
+	cmd.Flags().String("milestone", "", "filter by milestone")
+	cmd.Flags().Bool("critical", false, "show critical chain only")
+	return cmd
 }
 
 // NewConfigCommand creates the top-level 'config' command.
@@ -21,10 +22,8 @@ func NewConfigCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "config [key] [value]",
 		Short: "Manage git-chain settings",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("config: not yet implemented")
-			return nil
-		},
+		Args:  cobra.MaximumNArgs(2),
+		RunE:  runChainConfig,
 	}
 }
 
@@ -33,9 +32,6 @@ func NewNextCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "next",
 		Short: "Show the next issue to work on (alias for 'issue show HEAD')",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("next: not yet implemented")
-			return nil
-		},
+		RunE:  runChainNext,
 	}
 }
