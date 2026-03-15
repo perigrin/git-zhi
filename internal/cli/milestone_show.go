@@ -1,5 +1,5 @@
 // ABOUTME: Implementation of the milestone show command: displays milestone
-// ABOUTME: details with issue list and progress percentage.
+// ABOUTME: details with issue list, progress percentage, and telemetry signals.
 package cli
 
 import (
@@ -10,19 +10,23 @@ import (
 
 	"github.com/perigrin/git-chain/internal/issue"
 	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-chain/internal/telemetry"
 )
 
-// milestoneShowJSON is the JSON presentation of a milestone with its issues.
+// milestoneShowJSON is the JSON presentation of a milestone with its issues
+// and computed telemetry.
 type milestoneShowJSON struct {
 	*milestone.Milestone
-	Issues     []*issue.Issue `json:"issues"`
-	TotalIssues int           `json:"total_issues"`
-	DoneIssues  int           `json:"done_issues"`
-	Progress    int           `json:"progress_pct"`
+	Issues      []*issue.Issue   `json:"issues"`
+	TotalIssues int              `json:"total_issues"`
+	DoneIssues  int              `json:"done_issues"`
+	Progress    int              `json:"progress_pct"`
+	Telemetry   *telemetry.Stats `json:"telemetry"`
 }
 
 // runMilestoneShow loads a milestone by name (or the current milestone if no
-// arg is provided) and displays its details with the associated issue list.
+// arg is provided) and displays its details with the associated issue list
+// and computed telemetry signals.
 func runMilestoneShow(cmd *cobra.Command, args []string) error {
 	app := GetApp(cmd.Context())
 	if app == nil {
@@ -84,6 +88,9 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 		progressPct = (doneCount * 100) / len(msIssues)
 	}
 
+	// Compute telemetry from milestone issues.
+	stats := telemetry.Compute(allIssues, ms)
+
 	format, _ := cmd.Root().PersistentFlags().GetString("format")
 	if format == "json" {
 		out := &milestoneShowJSON{
@@ -92,6 +99,7 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 			TotalIssues: len(msIssues),
 			DoneIssues:  doneCount,
 			Progress:    progressPct,
+			Telemetry:   stats,
 		}
 		if out.Issues == nil {
 			out.Issues = []*issue.Issue{}
@@ -101,11 +109,12 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 		return enc.Encode(out)
 	}
 
-	return showMilestoneHuman(cmd, ms, msIssues, doneCount, progressPct)
+	return showMilestoneHuman(cmd, ms, msIssues, doneCount, progressPct, stats)
 }
 
-// showMilestoneHuman renders the milestone detail view in human-readable format.
-func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*issue.Issue, doneCount, progressPct int) error {
+// showMilestoneHuman renders the milestone detail view in human-readable format,
+// including telemetry signals below the progress line.
+func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*issue.Issue, doneCount, progressPct int, stats *telemetry.Stats) error {
 	w := cmd.OutOrStdout()
 
 	fmt.Fprintf(w, "Milestone: %s\n", ms.Name)
@@ -113,6 +122,14 @@ func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*i
 		fmt.Fprintf(w, "Due:       %s\n", ms.Due.Format("Jan 02 2006"))
 	}
 	fmt.Fprintf(w, "Progress:  %d/%d done (%d%%)\n", doneCount, len(issues), progressPct)
+
+	// Telemetry section.
+	if stats != nil && stats.FeverStatus != "" {
+		fmt.Fprintf(w, "MPG:       %.1f commits/issue\n", stats.MPG)
+		fmt.Fprintf(w, "Speed:     %.2f issues/week\n", stats.Speed)
+		fmt.Fprintf(w, "Buffer:    %.1f total, %.1f burned\n", stats.BufferTotal, stats.BufferBurned)
+		fmt.Fprintf(w, "Fever:     %s\n", stats.FeverStatus)
+	}
 
 	if len(issues) > 0 {
 		fmt.Fprintln(w, "\nIssues:")

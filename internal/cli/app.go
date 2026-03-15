@@ -8,6 +8,7 @@ import (
 	"time"
 
 	git "github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
 
 	"github.com/perigrin/git-chain/internal/config"
 	"github.com/perigrin/git-chain/internal/milestone"
@@ -54,6 +55,7 @@ func OpenRepo(dir string) (*App, error) {
 // EnsureInitialized checks for chain state and creates it if missing.
 // Writes default config and default milestone on first use. Checks both
 // refs to handle partial init (e.g., config written but milestone failed).
+// Also configures fetch refspecs for refs/chain/* when a remote exists.
 func (a *App) EnsureInitialized() error {
 	cfg := config.Default()
 	configExists := a.Store.RefExists("refs/chain/_/config")
@@ -87,5 +89,38 @@ func (a *App) EnsureInitialized() error {
 		}
 	}
 
+	// Configure fetch refspecs for refs/chain/* when a remote exists.
+	// This is best-effort — silently skipped if no remote or config fails.
+	a.configureRemoteRefspecs()
+
 	return nil
+}
+
+// configureRemoteRefspecs adds a fetch refspec for refs/chain/* to the origin
+// remote if it exists and the refspec is not already present. Errors are
+// silently ignored because sync configuration is best-effort at init time.
+func (a *App) configureRemoteRefspecs() {
+	repoCfg, err := a.Repo.Config()
+	if err != nil {
+		return
+	}
+	remote, ok := repoCfg.Remotes["origin"]
+	if !ok {
+		return
+	}
+
+	fetchSpec := gitconfig.RefSpec("+refs/chain/*:refs/chain/*")
+
+	hasFetch := false
+	for _, spec := range remote.Fetch {
+		if spec == fetchSpec {
+			hasFetch = true
+		}
+	}
+
+	if !hasFetch {
+		remote.Fetch = append(remote.Fetch, fetchSpec)
+		// SetConfig persists the updated remote configuration.
+		_ = a.Repo.SetConfig(repoCfg)
+	}
 }

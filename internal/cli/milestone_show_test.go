@@ -1,5 +1,5 @@
 // ABOUTME: Tests for the milestone show command: human-readable detail view
-// ABOUTME: with issue list and progress, and JSON output.
+// ABOUTME: with issue list, progress, telemetry signals, and JSON output.
 package cli_test
 
 import (
@@ -73,6 +73,10 @@ func TestMilestoneShow_Json(t *testing.T) {
 	if !ok || len(issueList) == 0 {
 		t.Fatalf("expected non-empty issues array, got: %v", issues)
 	}
+	// Telemetry should be present in JSON output.
+	if _, ok := result["telemetry"]; !ok {
+		t.Errorf("expected 'telemetry' key in JSON output, got keys: %v", keys(result))
+	}
 }
 
 func TestMilestoneShow_NotFound(t *testing.T) {
@@ -81,5 +85,24 @@ func TestMilestoneShow_NotFound(t *testing.T) {
 	_, err := run("milestone", "show", "nonexistent")
 	if err == nil {
 		t.Fatal("expected error for nonexistent milestone, got nil")
+	}
+}
+
+func TestMilestoneShow_HumanTelemetry(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	// A done issue with sessions so telemetry has non-zero values.
+	createTestIssueWithMilestone(t, app, "Completed work", issue.StateDone, "v0.1", "")
+	createTestIssueWithMilestone(t, app, "Pending work", issue.StatePending, "v0.1", "")
+
+	stdout, err := run("milestone", "show", "v0.1")
+	if err != nil {
+		t.Fatalf("milestone show v0.1 failed: %v", err)
+	}
+
+	output := stdout.String()
+	// Human output should include a Fever section.
+	if !strings.Contains(output, "Fever:") {
+		t.Errorf("expected 'Fever:' in human output, got:\n%s", output)
 	}
 }

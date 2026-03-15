@@ -5,9 +5,11 @@ package cli_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	git "github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
 
 	"github.com/perigrin/git-chain/internal/cli"
 	"github.com/perigrin/git-chain/internal/storage"
@@ -79,5 +81,53 @@ func TestOpenRepo(t *testing.T) {
 	}
 	if app.Store == nil {
 		t.Fatal("expected non-nil Store")
+	}
+}
+
+func TestEnsureInitialized_WithRemote(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+
+	// Add an "origin" remote so EnsureInitialized can configure refspecs.
+	remoteDir := t.TempDir()
+	_, err = repo.CreateRemote(&gitconfig.RemoteConfig{
+		Name: "origin",
+		URLs: []string{remoteDir},
+	})
+	if err != nil {
+		t.Fatalf("failed to create remote: %v", err)
+	}
+
+	store, err := storage.NewStore(repo)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	app := &cli.App{Store: store, Repo: repo}
+
+	if err := app.EnsureInitialized(); err != nil {
+		t.Fatalf("EnsureInitialized failed: %v", err)
+	}
+
+	// Verify the fetch refspec for refs/chain/* was added.
+	cfg, err := repo.Config()
+	if err != nil {
+		t.Fatalf("failed to read repo config: %v", err)
+	}
+	remote, ok := cfg.Remotes["origin"]
+	if !ok {
+		t.Fatal("expected origin remote to exist")
+	}
+
+	hasFetchSpec := false
+	for _, spec := range remote.Fetch {
+		if strings.Contains(spec.String(), "refs/chain/") {
+			hasFetchSpec = true
+		}
+	}
+	if !hasFetchSpec {
+		t.Errorf("expected refs/chain/* fetch refspec to be configured, got: %v", remote.Fetch)
 	}
 }
