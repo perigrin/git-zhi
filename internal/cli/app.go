@@ -5,6 +5,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	git "github.com/go-git/go-git/v5"
@@ -53,10 +54,18 @@ func OpenRepo(dir string) (*App, error) {
 }
 
 // EnsureInitialized checks for chain state and creates it if missing.
-// Writes default config and default milestone on first use. Checks both
-// refs to handle partial init (e.g., config written but milestone failed).
-// Also configures fetch refspecs for refs/chain/* when a remote exists.
+// Writes default config and default milestone on first use. Any output
+// (e.g., push refspec guidance) is discarded. Use EnsureInitializedWithOutput
+// when init output should be shown to the user.
 func (a *App) EnsureInitialized() error {
+	return a.EnsureInitializedWithOutput(io.Discard)
+}
+
+// EnsureInitializedWithOutput is like EnsureInitialized but writes any user-
+// facing notes (e.g., push refspec guidance) to w. On first init with a
+// remote, it prints a note about configuring the push refspec since go-git's
+// API only exposes the fetch refspec field on RemoteConfig.
+func (a *App) EnsureInitializedWithOutput(w io.Writer) error {
 	cfg := config.Default()
 	configExists := a.Store.RefExists("refs/chain/_/config")
 	milestoneExists := a.Store.RefExists("refs/chain/_/milestones/" + cfg.DefaultMilestone)
@@ -92,6 +101,17 @@ func (a *App) EnsureInitialized() error {
 	// Configure fetch refspecs for refs/chain/* when a remote exists.
 	// This is best-effort — silently skipped if no remote or config fails.
 	a.configureRemoteRefspecs()
+
+	// Print push refspec guidance when a remote is present. go-git's
+	// RemoteConfig struct only exposes the Fetch field, so push refspecs
+	// must be configured manually. One git-config command is all it takes.
+	repoCfg, err := a.Repo.Config()
+	if err == nil {
+		if _, hasOrigin := repoCfg.Remotes["origin"]; hasOrigin {
+			fmt.Fprintln(w, "Chain state initialized.")
+			fmt.Fprintln(w, `Note: run 'git config --add remote.origin.push "refs/chain/*:refs/chain/*"' to enable push sync.`)
+		}
+	}
 
 	return nil
 }

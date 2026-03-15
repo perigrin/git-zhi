@@ -84,6 +84,45 @@ func TestOpenRepo(t *testing.T) {
 	}
 }
 
+// TestEnsureInitialized_PrintsPushRefspecNote verifies that the first-time init
+// prints a note about configuring the push refspec when a remote exists.
+func TestEnsureInitialized_PrintsPushRefspecNote(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+
+	// Add an "origin" remote so EnsureInitialized detects it.
+	remoteDir := t.TempDir()
+	_, err = repo.CreateRemote(&gitconfig.RemoteConfig{
+		Name: "origin",
+		URLs: []string{remoteDir},
+	})
+	if err != nil {
+		t.Fatalf("failed to create remote: %v", err)
+	}
+
+	store, err := storage.NewStore(repo)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	app := &cli.App{Store: store, Repo: repo}
+
+	var out strings.Builder
+	if err := app.EnsureInitializedWithOutput(&out); err != nil {
+		t.Fatalf("EnsureInitializedWithOutput failed: %v", err)
+	}
+
+	note := out.String()
+	if !strings.Contains(note, "refs/chain/*:refs/chain/*") {
+		t.Errorf("expected push refspec note in output, got:\n%s", note)
+	}
+	if !strings.Contains(note, "remote.origin.push") {
+		t.Errorf("expected 'remote.origin.push' in note, got:\n%s", note)
+	}
+}
+
 func TestEnsureInitialized_WithRemote(t *testing.T) {
 	dir := t.TempDir()
 	repo, err := git.PlainInit(dir, false)
