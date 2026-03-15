@@ -212,6 +212,23 @@ func TestCountCommits(t *testing.T) {
 	}
 }
 
+func TestDeleteRef(t *testing.T) {
+	store := initTestRepo(t)
+	ref := "refs/chain/_/tags/test-tag"
+	if err := store.WriteEntity(ref, "tag.txt", []byte("target"), "create tag"); err != nil {
+		t.Fatalf("WriteEntity failed: %v", err)
+	}
+	if !store.RefExists(ref) {
+		t.Fatal("expected ref to exist")
+	}
+	if err := store.DeleteRef(ref); err != nil {
+		t.Fatalf("DeleteRef failed: %v", err)
+	}
+	if store.RefExists(ref) {
+		t.Fatal("expected ref to be deleted")
+	}
+}
+
 func TestCountCommits_SameSHA(t *testing.T) {
 	repo, store := initTestRepoWithGit(t)
 	wt, err := repo.Worktree()

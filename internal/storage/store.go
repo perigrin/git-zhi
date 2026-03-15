@@ -203,6 +203,11 @@ func (s *Store) ListRefs(prefix string) ([]string, error) {
 	return refs, nil
 }
 
+// DeleteRef removes a ref. Used for --untag.
+func (s *Store) DeleteRef(refPath string) error {
+	return s.repo.Storer.RemoveReference(plumbing.ReferenceName(refPath))
+}
+
 // RefExists reports whether the given ref path resolves to a valid reference.
 func (s *Store) RefExists(refPath string) bool {
 	_, err := s.repo.Storer.Reference(plumbing.ReferenceName(refPath))
