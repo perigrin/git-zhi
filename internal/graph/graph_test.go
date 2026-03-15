@@ -14,4 +14,7 @@ func TestNewGraph_Empty(t *testing.T) {
 	if g == nil {
 		t.Fatal("expected non-nil graph")
 	}
+	if g.Len() != 0 {
+		t.Fatalf("expected 0 issues in graph, got %d", g.Len())
+	}
 }

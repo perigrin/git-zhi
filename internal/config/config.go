@@ -4,8 +4,8 @@ package config
 
 // Config represents the chain configuration.
 type Config struct {
-	Version          int    `yaml:"version"`
-	DefaultMilestone string `yaml:"default_milestone"`
+	Version          int    `yaml:"version" json:"version"`
+	DefaultMilestone string `yaml:"default_milestone" json:"default_milestone"`
 }
 
 // Default returns the default configuration for a new chain.

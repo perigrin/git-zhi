@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -37,6 +38,7 @@ No external services required.`,
 func Execute() {
 	cmd := NewRootCommand()
 	if err := cmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "git-chain: %s\n", err)
 		os.Exit(1)
 	}
 }

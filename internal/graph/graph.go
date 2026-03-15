@@ -13,6 +13,9 @@ type Graph struct {
 	issues map[uuid.UUID]*issue.Issue
 }
 
+// Len returns the number of issues in the graph.
+func (g *Graph) Len() int { return len(g.issues) }
+
 // New constructs a Graph from a set of issues.
 func New(issues []*issue.Issue) *Graph {
 	g := &Graph{

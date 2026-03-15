@@ -13,7 +13,7 @@ go build -o git-chain .
 go install github.com/perigrin/git-chain@latest
 ```
 
-Requires **Go 1.22+** and **git** at runtime.
+Requires **Go 1.24+** and **git** at runtime.
 
 ## Testing
 
