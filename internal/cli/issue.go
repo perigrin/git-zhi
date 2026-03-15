@@ -191,12 +191,12 @@ func newIssueShowCommand() *cobra.Command {
 }
 
 func newIssueEditCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "edit [ref]",
+	cmd := &cobra.Command{
+		Use:   "edit <ref>",
 		Short: "Modify an issue",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("issue edit: not yet implemented")
-			return nil
-		},
+		Args:  cobra.MaximumNArgs(1),
+		RunE:  runIssueEdit,
 	}
+	cmd.Flags().String("state", "", "transition state: start, pause, resume, done, cancel")
+	return cmd
 }
