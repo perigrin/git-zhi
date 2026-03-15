@@ -22,45 +22,41 @@ func NewMilestoneCommand() *cobra.Command {
 }
 
 func newMilestoneAddCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Create a new milestone",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("milestone add: not yet implemented")
-			return nil
-		},
+		Args:  cobra.ExactArgs(1),
+		RunE:  runMilestoneAdd,
 	}
+	cmd.Flags().String("due", "", "due date in YYYY-MM-DD format")
+	return cmd
 }
 
 func newMilestoneListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List all milestones",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("milestone list: not yet implemented")
-			return nil
-		},
+		Short: "List all milestones with issue counts",
+		RunE:  runMilestoneList,
 	}
 }
 
 func newMilestoneShowCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "show [ref]",
-		Short: "Show milestone detail with issues and fever chart",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("milestone show: not yet implemented")
-			return nil
-		},
+		Use:   "show [name]",
+		Short: "Show milestone detail with issues and progress",
+		Args:  cobra.MaximumNArgs(1),
+		RunE:  runMilestoneShow,
 	}
 }
 
 func newMilestoneEditCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "edit [ref]",
+	cmd := &cobra.Command{
+		Use:   "edit <name>",
 		Short: "Modify a milestone",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("milestone edit: not yet implemented")
-			return nil
-		},
+		Args:  cobra.ExactArgs(1),
+		RunE:  runMilestoneEdit,
 	}
+	cmd.Flags().String("due", "", "set due date (YYYY-MM-DD) or 'none' to clear")
+	cmd.Flags().String("name", "", "rename the milestone")
+	return cmd
 }
