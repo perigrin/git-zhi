@@ -22,3 +22,12 @@ func Default() *Config {
 func MarshalConfig(cfg *Config) ([]byte, error) {
 	return yaml.Marshal(cfg)
 }
+
+// UnmarshalConfig deserializes a Config from YAML.
+func UnmarshalConfig(data []byte) (*Config, error) {
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
