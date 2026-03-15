@@ -22,16 +22,20 @@ func IsHead(input string) bool {
 // ResolveRef resolves a user-supplied ref argument to a full issue ref path.
 // HEAD (and empty string) resolve to the current in-progress issue, or the
 // first pending issue by UUID sort order. Any other input is first tried as a
-// tag name, then treated as a UUID prefix and matched against all issue refs.
+// tag name, then as a UUID prefix, then as a title substring.
 func ResolveRef(store *storage.Store, input string) (string, error) {
 	if IsHead(input) {
 		return resolveHead(store)
 	}
-	// Try tag resolution before falling back to UUID prefix.
+	// Try tag resolution before UUID prefix.
 	if ref, err := resolveTag(store, input); err == nil {
 		return ref, nil
 	}
-	return resolveUUIDPrefix(store, input)
+	// Try UUID prefix resolution before title substring.
+	if ref, err := resolveUUIDPrefix(store, input); err == nil {
+		return ref, nil
+	}
+	return resolveTitleSubstring(store, input)
 }
 
 // resolveTag reads the tag entity at refs/chain/_/tags/<input> and returns
@@ -114,5 +118,37 @@ func resolveUUIDPrefix(store *storage.Store, prefix string) (string, error) {
 	default:
 		sort.Strings(matches)
 		return "", fmt.Errorf("ambiguous prefix %q matches %d issues: %s", prefix, len(matches), strings.Join(matches, ", "))
+	}
+}
+
+// resolveTitleSubstring scans all issues for those whose title contains input
+// as a case-insensitive substring. Returns the ref if exactly one match,
+// an error listing candidates if more than one match, and an error if none.
+func resolveTitleSubstring(store *storage.Store, input string) (string, error) {
+	allIssues, err := issue.LoadAllIssues(store)
+	if err != nil {
+		return "", fmt.Errorf("load issues for title search: %w", err)
+	}
+
+	lower := strings.ToLower(input)
+	var matches []*issue.Issue
+	for _, iss := range allIssues {
+		if strings.Contains(strings.ToLower(iss.Title), lower) {
+			matches = append(matches, iss)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("no issue found matching %q", input)
+	case 1:
+		return issue.RefPrefix + matches[0].ID.String(), nil
+	default:
+		candidates := make([]string, len(matches))
+		for i, iss := range matches {
+			candidates[i] = iss.ID.String()[:8] + " " + iss.Title
+		}
+		sort.Strings(candidates)
+		return "", fmt.Errorf("ambiguous title %q matches %d issues: %s", input, len(matches), strings.Join(candidates, "; "))
 	}
 }

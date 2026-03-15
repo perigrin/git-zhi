@@ -110,6 +110,9 @@ func (a *App) configureRemoteRefspecs() {
 	}
 
 	fetchSpec := gitconfig.RefSpec("+refs/chain/*:refs/chain/*")
+	// Note: go-git's RemoteConfig only exposes a Fetch field; there is no Push
+	// field in the struct. Push refspecs (refs/chain/*:refs/chain/*) must be
+	// configured manually in .git/config until go-git adds Push support.
 
 	hasFetch := false
 	for _, spec := range remote.Fetch {

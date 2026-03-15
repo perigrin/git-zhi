@@ -20,12 +20,15 @@ const (
 
 // Stats holds the derived telemetry indicators for a milestone.
 type Stats struct {
-	MPG          float64 `yaml:"mpg" json:"mpg"`
-	Speed        float64 `yaml:"speed" json:"speed"`
+	MPG float64 `yaml:"mpg" json:"mpg"`
+	Speed float64 `yaml:"speed" json:"speed"`
 	BufferTotal  float64 `yaml:"buffer_total" json:"buffer_total"`
 	BufferBurned float64 `yaml:"buffer_burned" json:"buffer_burned"`
-	TimeInChain  float64 `yaml:"time_in_chain" json:"time_in_chain"`
-	FeverStatus  Status  `yaml:"fever_status" json:"fever_status"`
+	// CompletionRatio is the fraction of issues in the milestone that are done
+	// (doneCount/totalIssues). This is a v0.1 simplification of the PRD's
+	// time-based time-in-chain metric, which requires session timestamps not yet stored.
+	CompletionRatio float64 `yaml:"completion_ratio" json:"completion_ratio"`
+	FeverStatus     Status  `yaml:"fever_status" json:"fever_status"`
 }
 
 // Compute derives telemetry indicators from the issues belonging to the given
@@ -63,15 +66,19 @@ func Compute(issues []*issue.Issue, ms *milestone.Milestone) *Stats {
 		s.MPG = float64(totalCommits) / float64(doneCount)
 	}
 
-	// Speed: done issues per week, using the span from the earliest issue
-	// creation time to the latest done-issue updated time.
+	// Speed: done issues per week, measured from the earliest Updated time of
+	// done issues (when work started producing results) to the latest Updated
+	// time of done issues. Using done-issue timestamps gives a throughput
+	// measure independent of when issues were originally created.
 	var earliest, latest time.Time
 	for _, iss := range milestoneIssues {
-		if earliest.IsZero() || iss.Created.Before(earliest) {
-			earliest = iss.Created
-		}
-		if iss.State == issue.StateDone && (latest.IsZero() || iss.Updated.After(latest)) {
-			latest = iss.Updated
+		if iss.State == issue.StateDone {
+			if earliest.IsZero() || iss.Updated.Before(earliest) {
+				earliest = iss.Updated
+			}
+			if latest.IsZero() || iss.Updated.After(latest) {
+				latest = iss.Updated
+			}
 		}
 	}
 	if doneCount > 0 && !earliest.IsZero() && !latest.IsZero() {
@@ -102,10 +109,9 @@ func Compute(issues []*issue.Issue, ms *milestone.Milestone) *Stats {
 		}
 	}
 
-	// TimeInChain: fraction of issues done, as a simplified proxy for
-	// active-session time vs calendar time.
+	// CompletionRatio: fraction of issues done. See Stats.CompletionRatio for context.
 	if totalIssues > 0 {
-		s.TimeInChain = float64(doneCount) / float64(totalIssues)
+		s.CompletionRatio = float64(doneCount) / float64(totalIssues)
 	}
 
 	// Fever chart: compare % buffer burned to % progress.

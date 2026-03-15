@@ -3,6 +3,7 @@
 package resolve_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -208,9 +209,58 @@ func TestResolveRef_TagNotFound(t *testing.T) {
 	writeTestIssue(t, store, id, issue.StatePending, "Some Issue")
 
 	// A nonexistent tag name should fall through to UUID prefix resolution,
-	// which also fails since the name is not a UUID prefix.
+	// then to title substring resolution, all of which fail for this input.
 	_, err := resolve.ResolveRef(store, "nonexistent-tag")
 	if err == nil {
 		t.Fatal("expected error for nonexistent tag name, got nil")
+	}
+}
+
+func TestResolveRef_TitleSubstring(t *testing.T) {
+	store := initTestStore(t)
+
+	gen := uuid.NewGen()
+
+	id1, _ := gen.NewV7()
+	id2, _ := gen.NewV7()
+	id3, _ := gen.NewV7()
+
+	writeTestIssue(t, store, id1, issue.StatePending, "Implement the parser module")
+	writeTestIssue(t, store, id2, issue.StatePending, "Write integration tests")
+	writeTestIssue(t, store, id3, issue.StatePending, "Deploy to production")
+
+	// Substring match on a unique word.
+	resolved, err := resolve.ResolveRef(store, "parser")
+	if err != nil {
+		t.Fatalf("ResolveRef(parser) unexpected error: %v", err)
+	}
+	expected := "refs/chain/_/issues/" + id1.String()
+	if resolved != expected {
+		t.Fatalf("ResolveRef(parser) = %q, want %q", resolved, expected)
+	}
+
+	// Case-insensitive match.
+	resolved2, err2 := resolve.ResolveRef(store, "INTEGRATION")
+	if err2 != nil {
+		t.Fatalf("ResolveRef(INTEGRATION) unexpected error: %v", err2)
+	}
+	expected2 := "refs/chain/_/issues/" + id2.String()
+	if resolved2 != expected2 {
+		t.Fatalf("ResolveRef(INTEGRATION) = %q, want %q", resolved2, expected2)
+	}
+
+	// No match returns error.
+	_, err3 := resolve.ResolveRef(store, "no-such-title-substring")
+	if err3 == nil {
+		t.Fatal("expected error for no-match title substring, got nil")
+	}
+
+	// Ambiguous match returns error: "ion" appears in "integration" and "production".
+	_, err4 := resolve.ResolveRef(store, "ion")
+	if err4 == nil {
+		t.Fatal("expected error for ambiguous title substring, got nil")
+	}
+	if !strings.Contains(err4.Error(), "ambiguous") {
+		t.Fatalf("expected 'ambiguous' in error, got: %v", err4)
 	}
 }

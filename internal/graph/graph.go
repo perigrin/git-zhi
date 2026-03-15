@@ -10,6 +10,7 @@ import (
 	"github.com/gofrs/uuid/v5"
 
 	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-chain/internal/uuids"
 )
 
 // Graph represents the issue dependency DAG.
@@ -81,7 +82,7 @@ func Build(issues []*issue.Issue) (*Graph, error) {
 				continue
 			}
 			// Only add if not already present (Blocks may have added it).
-			if !containsUUID(g.forward[upID], iss.ID) {
+			if !uuids.ContainsUUID(g.forward[upID], iss.ID) {
 				g.forward[upID] = append(g.forward[upID], iss.ID)
 				g.backward[iss.ID] = append(g.backward[iss.ID], upID)
 			}
@@ -183,8 +184,8 @@ func (g *Graph) AddEdge(from, to uuid.UUID) error {
 
 // RemoveEdge removes the dependency edge from→to if it exists.
 func (g *Graph) RemoveEdge(from, to uuid.UUID) {
-	g.forward[from] = removeUUID(g.forward[from], to)
-	g.backward[to] = removeUUID(g.backward[to], from)
+	g.forward[from] = uuids.RemoveUUID(g.forward[from], to)
+	g.backward[to] = uuids.RemoveUUID(g.backward[to], from)
 }
 
 // TopologicalSort returns a topological ordering of non-done/non-cancelled
@@ -395,7 +396,7 @@ func (g *Graph) Cancel(id uuid.UUID) error {
 	// Reconnect: each upstream now blocks each downstream directly.
 	for _, upID := range upstream {
 		for _, downID := range downstream {
-			if !containsUUID(g.forward[upID], downID) {
+			if !uuids.ContainsUUID(g.forward[upID], downID) {
 				g.forward[upID] = append(g.forward[upID], downID)
 				g.backward[downID] = append(g.backward[downID], upID)
 			}
@@ -404,10 +405,10 @@ func (g *Graph) Cancel(id uuid.UUID) error {
 
 	// Remove all edges involving the cancelled issue.
 	for _, upID := range upstream {
-		g.forward[upID] = removeUUID(g.forward[upID], id)
+		g.forward[upID] = uuids.RemoveUUID(g.forward[upID], id)
 	}
 	for _, downID := range downstream {
-		g.backward[downID] = removeUUID(g.backward[downID], id)
+		g.backward[downID] = uuids.RemoveUUID(g.backward[downID], id)
 	}
 	g.forward[id] = []uuid.UUID{}
 	g.backward[id] = []uuid.UUID{}
@@ -424,27 +425,6 @@ func (g *Graph) activeIssues() []*issue.Issue {
 		}
 	}
 	return active
-}
-
-// containsUUID reports whether slice contains id.
-func containsUUID(slice []uuid.UUID, id uuid.UUID) bool {
-	for _, u := range slice {
-		if u == id {
-			return true
-		}
-	}
-	return false
-}
-
-// removeUUID returns a new slice with all occurrences of id removed.
-func removeUUID(slice []uuid.UUID, id uuid.UUID) []uuid.UUID {
-	result := slice[:0:0]
-	for _, u := range slice {
-		if u != id {
-			result = append(result, u)
-		}
-	}
-	return result
 }
 
 // sortUUIDs sorts a UUID slice lexicographically for deterministic output.

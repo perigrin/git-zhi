@@ -11,8 +11,10 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
+	"github.com/perigrin/git-chain/internal/graph"
 	"github.com/perigrin/git-chain/internal/issue"
 	"github.com/perigrin/git-chain/internal/resolve"
+	"github.com/perigrin/git-chain/internal/uuids"
 )
 
 // knownEditFlags lists all flags that trigger edit behaviour. Used to detect
@@ -283,8 +285,18 @@ func addBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string) er
 		return fmt.Errorf("cannot create dependency: issue cannot block itself")
 	}
 
+	// Check for cycles before persisting the edge.
+	allIssues, loadErr := issue.LoadAllIssues(app.Store)
+	if loadErr != nil {
+		return fmt.Errorf("load issues for cycle check: %w", loadErr)
+	}
+	g := graph.New(allIssues)
+	if g.HasCycle(issUUID, targetUUID) {
+		return fmt.Errorf("adding edge %s -> %s would create a cycle", issUUIDStr[:8], targetUUIDStr[:8])
+	}
+
 	// Add target to this.Blocks (deduplicated).
-	if !containsUUID(iss.Blocks, targetUUID) {
+	if !uuids.ContainsUUID(iss.Blocks, targetUUID) {
 		iss.Blocks = append(iss.Blocks, targetUUID)
 	}
 
@@ -300,7 +312,7 @@ func addBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string) er
 	if tIss.State == issue.StateDone || tIss.State == issue.StateCancelled {
 		return fmt.Errorf("cannot add dependency: target issue %s is %s (done/cancelled issues cannot gain dependencies)", targetUUIDStr[:8], tIss.State)
 	}
-	if !containsUUID(tIss.BlockedBy, issUUID) {
+	if !uuids.ContainsUUID(tIss.BlockedBy, issUUID) {
 		tIss.BlockedBy = append(tIss.BlockedBy, issUUID)
 	}
 	tIss.Updated = time.Now()
@@ -341,8 +353,19 @@ func addBlockedByEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string
 		return fmt.Errorf("cannot add dependency: issue %s is %s (done/cancelled issues cannot gain dependencies)", issUUIDStr[:8], iss.State)
 	}
 
+	// Check for cycles before persisting the edge. For --after, the edge is
+	// targetUUID -> issUUID (target blocks this issue), so check HasCycle(targetUUID, issUUID).
+	allIssues, loadErr := issue.LoadAllIssues(app.Store)
+	if loadErr != nil {
+		return fmt.Errorf("load issues for cycle check: %w", loadErr)
+	}
+	g := graph.New(allIssues)
+	if g.HasCycle(targetUUID, issUUID) {
+		return fmt.Errorf("adding edge %s -> %s would create a cycle", targetUUIDStr[:8], issUUIDStr[:8])
+	}
+
 	// Add target to this.BlockedBy (deduplicated).
-	if !containsUUID(iss.BlockedBy, targetUUID) {
+	if !uuids.ContainsUUID(iss.BlockedBy, targetUUID) {
 		iss.BlockedBy = append(iss.BlockedBy, targetUUID)
 	}
 
@@ -355,7 +378,7 @@ func addBlockedByEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string
 	if err != nil {
 		return fmt.Errorf("parse target issue: %w", err)
 	}
-	if !containsUUID(tIss.Blocks, issUUID) {
+	if !uuids.ContainsUUID(tIss.Blocks, issUUID) {
 		tIss.Blocks = append(tIss.Blocks, issUUID)
 	}
 	tIss.Updated = time.Now()
@@ -388,8 +411,8 @@ func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string)
 	}
 
 	// Remove target from this.Blocks and this.BlockedBy (direction-agnostic).
-	iss.Blocks = removeUUID(iss.Blocks, targetUUID)
-	iss.BlockedBy = removeUUID(iss.BlockedBy, targetUUID)
+	iss.Blocks = uuids.RemoveUUID(iss.Blocks, targetUUID)
+	iss.BlockedBy = uuids.RemoveUUID(iss.BlockedBy, targetUUID)
 
 	// Load target and remove this from both directions on the target side.
 	tData, err := app.Store.ReadEntity(targetRef, "issue.md")
@@ -400,8 +423,8 @@ func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string)
 	if err != nil {
 		return fmt.Errorf("parse target issue: %w", err)
 	}
-	tIss.BlockedBy = removeUUID(tIss.BlockedBy, issUUID)
-	tIss.Blocks = removeUUID(tIss.Blocks, issUUID)
+	tIss.BlockedBy = uuids.RemoveUUID(tIss.BlockedBy, issUUID)
+	tIss.Blocks = uuids.RemoveUUID(tIss.Blocks, issUUID)
 	tIss.Updated = time.Now()
 	tOut, err := issue.Marshal(tIss)
 	if err != nil {
@@ -412,27 +435,6 @@ func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string)
 		return fmt.Errorf("write target issue: %w", err)
 	}
 	return nil
-}
-
-// containsUUID reports whether the slice contains the given UUID.
-func containsUUID(slice []uuid.UUID, target uuid.UUID) bool {
-	for _, u := range slice {
-		if u == target {
-			return true
-		}
-	}
-	return false
-}
-
-// removeUUID returns a new slice with all occurrences of target removed.
-func removeUUID(slice []uuid.UUID, target uuid.UUID) []uuid.UUID {
-	result := slice[:0:0]
-	for _, u := range slice {
-		if u != target {
-			result = append(result, u)
-		}
-	}
-	return result
 }
 
 // findOpenSession returns the index of the last session whose EndSHA is empty,

@@ -47,13 +47,15 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no milestones found")
 	}
 
+	// Load all issues once; used for both current-milestone detection and filtering.
+	allIssues, err := issue.LoadAllIssues(app.Store)
+	if err != nil {
+		return fmt.Errorf("load issues: %w", err)
+	}
+
 	// If no name given, find the current milestone (first with pending/in-progress issues).
 	var ms *milestone.Milestone
 	if name == "" {
-		allIssues, err := issue.LoadAllIssues(app.Store)
-		if err != nil {
-			return fmt.Errorf("load issues: %w", err)
-		}
 		ms = findCurrentMilestone(milestones, allIssues)
 		if ms == nil {
 			// Fall back to the first milestone if none have active issues.
@@ -67,11 +69,6 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 		ms = loaded
 	}
 
-	// Load issues belonging to this milestone.
-	allIssues, err := issue.LoadAllIssues(app.Store)
-	if err != nil {
-		return fmt.Errorf("load issues: %w", err)
-	}
 	var msIssues []*issue.Issue
 	doneCount := 0
 	for _, iss := range allIssues {

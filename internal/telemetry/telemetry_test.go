@@ -146,6 +146,66 @@ func TestCompute_WithDoneIssues(t *testing.T) {
 	}
 }
 
+func TestCompute_CompletionRatio(t *testing.T) {
+	ms := makeMilestone("v0.1")
+
+	gen := uuid.NewGen()
+	id1, _ := gen.NewV7()
+	id2, _ := gen.NewV7()
+	id3, _ := gen.NewV7()
+
+	now := time.Now()
+	issues := []*issue.Issue{
+		{ID: id1, Title: "Done 1", State: issue.StateDone, Milestone: "v0.1",
+			Sessions: []issue.Session{{Commits: 2}}, Created: now, Updated: now},
+		{ID: id2, Title: "Done 2", State: issue.StateDone, Milestone: "v0.1",
+			Sessions: []issue.Session{{Commits: 2}}, Created: now, Updated: now},
+		{ID: id3, Title: "Pending", State: issue.StatePending, Milestone: "v0.1",
+			Created: now, Updated: now},
+	}
+
+	stats := telemetry.Compute(issues, ms)
+
+	// 2 done / 3 total = 2/3 ≈ 0.666...
+	expected := 2.0 / 3.0
+	if stats.CompletionRatio < 0.66 || stats.CompletionRatio > 0.68 {
+		t.Errorf("expected CompletionRatio ≈ %.3f, got %.3f", expected, stats.CompletionRatio)
+	}
+}
+
+func TestCompute_SpeedUsesDoneIssueTimes(t *testing.T) {
+	ms := makeMilestone("v0.1")
+
+	gen := uuid.NewGen()
+	id1, _ := gen.NewV7()
+	id2, _ := gen.NewV7()
+
+	// Created 30 days ago but done within a 7-day window.
+	farPast := time.Now().Add(-30 * 24 * time.Hour)
+	doneStart := time.Now().Add(-7 * 24 * time.Hour)
+	doneEnd := time.Now()
+
+	issues := []*issue.Issue{
+		{ID: id1, Title: "Old Done 1", State: issue.StateDone, Milestone: "v0.1",
+			Sessions: []issue.Session{{Commits: 1}}, Created: farPast, Updated: doneStart},
+		{ID: id2, Title: "Old Done 2", State: issue.StateDone, Milestone: "v0.1",
+			Sessions: []issue.Session{{Commits: 1}}, Created: farPast, Updated: doneEnd},
+	}
+
+	stats := telemetry.Compute(issues, ms)
+
+	// Speed should be based on done-issue Updated times (7-day window), not
+	// creation times (30-day window). Roughly 2 issues / 1 week = ~2 issues/week.
+	if stats.Speed <= 0 {
+		t.Errorf("expected Speed > 0, got %f", stats.Speed)
+	}
+	// Speed based on 7-day window: ~2 issues/week. If it used the 30-day span
+	// it would be ~0.47 issues/week. Assert Speed > 1 to distinguish.
+	if stats.Speed < 1.0 {
+		t.Errorf("expected Speed > 1.0 (7-day done-issue window), got %f — may be using creation times instead", stats.Speed)
+	}
+}
+
 func TestCompute_FeverRed(t *testing.T) {
 	ms := makeMilestone("v0.1")
 

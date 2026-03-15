@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
+	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
 	"github.com/perigrin/git-chain/internal/graph"
@@ -16,8 +18,10 @@ import (
 
 // chainListJSON is the JSON output shape for chain list.
 type chainListJSON struct {
-	Issues        []*issue.Issue `json:"issues"`
-	CriticalChain []*issue.Issue `json:"critical_chain,omitempty"`
+	Issues            []*issue.Issue `json:"issues"`
+	CriticalChain     []*issue.Issue `json:"critical_chain,omitempty"`
+	CurrentConstraint string         `json:"current_constraint,omitempty"`
+	ParallelWork      []string       `json:"parallel_work,omitempty"`
 }
 
 // runChainList loads all issues, builds the dependency graph, applies filters,
@@ -30,6 +34,10 @@ func runChainList(cmd *cobra.Command, args []string) error {
 
 	if err := app.EnsureInitialized(); err != nil {
 		return fmt.Errorf("ensure initialized: %w", err)
+	}
+
+	if cmd.Flags().Changed("graph") {
+		return fmt.Errorf("--graph: not yet implemented")
 	}
 
 	includeAll, _ := cmd.Flags().GetBool("all")
@@ -59,10 +67,34 @@ func runChainList(cmd *cobra.Command, args []string) error {
 
 	if showCritical {
 		chain := g.CriticalChain()
+
+		// Compute parallel work: ready issues not already on the critical chain.
+		chainSet := make(map[uuid.UUID]bool)
+		for _, iss := range chain {
+			chainSet[iss.ID] = true
+		}
+		ready := g.ReadySet()
+		var parallel []*issue.Issue
+		for _, iss := range ready {
+			if !chainSet[iss.ID] {
+				parallel = append(parallel, iss)
+			}
+		}
+
 		if format == "json" {
 			out := chainListJSON{
 				Issues:        filtered,
 				CriticalChain: chain,
+			}
+			if len(chain) > 0 {
+				out.CurrentConstraint = chain[0].ID.String()[:8]
+			}
+			if len(parallel) > 0 {
+				ids := make([]string, len(parallel))
+				for i, iss := range parallel {
+					ids[i] = iss.ID.String()[:8]
+				}
+				out.ParallelWork = ids
 			}
 			if out.Issues == nil {
 				out.Issues = []*issue.Issue{}
@@ -74,7 +106,7 @@ func runChainList(cmd *cobra.Command, args []string) error {
 			enc.SetIndent("", "  ")
 			return enc.Encode(out)
 		}
-		return chainListCriticalHuman(cmd, chain)
+		return chainListCriticalHuman(cmd, chain, parallel)
 	}
 
 	sorted := g.TopologicalSort()
@@ -171,8 +203,9 @@ func chainListGroupedHuman(cmd *cobra.Command, app *App, issues []*issue.Issue, 
 	return nil
 }
 
-// chainListCriticalHuman renders the critical chain with arrow separators between issues.
-func chainListCriticalHuman(cmd *cobra.Command, chain []*issue.Issue) error {
+// chainListCriticalHuman renders the critical chain with arrow separators between issues,
+// followed by the current constraint and any parallel work available.
+func chainListCriticalHuman(cmd *cobra.Command, chain []*issue.Issue, parallel []*issue.Issue) error {
 	w := cmd.OutOrStdout()
 
 	fmt.Fprintf(w, "Critical Chain (%d issues)\n\n", len(chain))
@@ -191,6 +224,17 @@ func chainListCriticalHuman(cmd *cobra.Command, chain []*issue.Issue) error {
 		if i < len(chain)-1 {
 			fmt.Fprintln(w, "   ↓")
 		}
+	}
+
+	if len(chain) > 0 {
+		fmt.Fprintf(w, "\nCurrent constraint: %s\n", chain[0].ID.String()[:8])
+	}
+	if len(parallel) > 0 {
+		ids := make([]string, len(parallel))
+		for i, iss := range parallel {
+			ids[i] = iss.ID.String()[:8]
+		}
+		fmt.Fprintf(w, "Parallel work available: %s\n", strings.Join(ids, ", "))
 	}
 
 	return nil

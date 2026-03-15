@@ -14,6 +14,7 @@ func NewListCommand() *cobra.Command {
 	cmd.Flags().Bool("all", false, "include done and cancelled issues")
 	cmd.Flags().String("milestone", "", "filter by milestone")
 	cmd.Flags().Bool("critical", false, "show critical chain only")
+	cmd.Flags().Bool("graph", false, "ASCII DAG visualization (not yet implemented)")
 	return cmd
 }
 

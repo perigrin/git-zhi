@@ -83,6 +83,5 @@ func setChainConfig(cmd *cobra.Command, app *App, key, value string) error {
 		return fmt.Errorf("write config: %w", err)
 	}
 
-	_ = cmd
 	return nil
 }

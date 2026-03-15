@@ -241,3 +241,70 @@ func TestChainList_CriticalJson(t *testing.T) {
 		t.Fatalf("expected 'critical_chain' key in JSON output when --critical, got keys: %v", keys(result))
 	}
 }
+
+// TestChainList_CriticalConstraint verifies that --critical output includes the current
+// constraint line and parallel work line when parallel issues exist.
+func TestChainList_CriticalConstraint(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	// Linear chain: A -> B.
+	idA := createTestIssueWithDeps(t, app, "Constraint A", issue.StatePending, "v0.1", nil)
+	_ = createTestIssueWithDeps(t, app, "Constraint B", issue.StatePending, "v0.1", []uuid.UUID{idA})
+
+	// Independent issue (parallel work).
+	_ = createTestIssueWithDeps(t, app, "Parallel P", issue.StatePending, "v0.1", nil)
+
+	stdout, err := run("list", "--critical")
+	if err != nil {
+		t.Fatalf("chain list --critical failed: %v", err)
+	}
+
+	output := stdout.String()
+
+	if !strings.Contains(output, "Current constraint:") {
+		t.Errorf("expected 'Current constraint:' in --critical output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Parallel work available:") {
+		t.Errorf("expected 'Parallel work available:' in --critical output, got:\n%s", output)
+	}
+}
+
+// TestChainList_CriticalConstraintJson verifies that --critical --format json includes
+// current_constraint and parallel_work fields.
+func TestChainList_CriticalConstraintJson(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	idA := createTestIssueWithDeps(t, app, "CJ Constraint A", issue.StatePending, "v0.1", nil)
+	_ = createTestIssueWithDeps(t, app, "CJ Constraint B", issue.StatePending, "v0.1", []uuid.UUID{idA})
+	_ = createTestIssueWithDeps(t, app, "CJ Parallel", issue.StatePending, "v0.1", nil)
+
+	stdout, err := run("list", "--critical", "--format", "json")
+	if err != nil {
+		t.Fatalf("chain list --critical --format json failed: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\noutput: %s", err, stdout.String())
+	}
+
+	if _, ok := result["current_constraint"]; !ok {
+		t.Fatalf("expected 'current_constraint' key in JSON output, got keys: %v", keys(result))
+	}
+	if _, ok := result["parallel_work"]; !ok {
+		t.Fatalf("expected 'parallel_work' key in JSON output, got keys: %v", keys(result))
+	}
+}
+
+// TestChainList_GraphFlagNotImplemented verifies --graph returns an error.
+func TestChainList_GraphFlagNotImplemented(t *testing.T) {
+	_, run := setupChainListTest(t)
+
+	_, err := run("list", "--graph")
+	if err == nil {
+		t.Fatal("expected error for --graph flag, got nil")
+	}
+	if !strings.Contains(err.Error(), "not yet implemented") {
+		t.Fatalf("expected 'not yet implemented' in error, got: %v", err)
+	}
+}

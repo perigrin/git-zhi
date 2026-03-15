@@ -220,6 +220,50 @@ func TestIssueEdit_Before(t *testing.T) {
 	}
 }
 
+// TestIssueEdit_BlockCycleDetection verifies that --block rejects edges that would create a cycle.
+func TestIssueEdit_BlockCycleDetection(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	idA := createEditTestIssue(t, app, "Cycle A")
+	idB := createEditTestIssue(t, app, "Cycle B")
+
+	// A blocks B.
+	if _, _, err := run("issue", "edit", idA, "--block", idB); err != nil {
+		t.Fatalf("issue edit --block (A->B) failed: %v", err)
+	}
+
+	// B blocks A would create a cycle: A->B->A.
+	_, _, err := run("issue", "edit", idB, "--block", idA)
+	if err == nil {
+		t.Fatal("expected error for cycle-creating --block, got nil")
+	}
+	if !strings.Contains(err.Error(), "cycle") {
+		t.Fatalf("expected 'cycle' in error message, got: %v", err)
+	}
+}
+
+// TestIssueEdit_AfterCycleDetection verifies that --after rejects edges that would create a cycle.
+func TestIssueEdit_AfterCycleDetection(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	idA := createEditTestIssue(t, app, "After Cycle A")
+	idB := createEditTestIssue(t, app, "After Cycle B")
+
+	// A blocks B (B comes after A).
+	if _, _, err := run("issue", "edit", idB, "--after", idA); err != nil {
+		t.Fatalf("issue edit --after (B after A) failed: %v", err)
+	}
+
+	// A --after B would mean B->A, creating cycle A->B->A.
+	_, _, err := run("issue", "edit", idA, "--after", idB)
+	if err == nil {
+		t.Fatal("expected error for cycle-creating --after, got nil")
+	}
+	if !strings.Contains(err.Error(), "cycle") {
+		t.Fatalf("expected 'cycle' in error message, got: %v", err)
+	}
+}
+
 // TestIssueEdit_After verifies that --after adds a blocked_by edge (target blocks this issue).
 func TestIssueEdit_After(t *testing.T) {
 	app, run := setupEditTest(t)
