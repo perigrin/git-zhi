@@ -27,11 +27,15 @@ const (
 const RefPrefix = "refs/chain/_/issues/"
 
 // Session records a measurement window: the commit range and count between
-// start/resume and pause/done transitions.
+// start/resume and pause/done transitions. StartedAt and EndedAt are optional
+// wall-clock timestamps used for time-in-chain computation; older sessions
+// without timestamps remain valid.
 type Session struct {
-	StartSHA string `yaml:"start_sha" json:"start_sha"`
-	EndSHA   string `yaml:"end_sha" json:"end_sha"`
-	Commits  int    `yaml:"commits" json:"commits"`
+	StartSHA  string     `yaml:"start_sha" json:"start_sha"`
+	EndSHA    string     `yaml:"end_sha" json:"end_sha"`
+	Commits   int        `yaml:"commits" json:"commits"`
+	StartedAt *time.Time `yaml:"started_at,omitempty" json:"started_at,omitempty"`
+	EndedAt   *time.Time `yaml:"ended_at,omitempty" json:"ended_at,omitempty"`
 }
 
 // Issue represents a node in the chain dependency graph.

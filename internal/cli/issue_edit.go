@@ -98,13 +98,19 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("get repo HEAD: %w", err)
 		}
 
+		// Capture wall-clock time once for this transition; reused across all
+		// session fields so start/end timestamps are consistent within a single
+		// state change.
+		now := time.Now()
+
 		switch stateAction {
 		case "start", "resume":
 			if findOpenSession(iss.Sessions) >= 0 {
 				return fmt.Errorf("cannot %s: a measurement session is already open", stateAction)
 			}
 			iss.Sessions = append(iss.Sessions, issue.Session{
-				StartSHA: currentHEAD,
+				StartSHA:  currentHEAD,
+				StartedAt: &now,
 			})
 
 		case "pause", "done":
@@ -115,6 +121,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 					return fmt.Errorf("count commits: %w", countErr)
 				}
 				iss.Sessions[openIdx].EndSHA = currentHEAD
+				iss.Sessions[openIdx].EndedAt = &now
 				iss.Sessions[openIdx].Commits = commitCount
 			}
 
@@ -125,9 +132,11 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 				if countErr != nil {
 					// If counting fails (e.g., after rebase), close with zero commits.
 					iss.Sessions[openIdx].EndSHA = currentHEAD
+					iss.Sessions[openIdx].EndedAt = &now
 					iss.Sessions[openIdx].Commits = 0
 				} else {
 					iss.Sessions[openIdx].EndSHA = currentHEAD
+					iss.Sessions[openIdx].EndedAt = &now
 					iss.Sessions[openIdx].Commits = commitCount
 				}
 			}

@@ -397,6 +397,133 @@ func TestIssueEdit_CancelFromInProgress(t *testing.T) {
 	}
 }
 
+func TestIssueEdit_Start_SetsStartedAt(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Timestamp start test")
+	prefix := uuidStr[:8]
+
+	before := time.Now().Add(-time.Second)
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	after := time.Now().Add(time.Second)
+
+	ref := issue.RefPrefix + uuidStr
+	data, _ := app.Store.ReadEntity(ref, "issue.md")
+	iss, _ := issue.Parse(data)
+
+	if len(iss.Sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(iss.Sessions))
+	}
+	sess := iss.Sessions[0]
+	if sess.StartedAt == nil {
+		t.Fatal("expected StartedAt to be set after start")
+	}
+	if sess.StartedAt.Before(before) || sess.StartedAt.After(after) {
+		t.Fatalf("StartedAt %v outside expected range [%v, %v]", sess.StartedAt, before, after)
+	}
+	if sess.EndedAt != nil {
+		t.Fatalf("expected EndedAt to be nil on open session, got %v", sess.EndedAt)
+	}
+}
+
+func TestIssueEdit_Pause_SetsEndedAt(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Timestamp pause test")
+	prefix := uuidStr[:8]
+
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	makeTestCommit(t, app, "work commit")
+
+	before := time.Now().Add(-time.Second)
+	if _, _, err := run("issue", "edit", "--state", "pause", prefix); err != nil {
+		t.Fatalf("pause failed: %v", err)
+	}
+	after := time.Now().Add(time.Second)
+
+	ref := issue.RefPrefix + uuidStr
+	data, _ := app.Store.ReadEntity(ref, "issue.md")
+	iss, _ := issue.Parse(data)
+
+	sess := iss.Sessions[0]
+	if sess.EndedAt == nil {
+		t.Fatal("expected EndedAt to be set after pause")
+	}
+	if sess.EndedAt.Before(before) || sess.EndedAt.After(after) {
+		t.Fatalf("EndedAt %v outside expected range [%v, %v]", sess.EndedAt, before, after)
+	}
+}
+
+func TestIssueEdit_Done_SetsEndedAt(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Timestamp done test")
+	prefix := uuidStr[:8]
+
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	makeTestCommit(t, app, "work commit")
+
+	before := time.Now().Add(-time.Second)
+	if _, _, err := run("issue", "edit", "--state", "done", prefix); err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+	after := time.Now().Add(time.Second)
+
+	ref := issue.RefPrefix + uuidStr
+	data, _ := app.Store.ReadEntity(ref, "issue.md")
+	iss, _ := issue.Parse(data)
+
+	sess := iss.Sessions[0]
+	if sess.EndedAt == nil {
+		t.Fatal("expected EndedAt to be set after done")
+	}
+	if sess.EndedAt.Before(before) || sess.EndedAt.After(after) {
+		t.Fatalf("EndedAt %v outside expected range [%v, %v]", sess.EndedAt, before, after)
+	}
+}
+
+func TestIssueEdit_Cancel_SetsEndedAt(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Timestamp cancel test")
+	prefix := uuidStr[:8]
+
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	makeTestCommit(t, app, "work commit")
+
+	before := time.Now().Add(-time.Second)
+	if _, _, err := run("issue", "edit", "--state", "cancel", prefix); err != nil {
+		t.Fatalf("cancel failed: %v", err)
+	}
+	after := time.Now().Add(time.Second)
+
+	ref := issue.RefPrefix + uuidStr
+	data, _ := app.Store.ReadEntity(ref, "issue.md")
+	iss, _ := issue.Parse(data)
+
+	if len(iss.Sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(iss.Sessions))
+	}
+	sess := iss.Sessions[0]
+	if sess.EndedAt == nil {
+		t.Fatal("expected EndedAt to be set after cancel from in-progress")
+	}
+	if sess.EndedAt.Before(before) || sess.EndedAt.After(after) {
+		t.Fatalf("EndedAt %v outside expected range [%v, %v]", sess.EndedAt, before, after)
+	}
+}
+
 func TestIssueEdit_DoubleResume(t *testing.T) {
 	app, run := setupEditTest(t)
 

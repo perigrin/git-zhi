@@ -121,12 +121,15 @@ func TestMarshal_RoundTrip(t *testing.T) {
 }
 
 func TestMarshal_RoundTrip_WithSessions(t *testing.T) {
+	startedAt := time.Now().Add(-1 * time.Hour).Truncate(time.Second)
+	endedAt := time.Now().Truncate(time.Second)
+
 	iss := &issue.Issue{
 		Title:     "Session round trip",
 		State:     issue.StateInProgress,
 		Milestone: "v0.1",
 		Sessions: []issue.Session{
-			{StartSHA: "abc123", EndSHA: "def456", Commits: 5},
+			{StartSHA: "abc123", EndSHA: "def456", Commits: 5, StartedAt: &startedAt, EndedAt: &endedAt},
 			{StartSHA: "ghi789", EndSHA: "", Commits: 0},
 		},
 		Created: time.Now().Truncate(time.Second),
@@ -148,6 +151,26 @@ func TestMarshal_RoundTrip_WithSessions(t *testing.T) {
 	}
 	if iss2.Sessions[0].StartSHA != "abc123" {
 		t.Fatalf("expected StartSHA 'abc123', got %q", iss2.Sessions[0].StartSHA)
+	}
+	// Verify timestamps round-trip correctly.
+	if iss2.Sessions[0].StartedAt == nil {
+		t.Fatal("expected StartedAt to be set after round-trip")
+	}
+	if !iss2.Sessions[0].StartedAt.Equal(startedAt) {
+		t.Fatalf("expected StartedAt %v, got %v", startedAt, *iss2.Sessions[0].StartedAt)
+	}
+	if iss2.Sessions[0].EndedAt == nil {
+		t.Fatal("expected EndedAt to be set after round-trip")
+	}
+	if !iss2.Sessions[0].EndedAt.Equal(endedAt) {
+		t.Fatalf("expected EndedAt %v, got %v", endedAt, *iss2.Sessions[0].EndedAt)
+	}
+	// Second session (no timestamps) should have nil pointers.
+	if iss2.Sessions[1].StartedAt != nil {
+		t.Fatalf("expected StartedAt nil for session without timestamps, got %v", iss2.Sessions[1].StartedAt)
+	}
+	if iss2.Sessions[1].EndedAt != nil {
+		t.Fatalf("expected EndedAt nil for session without timestamps, got %v", iss2.Sessions[1].EndedAt)
 	}
 }
 
