@@ -184,6 +184,20 @@ func TestParseSections_EmptyBody(t *testing.T) {
 	}
 }
 
+func TestParseSections_CaseInsensitive(t *testing.T) {
+	body := "## prerequisites\n\n- [x] done\n\n## context\n\n- paths: main.go\n\n## acceptance criteria\n\n- [ ] works"
+	s := issue.ParseSections(body)
+	if len(s.Prerequisites) != 1 {
+		t.Fatalf("expected 1 prerequisite with lowercase heading, got %d", len(s.Prerequisites))
+	}
+	if s.Context == nil {
+		t.Fatal("expected context with lowercase heading")
+	}
+	if len(s.AcceptanceCriteria) != 1 {
+		t.Fatalf("expected 1 AC with lowercase heading, got %d", len(s.AcceptanceCriteria))
+	}
+}
+
 func TestParseSections_NoSections(t *testing.T) {
 	body := "This is a plain text body with no headings.\n\nJust some prose."
 

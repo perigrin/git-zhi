@@ -23,6 +23,9 @@ const (
 	StateCancelled  State = "cancelled"
 )
 
+// RefPrefix is the git ref namespace under which all issues are stored.
+const RefPrefix = "refs/chain/_/issues/"
+
 // Session records a measurement window: the commit range and count between
 // start/resume and pause/done transitions.
 type Session struct {

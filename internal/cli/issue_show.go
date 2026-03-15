@@ -63,7 +63,7 @@ func runIssueShow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Extract UUID from the ref path — it is not stored in the frontmatter.
-	uuidStr := strings.TrimPrefix(refPath, "refs/chain/_/issues/")
+	uuidStr := strings.TrimPrefix(refPath, issue.RefPrefix)
 	id, err := uuid.FromString(uuidStr)
 	if err != nil {
 		return fmt.Errorf("extract uuid from ref path %q: %w", refPath, err)
@@ -141,7 +141,7 @@ func showJSON(cmd *cobra.Command, iss *issue.Issue) error {
 // resolveIssueTitle loads an issue by UUID and returns its title.
 // Returns "(unknown)" if the issue cannot be read or parsed.
 func resolveIssueTitle(app *App, id uuid.UUID) string {
-	refPath := "refs/chain/_/issues/" + id.String()
+	refPath := issue.RefPrefix + id.String()
 	raw, err := app.Store.ReadEntity(refPath, "issue.md")
 	if err != nil {
 		return "(unknown)"

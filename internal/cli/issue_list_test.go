@@ -112,6 +112,7 @@ func TestIssueList_All(t *testing.T) {
 	createTestIssue(t, app, "Alpha", issue.StatePending, "")
 	createTestIssue(t, app, "Beta", issue.StateInProgress, "")
 	createTestIssue(t, app, "Gamma", issue.StateDone, "")
+	createTestIssue(t, app, "Delta", issue.StateCancelled, "")
 
 	stdout, err := run("issue", "list", "--all")
 	if err != nil {
@@ -127,6 +128,13 @@ func TestIssueList_All(t *testing.T) {
 	}
 	if !strings.Contains(output, "Gamma") {
 		t.Errorf("expected 'Gamma' in output with --all, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Delta") {
+		t.Errorf("expected 'Delta' (cancelled) in output with --all, got:\n%s", output)
+	}
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 4 {
+		t.Errorf("expected 4 lines in --all output, got %d:\n%s", len(lines), output)
 	}
 }
 

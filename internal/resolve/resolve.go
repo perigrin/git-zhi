@@ -11,8 +11,6 @@ import (
 	"github.com/perigrin/git-chain/internal/storage"
 )
 
-const issueRefPrefix = "refs/chain/_/issues/"
-
 // IsHead returns true if the input resolves to the HEAD reference.
 // An empty ref argument means the caller passed no explicit target,
 // which resolves to HEAD — the current in-progress issue or next on
@@ -36,7 +34,7 @@ func ResolveRef(store *storage.Store, input string) (string, error) {
 // first pending issue sorted lexicographically by UUID. UUIDv7 sorts by
 // creation time, so lexicographic order is chronological order.
 func resolveHead(store *storage.Store) (string, error) {
-	refs, err := store.ListRefs(issueRefPrefix)
+	refs, err := store.ListRefs(issue.RefPrefix)
 	if err != nil {
 		return "", fmt.Errorf("list issue refs: %w", err)
 	}
@@ -75,14 +73,14 @@ func resolveHead(store *storage.Store) (string, error) {
 // an error if no refs match, and an error listing candidates if more than one
 // match.
 func resolveUUIDPrefix(store *storage.Store, prefix string) (string, error) {
-	refs, err := store.ListRefs(issueRefPrefix)
+	refs, err := store.ListRefs(issue.RefPrefix)
 	if err != nil {
 		return "", fmt.Errorf("list issue refs: %w", err)
 	}
 
 	var matches []string
 	for _, ref := range refs {
-		uuidSegment := strings.TrimPrefix(ref, issueRefPrefix)
+		uuidSegment := strings.TrimPrefix(ref, issue.RefPrefix)
 		if strings.HasPrefix(uuidSegment, prefix) {
 			matches = append(matches, ref)
 		}

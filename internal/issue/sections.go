@@ -141,21 +141,21 @@ func ParseSections(body string) *Sections {
 	var descParts []string
 
 	for _, sec := range sections {
-		switch sec.name {
+		switch strings.ToLower(sec.name) {
 		case "":
 			// Text before any heading.
 			if sec.text != "" {
 				descParts = append(descParts, sec.text)
 			}
-		case "Prerequisites":
+		case "prerequisites":
 			s.Prerequisites = parseCheckboxes(sec.text)
-		case "Context":
+		case "context":
 			ctx, extra := parseContext(sec.text)
 			s.Context = ctx
 			if extra != "" {
 				descParts = append(descParts, extra)
 			}
-		case "Acceptance Criteria":
+		case "acceptance criteria":
 			s.AcceptanceCriteria = parseCheckboxes(sec.text)
 		default:
 			// Unrecognized section: treat its text as description.

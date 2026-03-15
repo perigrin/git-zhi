@@ -34,7 +34,27 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 	milestoneFilter, _ := cmd.Flags().GetString("milestone")
 	stateFilter, _ := cmd.Flags().GetString("state")
 
-	refs, err := app.Store.ListRefs("refs/chain/_/issues/")
+	// Validate --state flag against known states.
+	validStates := []string{
+		string(issue.StatePending),
+		string(issue.StateInProgress),
+		string(issue.StateDone),
+		string(issue.StateCancelled),
+	}
+	if stateFilter != "" {
+		valid := false
+		for _, s := range validStates {
+			if stateFilter == s {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fmt.Errorf("invalid --state %q: valid states are %s", stateFilter, strings.Join(validStates, ", "))
+		}
+	}
+
+	refs, err := app.Store.ListRefs(issue.RefPrefix)
 	if err != nil {
 		return fmt.Errorf("list issue refs: %w", err)
 	}
@@ -48,16 +68,18 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 	for _, refPath := range refs {
 		raw, err := app.Store.ReadEntity(refPath, "issue.md")
 		if err != nil {
-			return fmt.Errorf("read issue at %s: %w", refPath, err)
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: skipping %s: %v\n", refPath, err)
+			continue
 		}
 
 		iss, err := issue.Parse(raw)
 		if err != nil {
-			return fmt.Errorf("parse issue at %s: %w", refPath, err)
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: skipping %s: %v\n", refPath, err)
+			continue
 		}
 
 		// Extract UUID from the ref path — not stored in frontmatter.
-		uuidStr := strings.TrimPrefix(refPath, "refs/chain/_/issues/")
+		uuidStr := strings.TrimPrefix(refPath, issue.RefPrefix)
 		id, err := uuid.FromString(uuidStr)
 		if err != nil {
 			return fmt.Errorf("extract uuid from ref path %q: %w", refPath, err)
@@ -86,6 +108,9 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 
 	format, _ := cmd.Root().PersistentFlags().GetString("format")
 	if format == "json" {
+		// list returns the Issue struct directly (summary view) while show
+		// returns IssueJSON with parsed sections (detail view). This is
+		// intentional — list is for scanning, show is for deep inspection.
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
 		if issues == nil {
@@ -105,12 +130,20 @@ func listHuman(cmd *cobra.Command, issues []*issue.Issue) error {
 		if icon == "" {
 			icon = "?"
 		}
-		fmt.Fprintf(w, "  %s  %-40s %s %s\n",
+		line := fmt.Sprintf("  %s  %-40s %s %s",
 			iss.ID.String()[:8],
 			iss.Title,
 			icon,
 			string(iss.State),
 		)
+		if len(iss.BlockedBy) > 0 {
+			prefixes := make([]string, len(iss.BlockedBy))
+			for i, id := range iss.BlockedBy {
+				prefixes[i] = id.String()[:8]
+			}
+			line += fmt.Sprintf(" (blocked by %s)", strings.Join(prefixes, ", "))
+		}
+		fmt.Fprintln(w, line)
 	}
 	return nil
 }

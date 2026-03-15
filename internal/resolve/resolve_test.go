@@ -151,3 +151,28 @@ func TestResolveRef_HEAD_Empty(t *testing.T) {
 		t.Fatal("expected error when no issues exist, got nil")
 	}
 }
+
+func TestResolveRef_HEAD_SkipsDoneAndCancelled(t *testing.T) {
+	store := initTestStore(t)
+
+	gen := uuid.NewGen()
+
+	idDone, _ := gen.NewV7()
+	time.Sleep(time.Millisecond)
+	idCancelled, _ := gen.NewV7()
+	time.Sleep(time.Millisecond)
+	idPending, _ := gen.NewV7()
+
+	writeTestIssue(t, store, idDone, issue.StateDone, "Done Issue")
+	writeTestIssue(t, store, idCancelled, issue.StateCancelled, "Cancelled Issue")
+	writeTestIssue(t, store, idPending, issue.StatePending, "Pending Issue")
+
+	resolved, err := resolve.ResolveRef(store, "HEAD")
+	if err != nil {
+		t.Fatalf("ResolveRef(HEAD) unexpected error: %v", err)
+	}
+	expected := "refs/chain/_/issues/" + idPending.String()
+	if resolved != expected {
+		t.Fatalf("ResolveRef(HEAD) = %q, want %q (pending issue, skipping done and cancelled)", resolved, expected)
+	}
+}

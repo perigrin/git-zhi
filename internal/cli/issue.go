@@ -138,7 +138,7 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 		if marshalErr != nil {
 			return fmt.Errorf("marshal issue %s: %w", iss.ID, marshalErr)
 		}
-		refPath := "refs/chain/_/issues/" + iss.ID.String()
+		refPath := issue.RefPrefix + iss.ID.String()
 		if writeErr := app.Store.WriteEntity(refPath, "issue.md", data, "Add issue: "+iss.Title); writeErr != nil {
 			return fmt.Errorf("write issue %s: %w", iss.ID, writeErr)
 		}
