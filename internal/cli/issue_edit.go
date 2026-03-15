@@ -92,6 +92,9 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 
 		switch stateAction {
 		case "start", "resume":
+			if findOpenSession(iss.Sessions) >= 0 {
+				return fmt.Errorf("cannot %s: a measurement session is already open", stateAction)
+			}
 			iss.Sessions = append(iss.Sessions, issue.Session{
 				StartSHA: currentHEAD,
 			})
@@ -108,7 +111,18 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 			}
 
 		case "cancel":
-			// Cancel does not record measurement bookmarks.
+			openIdx := findOpenSession(iss.Sessions)
+			if openIdx >= 0 {
+				commitCount, countErr := app.Store.CountCommits(iss.Sessions[openIdx].StartSHA, currentHEAD)
+				if countErr != nil {
+					// If counting fails (e.g., after rebase), close with zero commits.
+					iss.Sessions[openIdx].EndSHA = currentHEAD
+					iss.Sessions[openIdx].Commits = 0
+				} else {
+					iss.Sessions[openIdx].EndSHA = currentHEAD
+					iss.Sessions[openIdx].Commits = commitCount
+				}
+			}
 		}
 
 		iss.State = newState

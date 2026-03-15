@@ -5,6 +5,7 @@ package storage_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -226,6 +227,30 @@ func TestDeleteRef(t *testing.T) {
 	}
 	if store.RefExists(ref) {
 		t.Fatal("expected ref to be deleted")
+	}
+}
+
+func TestCountCommits_UnreachableSHA(t *testing.T) {
+	repo, store := initTestRepoWithGit(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("get worktree: %v", err)
+	}
+	dir := wt.Filesystem.Root()
+
+	sha1 := makeCommit(t, repo, dir, "a.txt", "v1", "first")
+	_ = sha1
+
+	sha2 := makeCommit(t, repo, dir, "b.txt", "v2", "second")
+
+	// Use a bogus SHA that is not in the ancestry of sha2.
+	bogusSHA := "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+	_, err = store.CountCommits(bogusSHA, sha2)
+	if err == nil {
+		t.Fatal("expected error when startSHA is not reachable from endSHA, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found in ancestry") {
+		t.Fatalf("expected 'not found in ancestry' in error, got: %v", err)
 	}
 }
 

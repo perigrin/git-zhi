@@ -120,6 +120,37 @@ func TestMarshal_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestMarshal_RoundTrip_WithSessions(t *testing.T) {
+	iss := &issue.Issue{
+		Title:     "Session round trip",
+		State:     issue.StateInProgress,
+		Milestone: "v0.1",
+		Sessions: []issue.Session{
+			{StartSHA: "abc123", EndSHA: "def456", Commits: 5},
+			{StartSHA: "ghi789", EndSHA: "", Commits: 0},
+		},
+		Created: time.Now().Truncate(time.Second),
+		Updated: time.Now().Truncate(time.Second),
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	iss2, err := issue.Parse(out)
+	if err != nil {
+		t.Fatalf("re-Parse failed: %v", err)
+	}
+	if len(iss2.Sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(iss2.Sessions))
+	}
+	if iss2.Sessions[0].Commits != 5 {
+		t.Fatalf("expected Commits=5, got %d", iss2.Sessions[0].Commits)
+	}
+	if iss2.Sessions[0].StartSHA != "abc123" {
+		t.Fatalf("expected StartSHA 'abc123', got %q", iss2.Sessions[0].StartSHA)
+	}
+}
+
 func TestSplitBatch_SingleIssue(t *testing.T) {
 	raw := []byte("---\ntitle: \"Single issue\"\n---\n\nBody\n")
 	blocks := issue.SplitBatch(raw)

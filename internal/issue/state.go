@@ -2,7 +2,10 @@
 // ABOUTME: Enforces which --state transitions are valid from each current state.
 package issue
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // transition describes a valid action: the required current state and the resulting state.
 type transition struct {
@@ -38,5 +41,9 @@ func ValidateTransition(current State, action string) (State, error) {
 		}
 	}
 
-	return "", fmt.Errorf("cannot %s: issue is %s, expected %s", action, current, transitions[action][0].required)
+	var expected []string
+	for _, t := range valid {
+		expected = append(expected, string(t.required))
+	}
+	return "", fmt.Errorf("cannot %s: issue is %s, expected %s", action, current, strings.Join(expected, " or "))
 }

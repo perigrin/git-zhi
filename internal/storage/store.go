@@ -241,8 +241,10 @@ func (s *Store) CountCommits(startSHA, endSHA string) (int, error) {
 	defer iter.Close()
 
 	count := 0
+	found := false
 	err = iter.ForEach(func(c *object.Commit) error {
 		if c.Hash == startHash {
+			found = true
 			return storer.ErrStop
 		}
 		count++
@@ -250,6 +252,9 @@ func (s *Store) CountCommits(startSHA, endSHA string) (int, error) {
 	})
 	if err != nil && err != storer.ErrStop {
 		return 0, fmt.Errorf("walk commit log: %w", err)
+	}
+	if !found {
+		return 0, fmt.Errorf("start SHA %s not found in ancestry of %s", startSHA, endSHA)
 	}
 	return count, nil
 }

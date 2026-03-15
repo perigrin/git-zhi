@@ -175,8 +175,8 @@ func TestIssueEdit_PauseAndResume(t *testing.T) {
 	if iss.Sessions[0].EndSHA == "" {
 		t.Fatal("expected EndSHA to be set after pause")
 	}
-	if iss.Sessions[0].Commits <= 0 {
-		t.Fatalf("expected Commits > 0 after making commits, got %d", iss.Sessions[0].Commits)
+	if iss.Sessions[0].Commits != 3 {
+		t.Fatalf("expected Commits=3 after making 3 commits, got %d", iss.Sessions[0].Commits)
 	}
 
 	// Make more commits before resume
@@ -259,8 +259,8 @@ func TestIssueEdit_Done(t *testing.T) {
 	if iss.Sessions[0].EndSHA == "" {
 		t.Fatal("expected EndSHA set on done")
 	}
-	if iss.Sessions[0].Commits <= 0 {
-		t.Fatalf("expected Commits > 0, got %d", iss.Sessions[0].Commits)
+	if iss.Sessions[0].Commits != 2 {
+		t.Fatalf("expected Commits=2 after making 2 commits, got %d", iss.Sessions[0].Commits)
 	}
 }
 
@@ -345,5 +345,75 @@ func TestIssueEdit_JsonOutput(t *testing.T) {
 	}
 	if len(result.Sessions) != 1 {
 		t.Fatalf("expected 1 session in JSON, got %d", len(result.Sessions))
+	}
+}
+
+func TestIssueEdit_CancelFromInProgress(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Cancelled in-progress feature")
+	prefix := uuidStr[:8]
+
+	// Start the issue so a session is open.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	// Make some commits while in progress.
+	makeTestCommit(t, app, "work commit 1")
+	makeTestCommit(t, app, "work commit 2")
+
+	// Cancel the issue.
+	stdout, _, err := run("issue", "edit", "--state", "cancel", prefix)
+	if err != nil {
+		t.Fatalf("cancel failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Cancelled") {
+		t.Fatalf("expected 'Cancelled' in output, got: %s", output)
+	}
+
+	// Verify persisted state.
+	ref := issue.RefPrefix + uuidStr
+	data, err2 := app.Store.ReadEntity(ref, "issue.md")
+	if err2 != nil {
+		t.Fatalf("ReadEntity: %v", err2)
+	}
+	iss, err2 := issue.Parse(data)
+	if err2 != nil {
+		t.Fatalf("Parse: %v", err2)
+	}
+
+	if iss.State != issue.StateCancelled {
+		t.Fatalf("expected state cancelled, got %s", iss.State)
+	}
+	// Session should be closed (EndSHA non-empty).
+	if len(iss.Sessions) != 1 {
+		t.Fatalf("expected 1 session after cancel-from-in-progress, got %d", len(iss.Sessions))
+	}
+	if iss.Sessions[0].EndSHA == "" {
+		t.Fatal("expected session EndSHA to be set after cancel from in-progress")
+	}
+}
+
+func TestIssueEdit_DoubleResume(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Double resume attempt")
+	prefix := uuidStr[:8]
+
+	// Start the issue — this opens a session.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	// Attempt to resume while a session is already open — should fail.
+	_, _, err := run("issue", "edit", "--state", "resume", prefix)
+	if err == nil {
+		t.Fatal("expected error when resuming with a session already open, got nil")
+	}
+	if !strings.Contains(err.Error(), "measurement session is already open") {
+		t.Fatalf("expected 'measurement session is already open' in error, got: %v", err)
 	}
 }
