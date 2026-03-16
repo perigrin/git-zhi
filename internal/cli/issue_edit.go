@@ -602,7 +602,6 @@ func runIssueEditSplit(cmd *cobra.Command, app *App, refInput string) error {
 	origIss.Body = parsed[0].iss.Body
 	origIss.Updated = now
 	origIss.Blocks = nil
-	origIss.BlockedBy = origIss.BlockedBy // unchanged; kept as-is
 
 	if len(blocks) == 1 {
 		// Single block: content replacement only, no new issues.
