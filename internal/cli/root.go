@@ -56,6 +56,7 @@ No external services required.`,
 		NewConfigCommand(),
 		NewNextCommand(),
 		NewVersionCommand(),
+		NewUpdateCommand(),
 	)
 
 	// Discover and register external git-zhi-* subcommands

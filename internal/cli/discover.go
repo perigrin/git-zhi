@@ -20,6 +20,17 @@ var builtinNames = map[string]bool{
 	"list":      true,
 	"config":    true,
 	"next":      true,
+	"update":    true,
+}
+
+// BuiltinNames returns a copy of the builtinNames map so callers (including
+// tests) can inspect which command names are protected from external shadowing.
+func BuiltinNames() map[string]bool {
+	copy := make(map[string]bool, len(builtinNames))
+	for k, v := range builtinNames {
+		copy[k] = v
+	}
+	return copy
 }
 
 // DiscoverExternalCommands scans $PATH for executables matching git-zhi-*
