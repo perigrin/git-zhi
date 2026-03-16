@@ -1,0 +1,45 @@
+# ABOUTME: CI pipeline testing Linux and macOS
+# ABOUTME: Pure Go build — no CGO, no external dependencies required
+
+name: CI
+
+on:
+  push:
+    branches: [ pu ]
+  pull_request:
+    branches: [ pu ]
+
+jobs:
+  test:
+    name: Test & Build (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: Linux
+            runner: ubuntu-latest
+          - os: macOS
+            runner: macos-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.4'
+
+    - name: Build
+      run: go build ./...
+
+    - name: Vet
+      run: go vet ./...
+
+    - name: Test
+      run: go test ./... -count=1
+
+    - name: Test with race detector
+      run: go test -race ./... -count=1

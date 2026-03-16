@@ -1,0 +1,244 @@
+# ABOUTME: Automated cross-platform release workflow for git-zhi
+# ABOUTME: Pure Go build — no CGO required for cross-compilation
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.1.0-rc1)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-matrix:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - platform: linux-arm64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: arm64
+          - platform: darwin-arm64
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+          - platform: windows-amd64
+            runner: ubuntu-latest
+            goos: windows
+            goarch: amd64
+            ext: .exe
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.4'
+
+    - name: Get version info
+      id: version
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_TAG: ${{ github.event.inputs.tag }}
+        INPUT_PRERELEASE: ${{ github.event.inputs.prerelease }}
+      run: |
+        if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+          TAG="$INPUT_TAG"
+          PRERELEASE="$INPUT_PRERELEASE"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "Invalid tag format: $TAG"
+            exit 1
+          fi
+        else
+          TAG=${GITHUB_REF#refs/tags/}
+          if [[ "$TAG" =~ -rc[0-9]+$ ]] || [[ "$TAG" =~ -alpha[0-9]*$ ]] || [[ "$TAG" =~ -beta[0-9]*$ ]]; then
+            PRERELEASE="true"
+          else
+            PRERELEASE="false"
+          fi
+        fi
+        VERSION=${TAG#v}
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
+
+    - name: Build binary
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        COMMIT: ${{ github.sha }}
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: '0'
+      run: |
+        mkdir -p build/release
+        LDFLAGS="-s -w -X 'github.com/perigrin/git-zhi/internal/version.Version=${VERSION}' -X 'github.com/perigrin/git-zhi/internal/version.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)' -X 'github.com/perigrin/git-zhi/internal/version.CommitHash=${COMMIT}'"
+        go build -ldflags="$LDFLAGS" -o build/release/git-zhi-${{ matrix.platform }}${{ matrix.ext }} ./cmd/git-zhi
+
+    - name: Test binary
+      if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+      run: ./build/release/git-zhi-${{ matrix.platform }}${{ matrix.ext }} --help
+
+    - name: Create archive (Unix)
+      if: matrix.goos != 'windows'
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        cd build/release
+        tar -czf "git-zhi-${VERSION}-${{ matrix.platform }}.tar.gz" "git-zhi-${{ matrix.platform }}"
+
+    - name: Create archive (Windows)
+      if: matrix.goos == 'windows'
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        cd build/release
+        zip "git-zhi-${VERSION}-${{ matrix.platform }}.zip" "git-zhi-${{ matrix.platform }}.exe"
+
+    - name: Upload artifact (Unix)
+      if: matrix.goos != 'windows'
+      uses: actions/upload-artifact@v4
+      with:
+        name: git-zhi-${{ matrix.platform }}
+        path: build/release/git-zhi-${{ steps.version.outputs.version }}-${{ matrix.platform }}.tar.gz
+
+    - name: Upload artifact (Windows)
+      if: matrix.goos == 'windows'
+      uses: actions/upload-artifact@v4
+      with:
+        name: git-zhi-${{ matrix.platform }}
+        path: build/release/git-zhi-${{ steps.version.outputs.version }}-${{ matrix.platform }}.zip
+        retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Get version info
+      id: version
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_TAG: ${{ github.event.inputs.tag }}
+        INPUT_PRERELEASE: ${{ github.event.inputs.prerelease }}
+      run: |
+        if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+          TAG="$INPUT_TAG"
+          PRERELEASE="$INPUT_PRERELEASE"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "Invalid tag format: $TAG"
+            exit 1
+          fi
+        else
+          TAG=${GITHUB_REF#refs/tags/}
+          if [[ "$TAG" =~ -rc[0-9]+$ ]] || [[ "$TAG" =~ -alpha[0-9]*$ ]] || [[ "$TAG" =~ -beta[0-9]*$ ]]; then
+            PRERELEASE="true"
+          else
+            PRERELEASE="false"
+          fi
+        fi
+        VERSION=${TAG#v}
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
+
+    - name: Organize release files
+      run: |
+        mkdir -p release-files
+        find artifacts -name "*.tar.gz" -o -name "*.zip" | xargs -I{} cp {} release-files/
+        ls -la release-files/
+
+    - name: Generate release notes
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        TAG: ${{ steps.version.outputs.tag }}
+      run: |
+        PREV_TAG=$(git tag --sort=-version:refname | grep -v "$TAG" | head -n1 || echo "")
+        {
+          echo "## What's New"
+          echo ""
+          if [ -n "$PREV_TAG" ]; then
+            echo "### Changes since $PREV_TAG"
+            git log --pretty=format:"- %s" "$PREV_TAG..$TAG" | head -20
+          else
+            echo "First release of git-zhi."
+          fi
+          echo ""
+          echo "## Release Assets"
+          echo ""
+          echo "| Platform | File |"
+          echo "|----------|------|"
+          echo "| Linux AMD64 | git-zhi-${VERSION}-linux-amd64.tar.gz |"
+          echo "| Linux ARM64 | git-zhi-${VERSION}-linux-arm64.tar.gz |"
+          echo "| macOS Apple Silicon | git-zhi-${VERSION}-darwin-arm64.tar.gz |"
+          echo "| Windows AMD64 | git-zhi-${VERSION}-windows-amd64.zip |"
+          echo ""
+          echo "## Installation"
+          echo ""
+          echo '```bash'
+          echo "tar -xzf git-zhi-${VERSION}-<platform>.tar.gz"
+          echo "chmod +x git-zhi-*"
+          echo "sudo mv git-zhi-* /usr/local/bin/git-zhi"
+          echo "git zhi --help"
+          echo '```'
+        } > release_notes.md
+
+    - name: Create GitHub Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ steps.version.outputs.tag }}
+        IS_PRERELEASE: ${{ steps.version.outputs.prerelease }}
+      run: |
+        if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+          echo "Invalid tag format: $TAG"
+          exit 1
+        fi
+        RELEASE_FLAGS=""
+        if [[ "$IS_PRERELEASE" == "true" ]]; then
+          RELEASE_FLAGS="--prerelease"
+        else
+          RELEASE_FLAGS="--latest"
+        fi
+        gh release create "$TAG" \
+          --title "git-zhi $TAG" \
+          --notes-file release_notes.md \
+          $RELEASE_FLAGS \
+          release-files/*

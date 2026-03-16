@@ -1,3 +1,5 @@
 .worktrees/
 /git-zhi
+/git-zhi-*
 *.test
+build/
