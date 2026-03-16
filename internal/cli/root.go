@@ -57,6 +57,11 @@ No external services required.`,
 		NewNextCommand(),
 	)
 
+	// Discover and register external git-chain-* subcommands
+	for _, extCmd := range DiscoverExternalCommands() {
+		root.AddCommand(extCmd)
+	}
+
 	return root
 }
 
