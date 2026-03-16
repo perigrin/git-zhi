@@ -1,10 +1,11 @@
 // ABOUTME: Implementation of the 'issue edit' command, handling --state transitions,
-// ABOUTME: dependency edges (block/unblock/before/after), milestone, and tag operations.
+// ABOUTME: dependency edges (block/unblock/before/after), --split, --merge, --purge, milestone, and tag operations.
 package cli
 
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 
 // knownEditFlags lists all flags that trigger edit behaviour. Used to detect
 // the bare "no flags" case which opens $EDITOR (not yet implemented).
+// Note: --yes is not included because it only confirms a destructive operation
+// and does not independently trigger an edit.
 var knownEditFlags = []string{
 	"state", "block", "unblock", "milestone", "tag", "untag",
 	"before", "after", "split", "merge", "purge",
@@ -31,15 +34,32 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no git repository found")
 	}
 
-	// Reject not-yet-implemented interactive flags early.
+	// Determine the target ref input from args (shared across all branches).
+	var refInput string
+	if len(args) > 0 {
+		refInput = args[0]
+	}
+
+	// --split, --merge, --purge are mutually exclusive with each other and with
+	// --state and all other modification flags. Handle them first and return.
+	destructiveCount := 0
+	for _, name := range []string{"split", "merge", "purge"} {
+		if cmd.Flags().Changed(name) {
+			destructiveCount++
+		}
+	}
+	if destructiveCount > 1 {
+		return fmt.Errorf("--split, --merge, and --purge are mutually exclusive")
+	}
+
 	if cmd.Flags().Changed("split") {
-		return fmt.Errorf("--split: not yet implemented")
+		return runIssueEditSplit(cmd, app, refInput)
 	}
 	if cmd.Flags().Changed("merge") {
-		return fmt.Errorf("--merge: not yet implemented")
+		return runIssueEditMerge(cmd, app, refInput)
 	}
 	if cmd.Flags().Changed("purge") {
-		return fmt.Errorf("--purge: not yet implemented")
+		return runIssueEditPurge(cmd, app, refInput)
 	}
 
 	// If no known flag is set, this is the bare interactive edit ($EDITOR).
@@ -56,13 +76,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	// --state: handled separately because it needs RepoHEAD and outputs a
-	// formatted result. Resolved early so we can share the ref path with the
-	// other flags below.
-	var refInput string
-	if len(args) > 0 {
-		refInput = args[0]
-	}
-
+	// formatted result. refInput was already set above.
 	if cmd.Flags().Changed("state") {
 		for _, name := range []string{"block", "unblock", "milestone", "tag", "untag", "before", "after"} {
 			if cmd.Flags().Changed(name) {
@@ -528,5 +542,449 @@ func shortSHA(sha string) string {
 		return sha
 	}
 	return sha[:7]
+}
+
+// runIssueEditSplit handles 'issue edit <ref> --split'. Reads replacement
+// content from stdin using --- separators. Block 0 replaces the original issue
+// (keeping its UUID). Blocks 1..N become new issues chained sequentially.
+// The original issue's downstream dependencies (Blocks) are transferred to the
+// last issue in the chain.
+func runIssueEditSplit(cmd *cobra.Command, app *App, refInput string) error {
+	refPath, err := resolve.ResolveRef(app.Store, refInput)
+	if err != nil {
+		return fmt.Errorf("resolve ref: %w", err)
+	}
+
+	data, err := app.Store.ReadEntity(refPath, "issue.md")
+	if err != nil {
+		return fmt.Errorf("read issue: %w", err)
+	}
+	origIss, err := issue.Parse(data)
+	if err != nil {
+		return fmt.Errorf("parse issue: %w", err)
+	}
+	uuidStr := strings.TrimPrefix(refPath, issue.RefPrefix)
+	origUUID, err := uuid.FromString(uuidStr)
+	if err != nil {
+		return fmt.Errorf("parse uuid: %w", err)
+	}
+	origIss.ID = origUUID
+
+	// Read stdin content.
+	raw, err := io.ReadAll(cmd.InOrStdin())
+	if err != nil {
+		return fmt.Errorf("read stdin: %w", err)
+	}
+	blocks := issue.SplitBatch(raw)
+	if len(blocks) == 0 {
+		return fmt.Errorf("no issue content found on stdin")
+	}
+
+	// Parse all incoming blocks.
+	type parsedBlock struct {
+		iss *issue.Issue
+	}
+	parsed := make([]parsedBlock, len(blocks))
+	for i, block := range blocks {
+		b, parseErr := issue.Parse(block)
+		if parseErr != nil {
+			return fmt.Errorf("parse block %d: %w", i+1, parseErr)
+		}
+		parsed[i] = parsedBlock{iss: b}
+	}
+
+	// Preserve the original downstream deps — they transfer to the last issue.
+	origDownstream := origIss.Blocks
+
+	// Block 0 updates the original issue in place.
+	now := time.Now()
+	origIss.Title = parsed[0].iss.Title
+	origIss.Body = parsed[0].iss.Body
+	origIss.Updated = now
+	origIss.Blocks = nil
+	origIss.BlockedBy = origIss.BlockedBy // unchanged; kept as-is
+
+	if len(blocks) == 1 {
+		// Single block: content replacement only, no new issues.
+		out, marshalErr := issue.Marshal(origIss)
+		if marshalErr != nil {
+			return fmt.Errorf("marshal issue: %w", marshalErr)
+		}
+		if writeErr := app.Store.WriteEntity(refPath, "issue.md", out, fmt.Sprintf("Split issue %s: replace content", uuidStr[:8])); writeErr != nil {
+			return fmt.Errorf("write issue: %w", writeErr)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Split %s: replaced content\n", uuidStr[:8])
+		return nil
+	}
+
+	// Blocks 1..N: create new issues with new UUIDs.
+	newIssues := make([]*issue.Issue, len(blocks)-1)
+	for i := 1; i < len(blocks); i++ {
+		newID, idErr := uuid.NewV7()
+		if idErr != nil {
+			return fmt.Errorf("generate uuid for block %d: %w", i, idErr)
+		}
+		ni := parsed[i].iss
+		ni.ID = newID
+		if ni.State == "" {
+			ni.State = issue.StatePending
+		}
+		ni.Milestone = origIss.Milestone
+		ni.Created = now
+		ni.Updated = now
+		newIssues[i-1] = ni
+	}
+
+	// Wire the chain: origIss -> newIssues[0] -> newIssues[1] -> ... -> newIssues[N-1]
+	// origIss blocks first new issue.
+	origIss.Blocks = []uuid.UUID{newIssues[0].ID}
+	newIssues[0].BlockedBy = append(newIssues[0].BlockedBy, origUUID)
+
+	// Each new issue blocks the next.
+	for i := 0; i < len(newIssues)-1; i++ {
+		newIssues[i].Blocks = append(newIssues[i].Blocks, newIssues[i+1].ID)
+		newIssues[i+1].BlockedBy = append(newIssues[i+1].BlockedBy, newIssues[i].ID)
+	}
+
+	// Transfer original downstream deps to the last new issue.
+	lastNew := newIssues[len(newIssues)-1]
+	for _, downUUID := range origDownstream {
+		if !uuids.ContainsUUID(lastNew.Blocks, downUUID) {
+			lastNew.Blocks = append(lastNew.Blocks, downUUID)
+		}
+	}
+
+	// Update each downstream dep's BlockedBy to point to lastNew instead of orig.
+	for _, downUUID := range origDownstream {
+		downRef := issue.RefPrefix + downUUID.String()
+		downData, readErr := app.Store.ReadEntity(downRef, "issue.md")
+		if readErr != nil {
+			continue // best-effort; skip unreadable deps
+		}
+		downIss, parseErr := issue.Parse(downData)
+		if parseErr != nil {
+			continue
+		}
+		downIss.BlockedBy = uuids.RemoveUUID(downIss.BlockedBy, origUUID)
+		if !uuids.ContainsUUID(downIss.BlockedBy, lastNew.ID) {
+			downIss.BlockedBy = append(downIss.BlockedBy, lastNew.ID)
+		}
+		downIss.Updated = now
+		downOut, marshalErr := issue.Marshal(downIss)
+		if marshalErr != nil {
+			continue
+		}
+		_ = app.Store.WriteEntity(downRef, "issue.md", downOut,
+			fmt.Sprintf("Edit issue %s: blocked_by transferred to %s", downUUID.String()[:8], lastNew.ID.String()[:8]))
+	}
+
+	// Write the updated original issue.
+	origOut, err := issue.Marshal(origIss)
+	if err != nil {
+		return fmt.Errorf("marshal original issue: %w", err)
+	}
+	if err := app.Store.WriteEntity(refPath, "issue.md", origOut, fmt.Sprintf("Split issue %s", uuidStr[:8])); err != nil {
+		return fmt.Errorf("write original issue: %w", err)
+	}
+
+	// Write each new issue.
+	for _, ni := range newIssues {
+		niOut, marshalErr := issue.Marshal(ni)
+		if marshalErr != nil {
+			return fmt.Errorf("marshal new issue: %w", marshalErr)
+		}
+		niRef := issue.RefPrefix + ni.ID.String()
+		if writeErr := app.Store.WriteEntity(niRef, "issue.md", niOut, "Add issue (split): "+ni.Title); writeErr != nil {
+			return fmt.Errorf("write new issue: %w", writeErr)
+		}
+	}
+
+	// Human-readable output.
+	fmt.Fprintf(cmd.OutOrStdout(), "Split %s into:\n", uuidStr[:8])
+	fmt.Fprintf(cmd.OutOrStdout(), "  %s  %s\n", uuidStr[:8], origIss.Title)
+	for i, ni := range newIssues {
+		fmt.Fprintf(cmd.OutOrStdout(), "   \u2193\n")
+		_ = i
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s  %s\n", ni.ID.String()[:8], ni.Title)
+	}
+
+	// Report transferred downstream deps.
+	if len(origDownstream) > 0 {
+		for _, downUUID := range origDownstream {
+			fmt.Fprintf(cmd.OutOrStdout(), "\nDependencies transferred: %s now blocked by %s\n",
+				downUUID.String()[:8], lastNew.ID.String()[:8])
+		}
+	}
+
+	return nil
+}
+
+// runIssueEditMerge handles 'issue edit <ref> --merge <other-ref>'. Appends
+// the merged issue's title and body, combines sessions, transfers dependency
+// edges, and marks the merged issue as cancelled.
+func runIssueEditMerge(cmd *cobra.Command, app *App, refInput string) error {
+	mergeInput, _ := cmd.Flags().GetString("merge")
+
+	// Resolve and load the primary (target) issue.
+	refPath, err := resolve.ResolveRef(app.Store, refInput)
+	if err != nil {
+		return fmt.Errorf("resolve ref: %w", err)
+	}
+	data, err := app.Store.ReadEntity(refPath, "issue.md")
+	if err != nil {
+		return fmt.Errorf("read issue: %w", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		return fmt.Errorf("parse issue: %w", err)
+	}
+	uuidStr := strings.TrimPrefix(refPath, issue.RefPrefix)
+	issUUID, err := uuid.FromString(uuidStr)
+	if err != nil {
+		return fmt.Errorf("parse uuid: %w", err)
+	}
+	iss.ID = issUUID
+
+	// Resolve and load the issue to be merged in.
+	mergeRef, err := resolve.ResolveRef(app.Store, mergeInput)
+	if err != nil {
+		return fmt.Errorf("resolve merge ref: %w", err)
+	}
+	mergeData, err := app.Store.ReadEntity(mergeRef, "issue.md")
+	if err != nil {
+		return fmt.Errorf("read merge issue: %w", err)
+	}
+	mergeIss, err := issue.Parse(mergeData)
+	if err != nil {
+		return fmt.Errorf("parse merge issue: %w", err)
+	}
+	mergeUUIDStr := strings.TrimPrefix(mergeRef, issue.RefPrefix)
+	mergeUUID, err := uuid.FromString(mergeUUIDStr)
+	if err != nil {
+		return fmt.Errorf("parse merge uuid: %w", err)
+	}
+	mergeIss.ID = mergeUUID
+
+	if issUUID == mergeUUID {
+		return fmt.Errorf("cannot merge an issue into itself")
+	}
+
+	now := time.Now()
+
+	// Combine title and body.
+	iss.Title = iss.Title + " + " + mergeIss.Title
+	if mergeIss.Body != "" {
+		if iss.Body != "" {
+			iss.Body = iss.Body + "\n\n" + mergeIss.Body
+		} else {
+			iss.Body = mergeIss.Body
+		}
+	}
+
+	// Combine sessions.
+	iss.Sessions = append(iss.Sessions, mergeIss.Sessions...)
+
+	// Remove the merge issue from iss.BlockedBy (if it was blocking iss).
+	iss.BlockedBy = uuids.RemoveUUID(iss.BlockedBy, mergeUUID)
+
+	// Transfer mergeIss.Blocks to iss.Blocks (avoid duplicates, skip self-refs).
+	for _, u := range mergeIss.Blocks {
+		if u == issUUID {
+			continue // skip self-reference
+		}
+		if !uuids.ContainsUUID(iss.Blocks, u) {
+			iss.Blocks = append(iss.Blocks, u)
+		}
+	}
+
+	// Transfer mergeIss.BlockedBy to iss.BlockedBy (avoid duplicates, skip self-refs).
+	for _, u := range mergeIss.BlockedBy {
+		if u == issUUID {
+			continue // skip self-reference
+		}
+		if !uuids.ContainsUUID(iss.BlockedBy, u) {
+			iss.BlockedBy = append(iss.BlockedBy, u)
+		}
+	}
+
+	// For each issue that mergeIss blocked, update their BlockedBy to point to iss.
+	for _, downUUID := range mergeIss.Blocks {
+		if downUUID == issUUID {
+			continue
+		}
+		downRef := issue.RefPrefix + downUUID.String()
+		downData, readErr := app.Store.ReadEntity(downRef, "issue.md")
+		if readErr != nil {
+			continue
+		}
+		downIss, parseErr := issue.Parse(downData)
+		if parseErr != nil {
+			continue
+		}
+		downIss.BlockedBy = uuids.RemoveUUID(downIss.BlockedBy, mergeUUID)
+		if !uuids.ContainsUUID(downIss.BlockedBy, issUUID) {
+			downIss.BlockedBy = append(downIss.BlockedBy, issUUID)
+		}
+		downIss.Updated = now
+		downOut, marshalErr := issue.Marshal(downIss)
+		if marshalErr != nil {
+			continue
+		}
+		_ = app.Store.WriteEntity(downRef, "issue.md", downOut,
+			fmt.Sprintf("Edit issue %s: blocked_by transferred from %s to %s",
+				downUUID.String()[:8], mergeUUIDStr[:8], uuidStr[:8]))
+	}
+
+	// For each issue that blocked mergeIss, update their Blocks to point to iss.
+	for _, upUUID := range mergeIss.BlockedBy {
+		if upUUID == issUUID {
+			continue
+		}
+		upRef := issue.RefPrefix + upUUID.String()
+		upData, readErr := app.Store.ReadEntity(upRef, "issue.md")
+		if readErr != nil {
+			continue
+		}
+		upIss, parseErr := issue.Parse(upData)
+		if parseErr != nil {
+			continue
+		}
+		upIss.Blocks = uuids.RemoveUUID(upIss.Blocks, mergeUUID)
+		if !uuids.ContainsUUID(upIss.Blocks, issUUID) {
+			upIss.Blocks = append(upIss.Blocks, issUUID)
+		}
+		upIss.Updated = now
+		upOut, marshalErr := issue.Marshal(upIss)
+		if marshalErr != nil {
+			continue
+		}
+		_ = app.Store.WriteEntity(upRef, "issue.md", upOut,
+			fmt.Sprintf("Edit issue %s: blocks transferred from %s to %s",
+				upUUID.String()[:8], mergeUUIDStr[:8], uuidStr[:8]))
+	}
+
+	iss.Updated = now
+
+	// Write the updated primary issue.
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		return fmt.Errorf("marshal issue: %w", err)
+	}
+	if err := app.Store.WriteEntity(refPath, "issue.md", out, fmt.Sprintf("Merge issue %s into %s", mergeUUIDStr[:8], uuidStr[:8])); err != nil {
+		return fmt.Errorf("write issue: %w", err)
+	}
+
+	// Mark the merged issue as cancelled and clear its edges.
+	mergeIss.State = issue.StateCancelled
+	mergeIss.Blocks = nil
+	mergeIss.BlockedBy = nil
+	mergeIss.Updated = now
+	mergeOut, err := issue.Marshal(mergeIss)
+	if err != nil {
+		return fmt.Errorf("marshal merge issue: %w", err)
+	}
+	if err := app.Store.WriteEntity(mergeRef, "issue.md", mergeOut, fmt.Sprintf("Cancel issue %s: merged into %s", mergeUUIDStr[:8], uuidStr[:8])); err != nil {
+		return fmt.Errorf("write merge issue: %w", err)
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Merged %s into %s:\n", mergeUUIDStr[:8], uuidStr[:8])
+	fmt.Fprintf(cmd.OutOrStdout(), "  %s  %s\n", uuidStr[:8], iss.Title)
+	fmt.Fprintf(cmd.OutOrStdout(), "\nDependencies from %s transferred to %s.\n", mergeUUIDStr[:8], uuidStr[:8])
+
+	return nil
+}
+
+// runIssueEditPurge handles 'issue edit <ref> --purge'. Permanently deletes
+// the issue ref and cleans up all dependency edges. Requires --yes flag.
+func runIssueEditPurge(cmd *cobra.Command, app *App, refInput string) error {
+	yes, _ := cmd.Flags().GetBool("yes")
+	if !yes {
+		return fmt.Errorf("--purge requires --yes flag for confirmation")
+	}
+
+	refPath, err := resolve.ResolveRef(app.Store, refInput)
+	if err != nil {
+		return fmt.Errorf("resolve ref: %w", err)
+	}
+	data, err := app.Store.ReadEntity(refPath, "issue.md")
+	if err != nil {
+		return fmt.Errorf("read issue: %w", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		return fmt.Errorf("parse issue: %w", err)
+	}
+	uuidStr := strings.TrimPrefix(refPath, issue.RefPrefix)
+	issUUID, err := uuid.FromString(uuidStr)
+	if err != nil {
+		return fmt.Errorf("parse uuid: %w", err)
+	}
+
+	now := time.Now()
+
+	// Remove this issue from each upstream issue's Blocks list.
+	for _, upUUID := range iss.BlockedBy {
+		upRef := issue.RefPrefix + upUUID.String()
+		upData, readErr := app.Store.ReadEntity(upRef, "issue.md")
+		if readErr != nil {
+			continue
+		}
+		upIss, parseErr := issue.Parse(upData)
+		if parseErr != nil {
+			continue
+		}
+		upIss.Blocks = uuids.RemoveUUID(upIss.Blocks, issUUID)
+		upIss.Updated = now
+		upOut, marshalErr := issue.Marshal(upIss)
+		if marshalErr != nil {
+			continue
+		}
+		_ = app.Store.WriteEntity(upRef, "issue.md", upOut,
+			fmt.Sprintf("Edit issue %s: remove blocks %s (purged)", upUUID.String()[:8], uuidStr[:8]))
+	}
+
+	// Remove this issue from each downstream issue's BlockedBy list.
+	for _, downUUID := range iss.Blocks {
+		downRef := issue.RefPrefix + downUUID.String()
+		downData, readErr := app.Store.ReadEntity(downRef, "issue.md")
+		if readErr != nil {
+			continue
+		}
+		downIss, parseErr := issue.Parse(downData)
+		if parseErr != nil {
+			continue
+		}
+		downIss.BlockedBy = uuids.RemoveUUID(downIss.BlockedBy, issUUID)
+		downIss.Updated = now
+		downOut, marshalErr := issue.Marshal(downIss)
+		if marshalErr != nil {
+			continue
+		}
+		_ = app.Store.WriteEntity(downRef, "issue.md", downOut,
+			fmt.Sprintf("Edit issue %s: remove blocked_by %s (purged)", downUUID.String()[:8], uuidStr[:8]))
+	}
+
+	// Clean up any tags that point to this issue's ref.
+	tagRefs, listErr := app.Store.ListRefs("refs/chain/_/tags/")
+	if listErr == nil {
+		for _, tagRef := range tagRefs {
+			tagData, readErr := app.Store.ReadEntity(tagRef, "tag.txt")
+			if readErr != nil {
+				continue
+			}
+			if strings.TrimSpace(string(tagData)) == refPath {
+				_ = app.Store.DeleteRef(tagRef)
+			}
+		}
+	}
+
+	// Delete the issue ref.
+	if err := app.Store.DeleteRef(refPath); err != nil {
+		return fmt.Errorf("delete issue ref: %w", err)
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Purged %s: %s (permanently deleted)\n", uuidStr[:8], iss.Title)
+
+	return nil
 }
 

@@ -205,8 +205,9 @@ func newIssueEditCommand() *cobra.Command {
 	cmd.Flags().String("untag", "", "remove a tag")
 	cmd.Flags().String("before", "", "position before another issue (this issue blocks <ref>)")
 	cmd.Flags().String("after", "", "position after another issue (<ref> blocks this issue)")
-	cmd.Flags().Bool("split", false, "split into multiple issues (not yet implemented)")
-	cmd.Flags().String("merge", "", "merge with another issue (not yet implemented)")
-	cmd.Flags().Bool("purge", false, "permanently delete (not yet implemented)")
+	cmd.Flags().Bool("split", false, "split into multiple issues (reads replacement content from stdin)")
+	cmd.Flags().String("merge", "", "merge another issue into this one")
+	cmd.Flags().Bool("purge", false, "permanently delete this issue (requires --yes)")
+	cmd.Flags().Bool("yes", false, "confirm destructive operations (required for --purge)")
 	return cmd
 }
