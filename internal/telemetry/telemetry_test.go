@@ -146,7 +146,7 @@ func TestCompute_WithDoneIssues(t *testing.T) {
 	}
 }
 
-func TestCompute_CompletionRatio(t *testing.T) {
+func TestCompute_TimeInChain_ZeroWithoutTimestamps(t *testing.T) {
 	ms := makeMilestone("v0.1")
 
 	gen := uuid.NewGen()
@@ -155,6 +155,7 @@ func TestCompute_CompletionRatio(t *testing.T) {
 	id3, _ := gen.NewV7()
 
 	now := time.Now()
+	// Sessions without timestamps — TimeInChain stays zero.
 	issues := []*issue.Issue{
 		{ID: id1, Title: "Done 1", State: issue.StateDone, Milestone: "v0.1",
 			Sessions: []issue.Session{{Commits: 2}}, Created: now, Updated: now},
@@ -166,10 +167,9 @@ func TestCompute_CompletionRatio(t *testing.T) {
 
 	stats := telemetry.Compute(issues, ms)
 
-	// 2 done / 3 total = 2/3 ≈ 0.666...
-	expected := 2.0 / 3.0
-	if stats.CompletionRatio < 0.66 || stats.CompletionRatio > 0.68 {
-		t.Errorf("expected CompletionRatio ≈ %.3f, got %.3f", expected, stats.CompletionRatio)
+	// No timestamps present — TimeInChain must remain zero.
+	if stats.TimeInChain != 0 {
+		t.Errorf("expected TimeInChain=0 for sessions without timestamps, got %.3f", stats.TimeInChain)
 	}
 }
 
@@ -269,5 +269,126 @@ func TestCompute_FeverRed(t *testing.T) {
 	if stats.FeverStatus != telemetry.StatusRed {
 		t.Errorf("expected FeverStatus=RED for 50%% progress + 76%% buffer burn, got %q (MPG=%.2f BufferBurned=%.2f BufferTotal=%.2f)",
 			stats.FeverStatus, stats.MPG, stats.BufferBurned, stats.BufferTotal)
+	}
+}
+
+func TestCompute_TimeInChain(t *testing.T) {
+	ms := makeMilestone("v0.1")
+	gen := uuid.NewGen()
+
+	// Session spans 2 hours of active work within a 4-hour calendar window.
+	// TimeInChain = 2h / 4h = 0.5 (50%).
+	calendarStart := time.Now().Add(-4 * time.Hour)
+	sessionStart := calendarStart
+	sessionEnd := calendarStart.Add(2 * time.Hour)
+
+	id, _ := gen.NewV7()
+	issues := []*issue.Issue{
+		{
+			ID:        id,
+			Title:     "Timed issue",
+			State:     issue.StateDone,
+			Milestone: "v0.1",
+			Sessions: []issue.Session{
+				{
+					StartSHA:  "aaa",
+					EndSHA:    "bbb",
+					Commits:   3,
+					StartedAt: &sessionStart,
+					EndedAt:   &sessionEnd,
+				},
+			},
+			Created: calendarStart,
+			Updated: sessionEnd,
+		},
+	}
+
+	stats := telemetry.Compute(issues, ms)
+
+	// Active duration = 2h, calendar span = 2h (single session: start == earliest, end == latest).
+	// TimeInChain = 2h / 2h = 1.0.
+	if stats.TimeInChain != 1.0 {
+		t.Errorf("expected TimeInChain=1.0 for single session filling its own window, got %f", stats.TimeInChain)
+	}
+}
+
+func TestCompute_TimeInChain_PartialCoverage(t *testing.T) {
+	ms := makeMilestone("v0.1")
+	gen := uuid.NewGen()
+
+	// Two issues: each has 1h session, but they are 4h apart.
+	// Total session time = 2h, calendar span = 5h (from start of sess1 to end of sess2).
+	// TimeInChain = 2h / 5h = 0.4.
+	base := time.Now().Add(-6 * time.Hour)
+	sess1Start := base
+	sess1End := base.Add(1 * time.Hour)
+	sess2Start := base.Add(4 * time.Hour)
+	sess2End := base.Add(5 * time.Hour)
+
+	id1, _ := gen.NewV7()
+	id2, _ := gen.NewV7()
+	issues := []*issue.Issue{
+		{
+			ID:        id1,
+			Title:     "Issue A",
+			State:     issue.StateDone,
+			Milestone: "v0.1",
+			Sessions: []issue.Session{
+				{StartSHA: "a1", EndSHA: "a2", Commits: 2, StartedAt: &sess1Start, EndedAt: &sess1End},
+			},
+			Created: base,
+			Updated: sess1End,
+		},
+		{
+			ID:        id2,
+			Title:     "Issue B",
+			State:     issue.StateDone,
+			Milestone: "v0.1",
+			Sessions: []issue.Session{
+				{StartSHA: "b1", EndSHA: "b2", Commits: 2, StartedAt: &sess2Start, EndedAt: &sess2End},
+			},
+			Created: base,
+			Updated: sess2End,
+		},
+	}
+
+	stats := telemetry.Compute(issues, ms)
+
+	// TimeInChain = 2h / 5h = 0.4 (within ±0.01 tolerance for float arithmetic).
+	if stats.TimeInChain < 0.39 || stats.TimeInChain > 0.41 {
+		t.Errorf("expected TimeInChain ≈ 0.4 (2h active / 5h calendar), got %f", stats.TimeInChain)
+	}
+	// ShadowWork = 1 - TimeInChain ≈ 0.6.
+	if stats.ShadowWork < 0.59 || stats.ShadowWork > 0.61 {
+		t.Errorf("expected ShadowWork ≈ 0.6, got %f", stats.ShadowWork)
+	}
+}
+
+func TestCompute_TimeInChain_NoTimestamps(t *testing.T) {
+	ms := makeMilestone("v0.1")
+	gen := uuid.NewGen()
+
+	id, _ := gen.NewV7()
+	now := time.Now()
+	// Sessions without timestamps — TimeInChain should remain zero.
+	issues := []*issue.Issue{
+		{
+			ID:        id,
+			Title:     "No timestamps",
+			State:     issue.StateDone,
+			Milestone: "v0.1",
+			Sessions:  []issue.Session{{StartSHA: "a", EndSHA: "b", Commits: 3}},
+			Created:   now,
+			Updated:   now,
+		},
+	}
+
+	stats := telemetry.Compute(issues, ms)
+
+	if stats.TimeInChain != 0 {
+		t.Errorf("expected TimeInChain=0 for sessions without timestamps, got %f", stats.TimeInChain)
+	}
+	if stats.ShadowWork != 0 {
+		t.Errorf("expected ShadowWork=0 when TimeInChain=0, got %f", stats.ShadowWork)
 	}
 }

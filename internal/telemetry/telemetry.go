@@ -20,15 +20,18 @@ const (
 
 // Stats holds the derived telemetry indicators for a milestone.
 type Stats struct {
-	MPG float64 `yaml:"mpg" json:"mpg"`
-	Speed float64 `yaml:"speed" json:"speed"`
+	MPG          float64 `yaml:"mpg" json:"mpg"`
+	Speed        float64 `yaml:"speed" json:"speed"`
 	BufferTotal  float64 `yaml:"buffer_total" json:"buffer_total"`
 	BufferBurned float64 `yaml:"buffer_burned" json:"buffer_burned"`
-	// CompletionRatio is the fraction of issues in the milestone that are done
-	// (doneCount/totalIssues). This is a v0.1 simplification of the PRD's
-	// time-based time-in-chain metric, which requires session timestamps not yet stored.
-	CompletionRatio float64 `yaml:"completion_ratio" json:"completion_ratio"`
-	FeverStatus     Status  `yaml:"fever_status" json:"fever_status"`
+	// TimeInChain is the ratio of active session duration to total calendar time
+	// (sum of session durations / span from earliest StartedAt to latest EndedAt).
+	// Only populated when sessions have StartedAt/EndedAt timestamps; zero otherwise.
+	TimeInChain float64 `yaml:"time_in_chain" json:"time_in_chain"`
+	// ShadowWork is the complement of TimeInChain: the fraction of calendar time
+	// outside active measurement windows. Zero when TimeInChain is zero.
+	ShadowWork  float64 `yaml:"shadow_work" json:"shadow_work"`
+	FeverStatus Status  `yaml:"fever_status" json:"fever_status"`
 }
 
 // Compute derives telemetry indicators from the issues belonging to the given
@@ -109,9 +112,39 @@ func Compute(issues []*issue.Issue, ms *milestone.Milestone) *Stats {
 		}
 	}
 
-	// CompletionRatio: fraction of issues done. See Stats.CompletionRatio for context.
-	if totalIssues > 0 {
-		s.CompletionRatio = float64(doneCount) / float64(totalIssues)
+	// TimeInChain: ratio of active session time to total calendar time.
+	// Sums durations of all sessions with both StartedAt and EndedAt set,
+	// then divides by the span from the earliest StartedAt to the latest EndedAt.
+	// Sessions without timestamps are skipped; TimeInChain remains zero if none
+	// have timestamps.
+	var totalSessionDuration time.Duration
+	var earliestStart, latestEnd time.Time
+
+	for _, iss := range milestoneIssues {
+		for _, sess := range iss.Sessions {
+			if sess.StartedAt == nil || sess.EndedAt == nil {
+				continue
+			}
+			dur := sess.EndedAt.Sub(*sess.StartedAt)
+			totalSessionDuration += dur
+			if earliestStart.IsZero() || sess.StartedAt.Before(earliestStart) {
+				earliestStart = *sess.StartedAt
+			}
+			if latestEnd.IsZero() || sess.EndedAt.After(latestEnd) {
+				latestEnd = *sess.EndedAt
+			}
+		}
+	}
+
+	if !earliestStart.IsZero() && !latestEnd.IsZero() {
+		calendarTime := latestEnd.Sub(earliestStart)
+		if calendarTime > 0 {
+			s.TimeInChain = totalSessionDuration.Seconds() / calendarTime.Seconds()
+		}
+	}
+
+	if s.TimeInChain > 0 {
+		s.ShadowWork = 1.0 - s.TimeInChain
 	}
 
 	// Fever chart: compare % buffer burned to % progress.

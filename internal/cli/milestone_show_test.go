@@ -4,11 +4,45 @@ package cli_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/gofrs/uuid/v5"
+
+	"github.com/perigrin/git-chain/internal/cli"
 	"github.com/perigrin/git-chain/internal/issue"
 )
+
+// createTestIssueWithSessionsAndMilestone writes an issue with explicit sessions
+// to the store and returns its UUID.
+func createTestIssueWithSessionsAndMilestone(t *testing.T, app *cli.App, title string, state issue.State, ms string, sessions []issue.Session) uuid.UUID {
+	t.Helper()
+	id, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("uuid.NewV7: %v", err)
+	}
+	now := time.Now()
+	iss := &issue.Issue{
+		ID:        id,
+		Title:     title,
+		State:     state,
+		Milestone: ms,
+		Sessions:  sessions,
+		Created:   now,
+		Updated:   now,
+	}
+	data, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("issue.Marshal: %v", err)
+	}
+	refPath := fmt.Sprintf("refs/chain/_/issues/%s", id.String())
+	if err := app.Store.WriteEntity(refPath, "issue.md", data, "Add test issue: "+title); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+	return id
+}
 
 func TestMilestoneShow(t *testing.T) {
 	app, run := setupMilestoneTest(t)
@@ -105,6 +139,39 @@ func TestMilestoneShow_DefaultsToHeadIssueMilestone(t *testing.T) {
 	output := stdout.String()
 	if !strings.Contains(output, "v0.2") {
 		t.Errorf("expected 'v0.2' (HEAD issue's milestone) in output, got:\n%s", output)
+	}
+}
+
+func TestMilestoneShow_TimeInChain(t *testing.T) {
+	// Verify that when sessions have timestamps, the human output includes
+	// Time-in-chain and Shadow work lines.
+	app, run := setupMilestoneTest(t)
+
+	// Build a done issue with a timestamped session directly in the store.
+	sessStart := time.Now().Add(-2 * time.Hour)
+	sessEnd := time.Now().Add(-1 * time.Hour)
+	id := createTestIssueWithSessionsAndMilestone(t, app, "Timed work", issue.StateDone, "v0.1",
+		[]issue.Session{{
+			StartSHA:  "aaa",
+			EndSHA:    "bbb",
+			Commits:   3,
+			StartedAt: &sessStart,
+			EndedAt:   &sessEnd,
+		}},
+	)
+	_ = id
+
+	stdout, err := run("milestone", "show", "v0.1")
+	if err != nil {
+		t.Fatalf("milestone show v0.1 failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Time-in-chain:") {
+		t.Errorf("expected 'Time-in-chain:' in human output when sessions have timestamps, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Shadow work:") {
+		t.Errorf("expected 'Shadow work:' in human output when sessions have timestamps, got:\n%s", output)
 	}
 }
 

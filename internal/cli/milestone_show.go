@@ -147,6 +147,10 @@ func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*i
 		fmt.Fprintf(w, "Speed:     %.2f issues/week\n", stats.Speed)
 		fmt.Fprintf(w, "Buffer:    %.1f total, %.1f burned\n", stats.BufferTotal, stats.BufferBurned)
 		fmt.Fprintf(w, "Fever:     %s\n", stats.FeverStatus)
+		if stats.TimeInChain > 0 {
+			fmt.Fprintf(w, "  Time-in-chain: %.0f%%\n", stats.TimeInChain*100)
+			fmt.Fprintf(w, "  Shadow work:   %.0f%%\n", stats.ShadowWork*100)
+		}
 	}
 
 	if len(issues) > 0 {
