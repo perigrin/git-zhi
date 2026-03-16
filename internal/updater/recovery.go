@@ -5,6 +5,7 @@ package updater
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,14 +21,28 @@ type RecoveryManager struct {
 	rollbackManager *RollbackManager
 	backupManager   *BackupManager
 	downloader      *download.Downloader
+	output          io.Writer
 }
 
-// NewRecoveryManager creates a new recovery manager
+// NewRecoveryManager creates a new recovery manager.
+// Recovery output is suppressed by default; use NewRecoveryManagerWithOutput to enable it.
 func NewRecoveryManager() *RecoveryManager {
 	return &RecoveryManager{
 		rollbackManager: NewRollbackManager(),
 		backupManager:   NewBackupManager(),
 		downloader:      download.NewDownloader(),
+		output:          io.Discard,
+	}
+}
+
+// NewRecoveryManagerWithOutput creates a new recovery manager that writes diagnostic
+// messages to the provided writer.
+func NewRecoveryManagerWithOutput(w io.Writer) *RecoveryManager {
+	return &RecoveryManager{
+		rollbackManager: NewRollbackManager(),
+		backupManager:   NewBackupManager(),
+		downloader:      download.NewDownloader(),
+		output:          w,
 	}
 }
 
@@ -101,10 +116,10 @@ func (rm *RecoveryManager) PerformRecovery(ctx *RecoveryContext) (*RecoveryResul
 		ctx.AttemptCount++
 		result.AttemptsUsed++
 
-		fmt.Printf("Attempting recovery strategy: %s\n", strategy.Description)
+		fmt.Fprintf(rm.output, "Attempting recovery strategy: %s\n", strategy.Description)
 
 		if err := strategy.Action(ctx); err != nil {
-			fmt.Printf("Recovery strategy failed: %v\n", err)
+			fmt.Fprintf(rm.output, "Recovery strategy failed: %v\n", err)
 			continue
 		}
 
@@ -308,7 +323,7 @@ func (rm *RecoveryManager) cleanRollbackAndRetry(ctx *RecoveryContext) error {
 	// Clean up any temporary files
 	if err := rm.cleanupTemporaryFiles(); err != nil {
 		// Log warning but don't fail
-		fmt.Printf("Warning: failed to clean temporary files: %v\n", err)
+		fmt.Fprintf(rm.output, "Warning: failed to clean temporary files: %v\n", err)
 	}
 
 	// Reset state for retry
@@ -388,13 +403,13 @@ func (rm *RecoveryManager) downloadCompatibleVersion(ctx *RecoveryContext) error
 		ProgressCallback: func(total, transferred int64, done bool) {
 			if total > 0 && !done {
 				percent := (transferred * 100) / total
-				fmt.Printf("Downloading compatible version: %d%%\r", percent)
+				fmt.Fprintf(rm.output, "Downloading compatible version: %d%%\r", percent)
 			}
 		},
 	}
 
 	// Download the compatible version
-	fmt.Printf("Downloading compatible version %s for platform %s...\n",
+	fmt.Fprintf(rm.output, "Downloading compatible version %s for platform %s...\n",
 		updateInfo.LatestVersion.String(), platform.String())
 
 	result, err := rm.downloader.Download(downloadOpts)
@@ -427,7 +442,7 @@ func (rm *RecoveryManager) downloadCompatibleVersion(ctx *RecoveryContext) error
 		return fmt.Errorf("failed to install compatible version: %w", err)
 	}
 
-	fmt.Printf("Successfully installed compatible version %s\n", updateInfo.LatestVersion.String())
+	fmt.Fprintf(rm.output, "Successfully installed compatible version %s\n", updateInfo.LatestVersion.String())
 	return nil
 }
 
@@ -463,7 +478,7 @@ func (rm *RecoveryManager) emergencyRollback(ctx *RecoveryContext) error {
 
 func (rm *RecoveryManager) cleanupTemporaryFiles() error {
 	tempDir := os.TempDir()
-	pattern := filepath.Join(tempDir, "git-zhi-*")
+	pattern := filepath.Join(tempDir, "git-zhi-update-*")
 
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
@@ -473,7 +488,7 @@ func (rm *RecoveryManager) cleanupTemporaryFiles() error {
 	for _, match := range matches {
 		if err := os.RemoveAll(match); err != nil {
 			// Log but continue with other files
-			fmt.Printf("Failed to remove temp file %s: %v\n", match, err)
+			fmt.Fprintf(rm.output, "Failed to remove temp file %s: %v\n", match, err)
 		}
 	}
 

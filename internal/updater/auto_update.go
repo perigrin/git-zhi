@@ -31,7 +31,7 @@ type AutoUpdateConfig struct {
 	LastNotification  time.Time           `json:"last_notification"`
 	NotificationDelay time.Duration       `json:"notification_delay"`
 	Repository        string              `json:"repository"`
-	GitHubToken       string              `json:"github_token,omitempty"`
+	GitHubToken       string              `json:"-"`
 	QuietMode         bool                `json:"quiet_mode"`
 	AutoInstall       bool                `json:"auto_install"`
 	InstallationTime  AutoInstallSchedule `json:"installation_time"`

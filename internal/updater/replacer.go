@@ -196,14 +196,16 @@ func (r *BinaryReplacer) validateNewBinary(newPath string) error {
 func (r *BinaryReplacer) performAtomicReplacement(currentPath, newPath string) error {
 	// Get directory of current binary.
 	currentDir := filepath.Dir(currentPath)
-	currentName := filepath.Base(currentPath)
 
-	// Create temporary name for atomic operation.
-	tempName := fmt.Sprintf(".%s.tmp.%d", currentName, time.Now().UnixNano())
-	tempPath := filepath.Join(currentDir, tempName)
+	// Create a temp file in the same directory so the rename is atomic on most filesystems.
+	tempFile, err := os.CreateTemp(currentDir, ".git-zhi.tmp.*")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tempPath := tempFile.Name()
+	tempFile.Close()
 
-	// Copy new binary to temporary location in same directory.
-	// This ensures the rename operation will be atomic on most filesystems.
+	// Copy new binary to the temp location.
 	if err := r.copyFile(newPath, tempPath); err != nil {
 		return fmt.Errorf("copying new binary to temp location: %w", err)
 	}

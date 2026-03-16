@@ -287,6 +287,11 @@ func (bm *BackupManager) copyFile(src, dst string) error {
 		return fmt.Errorf("copying file contents: %w", err)
 	}
 
+	// Ensure data is written to disk
+	if err := dstFile.Sync(); err != nil {
+		return fmt.Errorf("syncing backup file: %w", err)
+	}
+
 	// Copy file permissions
 	srcInfo, err := srcFile.Stat()
 	if err != nil {

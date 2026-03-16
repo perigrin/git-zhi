@@ -4,8 +4,10 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -43,16 +45,55 @@ Use 'git zhi update check' to inspect available updates without installing,
 	return cmd
 }
 
+// isInteractiveTerminal reports whether the given file is an interactive terminal.
+func isInteractiveTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
+}
+
 // runUpdate performs the full update process.
 func runUpdate(cmd *cobra.Command, args []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	force, _ := cmd.Flags().GetBool("force")
+	yes, _ := cmd.Flags().GetBool("yes")
 	includePrerelease, _ := cmd.Flags().GetBool("include-prerelease")
 
 	opts := updater.DefaultUpdateOptions()
 	opts.DryRun = dryRun
 	opts.Force = force
 	opts.IncludePrerelease = includePrerelease
+
+	// Before performing the update, check for available updates and prompt for confirmation
+	// unless --yes is set, --dry-run is set, or we are not running in an interactive terminal.
+	if !yes && !dryRun {
+		checkOpts := updater.DefaultUpdateOptions()
+		checkOpts.IncludePrerelease = includePrerelease
+		u := updater.NewUpdater()
+		info, err := u.CheckForUpdates(checkOpts)
+		if err != nil {
+			return fmt.Errorf("checking for updates: %w", err)
+		}
+
+		if !info.UpdateNeeded && !force {
+			fmt.Fprintf(cmd.OutOrStdout(), "Already up to date (version %s)\n", info.CurrentVersion.String())
+			return nil
+		}
+
+		if isInteractiveTerminal(os.Stdout) {
+			fmt.Fprintf(cmd.OutOrStdout(), "Update available: %s -> %s\n",
+				info.CurrentVersion.String(), info.LatestVersion.String())
+			fmt.Fprint(cmd.OutOrStdout(), "Proceed with update? [y/N] ")
+
+			scanner := bufio.NewScanner(os.Stdin)
+			if !scanner.Scan() || !strings.EqualFold(strings.TrimSpace(scanner.Text()), "y") {
+				fmt.Fprintln(cmd.OutOrStdout(), "Update cancelled.")
+				return nil
+			}
+		}
+	}
 
 	// Report progress to stderr so stdout stays clean for piping.
 	opts.ProgressCallback = func(stage updater.UpdateStage, message string, progress float64) {

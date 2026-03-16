@@ -6,6 +6,7 @@ package updater
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -115,7 +116,7 @@ func (rm *RollbackManager) ValidateRollbackTarget(targetPath string) error {
 	targetDir := targetPath
 	if info, err := os.Stat(targetPath); err == nil && !info.IsDir() {
 		// If target is a file, check its directory
-		targetDir = targetPath[:len(targetPath)-len(info.Name())-1]
+		targetDir = filepath.Dir(targetPath)
 	}
 
 	// Check if directory exists

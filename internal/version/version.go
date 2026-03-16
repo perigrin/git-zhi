@@ -78,8 +78,15 @@ func CheckForUpdates(opts *CheckOptions) (*VersionCheckResult, error) {
 			result.Error = fmt.Sprintf("failed to fetch releases: %v", err)
 			return result, err
 		}
-		if len(releases) > 0 {
-			release = &releases[0]
+		// Find the newest non-draft release (may be a prerelease).
+		for i := range releases {
+			r := &releases[i]
+			if r.Draft {
+				continue
+			}
+			if release == nil || r.CreatedAt.After(release.CreatedAt) {
+				release = r
+			}
 		}
 	} else {
 		var err error
@@ -108,6 +115,7 @@ func CheckForUpdates(opts *CheckOptions) (*VersionCheckResult, error) {
 	result.ReleaseURL = release.HTMLURL
 	result.ReleaseNotes = release.Body
 	result.PublishedAt = release.PublishedAt
+	result.Release = release
 
 	return result, nil
 }
@@ -125,6 +133,7 @@ func GetUpdateInfo(opts *CheckOptions) (*UpdateInfo, error) {
 	}
 
 	// Check GitHub for a newer release.
+	// CheckForUpdates populates result.Release, avoiding an extra API call.
 	result, err := CheckForUpdates(opts)
 	if err != nil {
 		return nil, fmt.Errorf("checking for updates: %w", err)
@@ -136,33 +145,10 @@ func GetUpdateInfo(opts *CheckOptions) (*UpdateInfo, error) {
 		return nil, fmt.Errorf("parsing latest version: %w", err)
 	}
 
-	// Parse repository to fetch full release details.
-	parts := strings.Split(opts.Repository, "/")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid repository format: %s", opts.Repository)
-	}
-	owner, repo := parts[0], parts[1]
-
-	// Select GitHub client: injected > token-based > default.
-	var client GitHubClientInterface
-	switch {
-	case opts.Client != nil:
-		client = opts.Client
-	case opts.GitHubToken != "":
-		client = NewGitHubClientWithToken(opts.GitHubToken)
-	default:
-		client = NewGitHubClient()
-	}
-
-	release, err := client.GetReleaseByTag(owner, repo, result.LatestVersion)
-	if err != nil {
-		return nil, fmt.Errorf("getting release details: %w", err)
-	}
-
 	return &UpdateInfo{
 		CurrentVersion: currentVer,
 		LatestVersion:  latestVer,
-		Release:        release,
+		Release:        result.Release,
 		UpdateNeeded:   result.UpdateAvailable,
 		IsPrerelease:   result.IsPrerelease,
 	}, nil

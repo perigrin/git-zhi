@@ -75,7 +75,7 @@ type UpdateOptions struct {
 func DefaultUpdateOptions() *UpdateOptions {
 	return &UpdateOptions{
 		Repository:        "perigrin/git-zhi",
-		IncludePrerelease: true, // Include prereleases by default since stable releases may not be available
+		IncludePrerelease: false, // Stable releases only; use --include-prerelease to opt in
 		Backup:            true,
 		AutoRollback:      true,
 		Context:           context.Background(),
@@ -295,9 +295,17 @@ func (u *Updater) PerformUpdate(opts *UpdateOptions) (*UpdateResult, error) {
 		return result, err
 	}
 
-	// Validate downloaded binary: must exist, be a regular file, and be at least 1 MB
+	// Extract binary from archive if needed (.tar.gz on Unix, .zip on Windows).
+	reportProgress(StageValidating, "Extracting binary", 0.55)
+	binaryPath, err := extractBinaryFromArchive(downloadResult.Path, tempDir)
+	if err != nil {
+		result.Message = fmt.Sprintf("Failed to extract binary from archive: %v", err)
+		return result, err
+	}
+
+	// Validate extracted binary: must exist, be a regular file, and be at least 1 MB.
 	reportProgress(StageValidating, "Validating download", 0.6)
-	if err := validateDownloadedBinary(downloadResult.Path); err != nil {
+	if err := validateDownloadedBinary(binaryPath); err != nil {
 		result.Message = fmt.Sprintf("Downloaded binary validation failed: %v", err)
 		return result, err
 	}
@@ -329,7 +337,7 @@ func (u *Updater) PerformUpdate(opts *UpdateOptions) (*UpdateResult, error) {
 	reportProgress(StageReplacing, "Installing update", 0.8)
 	replaceOpts := &ReplacementOptions{
 		CurrentPath:    currentPath,
-		NewPath:        downloadResult.Path,
+		NewPath:        binaryPath,
 		BackupEnabled:  false, // We already created backup above
 		ValidateBinary: true,
 		DryRun:         false,
