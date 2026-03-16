@@ -1,4 +1,4 @@
-module github.com/perigrin/git-chain
+module github.com/perigrin/git-zhi
 
 go 1.24.4
 

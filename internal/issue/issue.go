@@ -1,4 +1,4 @@
-// ABOUTME: Issue domain model for git-chain. Defines the Issue struct, state
+// ABOUTME: Issue domain model for git-zhi. Defines the Issue struct, state
 // ABOUTME: constants, and Session type, and Parse/Marshal/SplitBatch functions.
 package issue
 
@@ -24,7 +24,7 @@ const (
 )
 
 // RefPrefix is the git ref namespace under which all issues are stored.
-const RefPrefix = "refs/chain/_/issues/"
+const RefPrefix = "refs/zhi/_/issues/"
 
 // Session records a measurement window: the commit range and count between
 // start/resume and pause/done transitions. StartedAt and EndedAt are optional
@@ -40,7 +40,7 @@ type Session struct {
 
 // Issue represents a node in the chain dependency graph.
 type Issue struct {
-	// ID is derived from the entity ref path (refs/chain/_/issues/<uuid>),
+	// ID is derived from the entity ref path (refs/zhi/_/issues/<uuid>),
 	// not stored in YAML frontmatter. Set by the storage layer after reading.
 	ID        uuid.UUID   `yaml:"-" json:"id"`
 	Title     string      `yaml:"title" json:"title"`

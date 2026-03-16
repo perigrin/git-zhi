@@ -14,9 +14,9 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/perigrin/git-chain/internal/cli"
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/cli"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 // setupChainListTest creates a temporary git repo with initialized chain state
@@ -63,7 +63,7 @@ func createTestMilestone(t *testing.T, app *cli.App, name string, due *time.Time
 	if err != nil {
 		t.Fatalf("MarshalMilestone: %v", err)
 	}
-	refPath := "refs/chain/_/milestones/" + name
+	refPath := "refs/zhi/_/milestones/" + name
 	if err := app.Store.WriteEntity(refPath, "milestone.yaml", data, "Add test milestone: "+name); err != nil {
 		t.Fatalf("WriteEntity milestone: %v", err)
 	}
@@ -90,7 +90,7 @@ func createTestIssueWithDeps(t *testing.T, app *cli.App, title string, state iss
 	if err != nil {
 		t.Fatalf("issue.Marshal: %v", err)
 	}
-	refPath := fmt.Sprintf("refs/chain/_/issues/%s", id.String())
+	refPath := fmt.Sprintf("refs/zhi/_/issues/%s", id.String())
 	if err := app.Store.WriteEntity(refPath, "issue.md", data, "Add test issue: "+title); err != nil {
 		t.Fatalf("WriteEntity: %v", err)
 	}

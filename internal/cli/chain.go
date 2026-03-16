@@ -22,7 +22,7 @@ func NewListCommand() *cobra.Command {
 func NewConfigCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "config [key] [value]",
-		Short: "Manage git-chain settings",
+		Short: "Manage git-zhi settings",
 		Args:  cobra.MaximumNArgs(2),
 		RunE:  runChainConfig,
 	}

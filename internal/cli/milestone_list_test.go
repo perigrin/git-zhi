@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 func TestMilestoneList(t *testing.T) {

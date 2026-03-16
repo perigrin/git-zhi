@@ -11,9 +11,9 @@ import (
 	git "github.com/go-git/go-git/v5"
 	gitconfig "github.com/go-git/go-git/v5/config"
 
-	"github.com/perigrin/git-chain/internal/config"
-	"github.com/perigrin/git-chain/internal/milestone"
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/config"
+	"github.com/perigrin/git-zhi/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 type contextKey string
@@ -67,8 +67,8 @@ func (a *App) EnsureInitialized() error {
 // API only exposes the fetch refspec field on RemoteConfig.
 func (a *App) EnsureInitializedWithOutput(w io.Writer) error {
 	cfg := config.Default()
-	configExists := a.Store.RefExists("refs/chain/_/config")
-	milestoneExists := a.Store.RefExists("refs/chain/_/milestones/" + cfg.DefaultMilestone)
+	configExists := a.Store.RefExists("refs/zhi/_/config")
+	milestoneExists := a.Store.RefExists("refs/zhi/_/milestones/" + cfg.DefaultMilestone)
 	if configExists && milestoneExists {
 		return nil
 	}
@@ -78,7 +78,7 @@ func (a *App) EnsureInitializedWithOutput(w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("marshal config: %w", err)
 		}
-		if err := a.Store.WriteEntity("refs/chain/_/config", "config.yaml", cfgData, "Initialize chain config"); err != nil {
+		if err := a.Store.WriteEntity("refs/zhi/_/config", "config.yaml", cfgData, "Initialize chain config"); err != nil {
 			return fmt.Errorf("write config: %w", err)
 		}
 	}
@@ -92,13 +92,13 @@ func (a *App) EnsureInitializedWithOutput(w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("marshal milestone: %w", err)
 		}
-		refPath := "refs/chain/_/milestones/" + cfg.DefaultMilestone
+		refPath := "refs/zhi/_/milestones/" + cfg.DefaultMilestone
 		if err := a.Store.WriteEntity(refPath, "milestone.yaml", msData, "Create default milestone: "+cfg.DefaultMilestone); err != nil {
 			return fmt.Errorf("write milestone: %w", err)
 		}
 	}
 
-	// Configure fetch refspecs for refs/chain/* when a remote exists.
+	// Configure fetch refspecs for refs/zhi/* when a remote exists.
 	// This is best-effort — silently skipped if no remote or config fails.
 	a.configureRemoteRefspecs()
 
@@ -109,14 +109,14 @@ func (a *App) EnsureInitializedWithOutput(w io.Writer) error {
 	if err == nil {
 		if _, hasOrigin := repoCfg.Remotes["origin"]; hasOrigin {
 			fmt.Fprintln(w, "Chain state initialized.")
-			fmt.Fprintln(w, `Note: run 'git config --add remote.origin.push "refs/chain/*:refs/chain/*"' to enable push sync.`)
+			fmt.Fprintln(w, `Note: run 'git config --add remote.origin.push "refs/zhi/*:refs/zhi/*"' to enable push sync.`)
 		}
 	}
 
 	return nil
 }
 
-// configureRemoteRefspecs adds a fetch refspec for refs/chain/* to the origin
+// configureRemoteRefspecs adds a fetch refspec for refs/zhi/* to the origin
 // remote if it exists and the refspec is not already present. Errors are
 // silently ignored because sync configuration is best-effort at init time.
 func (a *App) configureRemoteRefspecs() {
@@ -129,9 +129,9 @@ func (a *App) configureRemoteRefspecs() {
 		return
 	}
 
-	fetchSpec := gitconfig.RefSpec("+refs/chain/*:refs/chain/*")
+	fetchSpec := gitconfig.RefSpec("+refs/zhi/*:refs/zhi/*")
 	// Note: go-git's RemoteConfig only exposes a Fetch field; there is no Push
-	// field in the struct. Push refspecs (refs/chain/*:refs/chain/*) must be
+	// field in the struct. Push refspecs (refs/zhi/*:refs/zhi/*) must be
 	// configured manually in .git/config until go-git adds Push support.
 
 	hasFetch := false

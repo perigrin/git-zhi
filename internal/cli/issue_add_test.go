@@ -11,8 +11,8 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/perigrin/git-chain/internal/cli"
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/cli"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 func setupIssueAddTest(t *testing.T, stdinContent string) (*bytes.Buffer, *bytes.Buffer, *cli.App, func(args ...string) error) {
@@ -62,7 +62,7 @@ func TestIssueAdd_SingleIssue(t *testing.T) {
 	if !strings.Contains(output, "Fix the bug") {
 		t.Fatalf("expected title in output, got: %s", output)
 	}
-	refs, err := app.Store.ListRefs("refs/chain/_/issues/")
+	refs, err := app.Store.ListRefs("refs/zhi/_/issues/")
 	if err != nil {
 		t.Fatalf("ListRefs failed: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestIssueAdd_BatchIssues(t *testing.T) {
 	if !strings.Contains(output, "2 issues") {
 		t.Fatalf("expected '2 issues' in output, got: %s", output)
 	}
-	refs, err := app.Store.ListRefs("refs/chain/_/issues/")
+	refs, err := app.Store.ListRefs("refs/zhi/_/issues/")
 	if err != nil {
 		t.Fatalf("ListRefs failed: %v", err)
 	}
@@ -174,10 +174,10 @@ func TestIssueAdd_LazyInit(t *testing.T) {
 	if err := run("issue", "add"); err != nil {
 		t.Fatalf("issue add failed: %v", err)
 	}
-	if !app.Store.RefExists("refs/chain/_/config") {
+	if !app.Store.RefExists("refs/zhi/_/config") {
 		t.Fatal("expected config ref after lazy init")
 	}
-	if !app.Store.RefExists("refs/chain/_/milestones/v0.1") {
+	if !app.Store.RefExists("refs/zhi/_/milestones/v0.1") {
 		t.Fatal("expected default milestone ref after lazy init")
 	}
 }
@@ -192,7 +192,7 @@ func TestIssueAdd_DefaultMilestone(t *testing.T) {
 	if err := run("issue", "add"); err != nil {
 		t.Fatalf("issue add failed: %v", err)
 	}
-	refs, err := app.Store.ListRefs("refs/chain/_/issues/")
+	refs, err := app.Store.ListRefs("refs/zhi/_/issues/")
 	if err != nil {
 		t.Fatalf("ListRefs failed: %v", err)
 	}

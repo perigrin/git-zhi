@@ -5,7 +5,7 @@ package issue_test
 import (
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 func TestParseSections_Full(t *testing.T) {
@@ -19,7 +19,7 @@ func TestParseSections_Full(t *testing.T) {
 - paths: internal/lexer, internal/parser
 - docs: docs/design.md
 - commands: go build ./..., go test ./...
-- entrypoints: cmd/git-chain/main.go
+- entrypoints: cmd/git-zhi/main.go
 
 Some extra description text here.
 
@@ -121,7 +121,7 @@ func TestParseSections_ContextParsing(t *testing.T) {
 - paths: internal/lexer, internal/parser
 - docs: docs/design.md
 - commands: go build ./..., go test ./...
-- entrypoints: cmd/git-chain/main.go`
+- entrypoints: cmd/git-zhi/main.go`
 
 	s := issue.ParseSections(body)
 
@@ -159,8 +159,8 @@ func TestParseSections_ContextParsing(t *testing.T) {
 	if len(s.Context.Entrypoints) != 1 {
 		t.Errorf("expected 1 entrypoint, got %d: %v", len(s.Context.Entrypoints), s.Context.Entrypoints)
 	}
-	if s.Context.Entrypoints[0] != "cmd/git-chain/main.go" {
-		t.Errorf("expected Entrypoints[0]=%q, got %q", "cmd/git-chain/main.go", s.Context.Entrypoints[0])
+	if s.Context.Entrypoints[0] != "cmd/git-zhi/main.go" {
+		t.Errorf("expected Entrypoints[0]=%q, got %q", "cmd/git-zhi/main.go", s.Context.Entrypoints[0])
 	}
 }
 

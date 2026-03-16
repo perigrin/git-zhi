@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-git-chain is a git-native task graph that manages development work as a dependency DAG with built-in telemetry. It is a standalone Go binary invoked as `git chain` (git discovers `git-chain` on `$PATH`). All state lives in git refs under `refs/chain/`, requiring no external services. The full PRD is at `docs/PRD.md`.
+git-zhi is a git-native task graph that manages development work as a dependency DAG with built-in telemetry. It is a standalone Go binary invoked as `git zhi` (git discovers `git-zhi` on `$PATH`). All state lives in git refs under `refs/zhi/`, requiring no external services. The full PRD is at `docs/PRD.md`.
 
 ## Build & Run
 
 ```bash
-go build -o git-chain ./cmd/git-chain/
-go install github.com/perigrin/git-chain@latest
+go build -o git-zhi ./cmd/git-zhi/
+go install github.com/perigrin/git-zhi@latest
 ```
 
 Requires **Go 1.24+** and **git** at runtime.
@@ -29,10 +29,10 @@ go test -race ./...              # with race detector
 
 ### Storage Model: Event-Sourced Per-Entity Refs
 
-State is stored as per-entity git refs under `refs/chain/`. Each issue and milestone gets its own ref whose commit history is an append-only event log. Current state is **derived** by reading the latest commit on each ref. Events never delete information — they only add facts (two-phase set pattern for dependencies).
+State is stored as per-entity git refs under `refs/zhi/`. Each issue and milestone gets its own ref whose commit history is an append-only event log. Current state is **derived** by reading the latest commit on each ref. Events never delete information — they only add facts (two-phase set pattern for dependencies).
 
 ```
-refs/chain/
+refs/zhi/
   _/                          # default chain (named "_")
     config                    # chain configuration
     issues/<uuidv7>           # one ref per issue, commit chain = audit trail
@@ -40,7 +40,7 @@ refs/chain/
     tags/<name>               # lightweight named references to entities
 ```
 
-Issues are markdown files with YAML frontmatter (`issue.md` blob inside each commit). Milestones are pure YAML. Reading state: `git show refs/chain/_/issues/<id>:issue.md`.
+Issues are markdown files with YAML frontmatter (`issue.md` blob inside each commit). Milestones are pure YAML. Reading state: `git show refs/zhi/_/issues/<id>:issue.md`.
 
 ### Core Domain Concepts
 
@@ -68,7 +68,7 @@ Observed signals (commits, elapsed time, completions) drive derived indicators:
 
 ### Subcommand Discovery
 
-Following git's convention, any executable named `git-chain-<name>` on `$PATH` is invocable as `git chain <name>`.
+Following git's convention, any executable named `git-zhi-<name>` on `$PATH` is invocable as `git zhi <name>`.
 
 ### CLI Commands (10 total)
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/cli"
+	"github.com/perigrin/git-zhi/internal/cli"
 )
 
 func TestRootCommand_Help(t *testing.T) {
@@ -22,8 +22,8 @@ func TestRootCommand_Help(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "refs/chain/") {
-		t.Fatalf("expected help output to contain 'refs/chain/', got:\n%s", output)
+	if !strings.Contains(output, "refs/zhi/") {
+		t.Fatalf("expected help output to contain 'refs/zhi/', got:\n%s", output)
 	}
 }
 

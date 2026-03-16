@@ -10,9 +10,9 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/resolve"
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/resolve"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 // initTestStore creates a temp git repo and returns a Store backed by it.
@@ -44,7 +44,7 @@ func writeTestIssue(t *testing.T, store *storage.Store, id uuid.UUID, state issu
 	if err != nil {
 		t.Fatalf("failed to marshal issue: %v", err)
 	}
-	refPath := "refs/chain/_/issues/" + id.String()
+	refPath := "refs/zhi/_/issues/" + id.String()
 	err = store.WriteEntity(refPath, "issue.md", raw, "create issue")
 	if err != nil {
 		t.Fatalf("failed to write issue: %v", err)
@@ -84,7 +84,7 @@ func TestResolveRef_UUIDPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRef(%q) unexpected error: %v", prefix, err)
 	}
-	expected := "refs/chain/_/issues/" + id1.String()
+	expected := "refs/zhi/_/issues/" + id1.String()
 	if resolved != expected {
 		t.Fatalf("ResolveRef(%q) = %q, want %q", prefix, resolved, expected)
 	}
@@ -115,7 +115,7 @@ func TestResolveRef_HEAD_InProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRef(HEAD) unexpected error: %v", err)
 	}
-	expected := "refs/chain/_/issues/" + id2.String()
+	expected := "refs/zhi/_/issues/" + id2.String()
 	if resolved != expected {
 		t.Fatalf("ResolveRef(HEAD) = %q, want %q (in-progress issue)", resolved, expected)
 	}
@@ -138,7 +138,7 @@ func TestResolveRef_HEAD_Pending(t *testing.T) {
 		t.Fatalf("ResolveRef(HEAD) unexpected error: %v", err)
 	}
 	// UUIDv7 sorts by creation time; id1 was created first, so it sorts first.
-	expected := "refs/chain/_/issues/" + id1.String()
+	expected := "refs/zhi/_/issues/" + id1.String()
 	if resolved != expected {
 		t.Fatalf("ResolveRef(HEAD) = %q, want %q (first pending by UUID sort)", resolved, expected)
 	}
@@ -172,7 +172,7 @@ func TestResolveRef_HEAD_SkipsDoneAndCancelled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRef(HEAD) unexpected error: %v", err)
 	}
-	expected := "refs/chain/_/issues/" + idPending.String()
+	expected := "refs/zhi/_/issues/" + idPending.String()
 	if resolved != expected {
 		t.Fatalf("ResolveRef(HEAD) = %q, want %q (pending issue, skipping done and cancelled)", resolved, expected)
 	}
@@ -193,7 +193,7 @@ func writeTestIssueWithBlocks(t *testing.T, store *storage.Store, id uuid.UUID, 
 	if err != nil {
 		t.Fatalf("failed to marshal issue: %v", err)
 	}
-	refPath := "refs/chain/_/issues/" + id.String()
+	refPath := "refs/zhi/_/issues/" + id.String()
 	err = store.WriteEntity(refPath, "issue.md", raw, "create issue")
 	if err != nil {
 		t.Fatalf("failed to write issue: %v", err)
@@ -227,7 +227,7 @@ func TestResolveRef_HEAD_CriticalChain(t *testing.T) {
 		t.Fatalf("ResolveRef(HEAD) unexpected error: %v", err)
 	}
 	// id1 is the critical chain leader — it has the most downstream deps.
-	expected := "refs/chain/_/issues/" + id1.String()
+	expected := "refs/zhi/_/issues/" + id1.String()
 	if resolved != expected {
 		t.Fatalf("ResolveRef(HEAD) = %q, want %q (critical chain leader)", resolved, expected)
 	}
@@ -241,8 +241,8 @@ func TestResolveRef_Tag(t *testing.T) {
 	writeTestIssue(t, store, id, issue.StatePending, "Tagged Issue")
 
 	// Write a tag pointing to the issue ref.
-	issueRef := "refs/chain/_/issues/" + id.String()
-	tagRef := "refs/chain/_/tags/my-feature"
+	issueRef := "refs/zhi/_/issues/" + id.String()
+	tagRef := "refs/zhi/_/tags/my-feature"
 	if err := store.WriteEntity(tagRef, "tag.txt", []byte(issueRef+"\n"), "create tag"); err != nil {
 		t.Fatalf("failed to write tag: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestResolveRef_TitleSubstring(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRef(parser) unexpected error: %v", err)
 	}
-	expected := "refs/chain/_/issues/" + id1.String()
+	expected := "refs/zhi/_/issues/" + id1.String()
 	if resolved != expected {
 		t.Fatalf("ResolveRef(parser) = %q, want %q", resolved, expected)
 	}
@@ -299,7 +299,7 @@ func TestResolveRef_TitleSubstring(t *testing.T) {
 	if err2 != nil {
 		t.Fatalf("ResolveRef(INTEGRATION) unexpected error: %v", err2)
 	}
-	expected2 := "refs/chain/_/issues/" + id2.String()
+	expected2 := "refs/zhi/_/issues/" + id2.String()
 	if resolved2 != expected2 {
 		t.Fatalf("ResolveRef(INTEGRATION) = %q, want %q", resolved2, expected2)
 	}

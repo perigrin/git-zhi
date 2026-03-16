@@ -1,5 +1,5 @@
 // ABOUTME: Load helpers for milestones from storage. Reads and parses
-// ABOUTME: milestone refs under refs/chain/_/milestones/.
+// ABOUTME: milestone refs under refs/zhi/_/milestones/.
 package milestone
 
 import (
@@ -9,11 +9,11 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 // RefPrefix is the git ref namespace under which all milestones are stored.
-const RefPrefix = "refs/chain/_/milestones/"
+const RefPrefix = "refs/zhi/_/milestones/"
 
 // UnmarshalMilestone deserializes a Milestone from YAML bytes.
 func UnmarshalMilestone(data []byte) (*Milestone, error) {

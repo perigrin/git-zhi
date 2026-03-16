@@ -5,8 +5,8 @@ package telemetry
 import (
 	"time"
 
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 // Status represents the fever chart health status of a milestone.

@@ -1,4 +1,4 @@
-// ABOUTME: Chain configuration stored at refs/chain/_/config. Minimal for v0.1:
+// ABOUTME: Chain configuration stored at refs/zhi/_/config. Minimal for v0.1:
 // ABOUTME: just version and default_milestone. Supports read/write via MarshalConfig.
 package config
 

@@ -8,9 +8,9 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/milestone"
-	"github.com/perigrin/git-chain/internal/telemetry"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/telemetry"
 )
 
 func TestStatusConstants(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 func initTestRepo(t *testing.T) *storage.Store {
@@ -74,18 +74,18 @@ func makeCommit(t *testing.T, repo *git.Repository, dir, filename, content, mess
 
 func TestWriteEntity_CreatesRef(t *testing.T) {
 	store := initTestRepo(t)
-	err := store.WriteEntity("refs/chain/_/issues/test-id", "issue.md", []byte("hello"), "create issue")
+	err := store.WriteEntity("refs/zhi/_/issues/test-id", "issue.md", []byte("hello"), "create issue")
 	if err != nil {
 		t.Fatalf("WriteEntity failed: %v", err)
 	}
-	if !store.RefExists("refs/chain/_/issues/test-id") {
+	if !store.RefExists("refs/zhi/_/issues/test-id") {
 		t.Fatal("expected ref to exist after WriteEntity")
 	}
 }
 
 func TestWriteEntity_AppendsCommit(t *testing.T) {
 	store := initTestRepo(t)
-	ref := "refs/chain/_/issues/test-id"
+	ref := "refs/zhi/_/issues/test-id"
 	err := store.WriteEntity(ref, "issue.md", []byte("version 1"), "first")
 	if err != nil {
 		t.Fatalf("first WriteEntity failed: %v", err)
@@ -105,7 +105,7 @@ func TestWriteEntity_AppendsCommit(t *testing.T) {
 
 func TestReadEntity_RoundTrip(t *testing.T) {
 	store := initTestRepo(t)
-	ref := "refs/chain/_/issues/test-id"
+	ref := "refs/zhi/_/issues/test-id"
 	original := []byte("---\ntitle: Test\n---\nBody content")
 	err := store.WriteEntity(ref, "issue.md", original, "create")
 	if err != nil {
@@ -122,7 +122,7 @@ func TestReadEntity_RoundTrip(t *testing.T) {
 
 func TestReadEntity_NotFound(t *testing.T) {
 	store := initTestRepo(t)
-	_, err := store.ReadEntity("refs/chain/_/issues/nonexistent", "issue.md")
+	_, err := store.ReadEntity("refs/zhi/_/issues/nonexistent", "issue.md")
 	if err == nil {
 		t.Fatal("expected error reading nonexistent ref")
 	}
@@ -131,16 +131,16 @@ func TestReadEntity_NotFound(t *testing.T) {
 func TestListRefs(t *testing.T) {
 	store := initTestRepo(t)
 	for _, id := range []string{"aaa", "bbb", "ccc"} {
-		err := store.WriteEntity("refs/chain/_/issues/"+id, "issue.md", []byte("test"), "create")
+		err := store.WriteEntity("refs/zhi/_/issues/"+id, "issue.md", []byte("test"), "create")
 		if err != nil {
 			t.Fatalf("WriteEntity failed for %s: %v", id, err)
 		}
 	}
-	err := store.WriteEntity("refs/chain/_/milestones/v0.1", "milestone.yaml", []byte("test"), "create")
+	err := store.WriteEntity("refs/zhi/_/milestones/v0.1", "milestone.yaml", []byte("test"), "create")
 	if err != nil {
 		t.Fatalf("WriteEntity failed for milestone: %v", err)
 	}
-	refs, err := store.ListRefs("refs/chain/_/issues/")
+	refs, err := store.ListRefs("refs/zhi/_/issues/")
 	if err != nil {
 		t.Fatalf("ListRefs failed: %v", err)
 	}
@@ -151,14 +151,14 @@ func TestListRefs(t *testing.T) {
 
 func TestRefExists(t *testing.T) {
 	store := initTestRepo(t)
-	if store.RefExists("refs/chain/_/issues/nonexistent") {
+	if store.RefExists("refs/zhi/_/issues/nonexistent") {
 		t.Fatal("expected RefExists to return false for nonexistent ref")
 	}
-	err := store.WriteEntity("refs/chain/_/issues/test-id", "issue.md", []byte("test"), "create")
+	err := store.WriteEntity("refs/zhi/_/issues/test-id", "issue.md", []byte("test"), "create")
 	if err != nil {
 		t.Fatalf("WriteEntity failed: %v", err)
 	}
-	if !store.RefExists("refs/chain/_/issues/test-id") {
+	if !store.RefExists("refs/zhi/_/issues/test-id") {
 		t.Fatal("expected RefExists to return true after WriteEntity")
 	}
 }
@@ -215,7 +215,7 @@ func TestCountCommits(t *testing.T) {
 
 func TestDeleteRef(t *testing.T) {
 	store := initTestRepo(t)
-	ref := "refs/chain/_/tags/test-tag"
+	ref := "refs/zhi/_/tags/test-tag"
 	if err := store.WriteEntity(ref, "tag.txt", []byte("target"), "create tag"); err != nil {
 		t.Fatalf("WriteEntity failed: %v", err)
 	}

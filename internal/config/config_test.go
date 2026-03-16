@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/config"
+	"github.com/perigrin/git-zhi/internal/config"
 )
 
 func TestDefaultConfig(t *testing.T) {

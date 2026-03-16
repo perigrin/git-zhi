@@ -11,8 +11,8 @@ import (
 	git "github.com/go-git/go-git/v5"
 	gitconfig "github.com/go-git/go-git/v5/config"
 
-	"github.com/perigrin/git-chain/internal/cli"
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/cli"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 func TestGetApp_NilOnBareContext(t *testing.T) {
@@ -47,11 +47,11 @@ func TestEnsureInitialized_CreatesConfigAndMilestone(t *testing.T) {
 		t.Fatalf("EnsureInitialized failed: %v", err)
 	}
 
-	if !store.RefExists("refs/chain/_/config") {
-		t.Fatal("expected refs/chain/_/config to exist after init")
+	if !store.RefExists("refs/zhi/_/config") {
+		t.Fatal("expected refs/zhi/_/config to exist after init")
 	}
-	if !store.RefExists("refs/chain/_/milestones/v0.1") {
-		t.Fatal("expected refs/chain/_/milestones/v0.1 to exist after init")
+	if !store.RefExists("refs/zhi/_/milestones/v0.1") {
+		t.Fatal("expected refs/zhi/_/milestones/v0.1 to exist after init")
 	}
 
 	// Second call should be a no-op
@@ -115,7 +115,7 @@ func TestEnsureInitialized_PrintsPushRefspecNote(t *testing.T) {
 	}
 
 	note := out.String()
-	if !strings.Contains(note, "refs/chain/*:refs/chain/*") {
+	if !strings.Contains(note, "refs/zhi/*:refs/zhi/*") {
 		t.Errorf("expected push refspec note in output, got:\n%s", note)
 	}
 	if !strings.Contains(note, "remote.origin.push") {
@@ -150,7 +150,7 @@ func TestEnsureInitialized_WithRemote(t *testing.T) {
 		t.Fatalf("EnsureInitialized failed: %v", err)
 	}
 
-	// Verify the fetch refspec for refs/chain/* was added.
+	// Verify the fetch refspec for refs/zhi/* was added.
 	cfg, err := repo.Config()
 	if err != nil {
 		t.Fatalf("failed to read repo config: %v", err)
@@ -162,11 +162,11 @@ func TestEnsureInitialized_WithRemote(t *testing.T) {
 
 	hasFetchSpec := false
 	for _, spec := range remote.Fetch {
-		if strings.Contains(spec.String(), "refs/chain/") {
+		if strings.Contains(spec.String(), "refs/zhi/") {
 			hasFetchSpec = true
 		}
 	}
 	if !hasFetchSpec {
-		t.Errorf("expected refs/chain/* fetch refspec to be configured, got: %v", remote.Fetch)
+		t.Errorf("expected refs/zhi/* fetch refspec to be configured, got: %v", remote.Fetch)
 	}
 }

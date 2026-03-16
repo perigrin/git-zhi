@@ -5,7 +5,7 @@ package issue_test
 import (
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 func TestValidateTransition_Start(t *testing.T) {

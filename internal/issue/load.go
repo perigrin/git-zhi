@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/gofrs/uuid/v5"
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 // LoadAllIssues reads all issue refs, parses each, and returns them sorted

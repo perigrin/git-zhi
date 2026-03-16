@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 // TestChainNext shows a pending issue via 'chain next' and verifies

@@ -11,8 +11,8 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/perigrin/git-chain/internal/cli"
-	"github.com/perigrin/git-chain/internal/config"
+	"github.com/perigrin/git-zhi/internal/cli"
+	"github.com/perigrin/git-zhi/internal/config"
 )
 
 // setupChainConfigTest creates a temporary git repo with initialized chain state
@@ -102,7 +102,7 @@ func TestChainConfig_Set(t *testing.T) {
 	}
 
 	// Read back the config directly from storage to verify persistence.
-	data, err := app.Store.ReadEntity("refs/chain/_/config", "config.yaml")
+	data, err := app.Store.ReadEntity("refs/zhi/_/config", "config.yaml")
 	if err != nil {
 		t.Fatalf("ReadEntity config: %v", err)
 	}

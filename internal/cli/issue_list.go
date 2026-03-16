@@ -11,7 +11,7 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 // stateIcon maps issue states to single-character display icons.

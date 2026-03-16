@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 func TestNewMilestone(t *testing.T) {

@@ -11,8 +11,8 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/perigrin/git-chain/internal/cli"
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/cli"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 // setupSplitTest creates a temporary repo with an initial commit and returns
@@ -77,7 +77,7 @@ func createSplitTestIssueWithDownstream(t *testing.T, app *cli.App, title string
 		if err != nil {
 			t.Fatalf("issue.Marshal: %v", err)
 		}
-		refPath := fmt.Sprintf("refs/chain/_/issues/%s", iss.ID.String())
+		refPath := fmt.Sprintf("refs/zhi/_/issues/%s", iss.ID.String())
 		if err := app.Store.WriteEntity(refPath, "issue.md", data, "Add test issue: "+iss.Title); err != nil {
 			t.Fatalf("WriteEntity: %v", err)
 		}

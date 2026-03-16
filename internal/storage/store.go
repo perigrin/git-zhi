@@ -25,8 +25,8 @@ type Store struct {
 // NewStore creates a Store backed by the given git repository, reading author
 // info from git config if available.
 func NewStore(repo *git.Repository) (*Store, error) {
-	name := "git-chain"
-	email := "git-chain@local"
+	name := "git-zhi"
+	email := "git-zhi@local"
 
 	cfg, err := repo.Config()
 	if err == nil {

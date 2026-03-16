@@ -1,4 +1,4 @@
-// ABOUTME: Discovers external git-chain-* subcommands on $PATH and registers
+// ABOUTME: Discovers external git-zhi-* subcommands on $PATH and registers
 // ABOUTME: them as Cobra commands for --help listing and direct invocation.
 package cli
 
@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// builtinNames is the set of command names built into git-chain. External
+// builtinNames is the set of command names built into git-zhi. External
 // commands with these names are silently skipped to prevent shadowing.
 var builtinNames = map[string]bool{
 	"issue":     true,
@@ -22,7 +22,7 @@ var builtinNames = map[string]bool{
 	"next":      true,
 }
 
-// DiscoverExternalCommands scans $PATH for executables matching git-chain-*
+// DiscoverExternalCommands scans $PATH for executables matching git-zhi-*
 // and returns Cobra commands that delegate to them. Built-in command names are
 // never overridden. The first matching executable on PATH wins for each name.
 func DiscoverExternalCommands() []*cobra.Command {
@@ -40,10 +40,10 @@ func DiscoverExternalCommands() []*cobra.Command {
 				continue
 			}
 			name := entry.Name()
-			if !strings.HasPrefix(name, "git-chain-") {
+			if !strings.HasPrefix(name, "git-zhi-") {
 				continue
 			}
-			subName := strings.TrimPrefix(name, "git-chain-")
+			subName := strings.TrimPrefix(name, "git-zhi-")
 			if subName == "" || seen[subName] || builtinNames[subName] {
 				continue
 			}

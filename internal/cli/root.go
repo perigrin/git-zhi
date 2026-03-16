@@ -1,4 +1,4 @@
-// ABOUTME: Cobra root command for git-chain. Wires up all subcommand groups
+// ABOUTME: Cobra root command for git-zhi. Wires up all subcommand groups
 // ABOUTME: and persistent flags (--format). Entry point for CLI execution.
 package cli
 
@@ -9,13 +9,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewRootCommand creates the top-level git-chain command with all subcommands.
+// NewRootCommand creates the top-level git-zhi command with all subcommands.
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "git-chain",
+		Use:   "git-zhi",
 		Short: "A git-native task graph for developers and agents",
-		Long: `git-chain manages development work as a dependency graph with
-built-in telemetry. All state lives in git refs under refs/chain/.
+		Long: `git-zhi manages development work as a dependency graph with
+built-in telemetry. All state lives in git refs under refs/zhi/.
 No external services required.`,
 		// SilenceUsage prevents Cobra from dumping usage on every error.
 		// SilenceErrors prevents Cobra from printing errors (we do it in Execute).
@@ -57,7 +57,7 @@ No external services required.`,
 		NewNextCommand(),
 	)
 
-	// Discover and register external git-chain-* subcommands
+	// Discover and register external git-zhi-* subcommands
 	for _, extCmd := range DiscoverExternalCommands() {
 		root.AddCommand(extCmd)
 	}
@@ -69,7 +69,7 @@ No external services required.`,
 func Execute() {
 	cmd := NewRootCommand()
 	if err := cmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "git-chain: %s\n", err)
+		fmt.Fprintf(os.Stderr, "git-zhi: %s\n", err)
 		os.Exit(1)
 	}
 }

@@ -14,8 +14,8 @@ import (
 
 	yaml "github.com/goccy/go-yaml"
 
-	"github.com/perigrin/git-chain/internal/config"
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/config"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 // NewIssueCommand creates the 'issue' command group.
@@ -69,7 +69,7 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 
 	// Determine default milestone from config
 	defaultMilestone := config.Default().DefaultMilestone
-	cfgData, err := app.Store.ReadEntity("refs/chain/_/config", "config.yaml")
+	cfgData, err := app.Store.ReadEntity("refs/zhi/_/config", "config.yaml")
 	if err == nil {
 		var cfg config.Config
 		if yamlErr := yaml.Unmarshal(cfgData, &cfg); yamlErr == nil && cfg.DefaultMilestone != "" {

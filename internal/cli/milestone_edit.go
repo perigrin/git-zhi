@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 // knownMilestoneEditFlags lists all flags that constitute a valid edit operation.
@@ -116,7 +116,7 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 	// Apply --tag: create a tag ref pointing to this milestone.
 	if cmd.Flags().Changed("tag") {
 		tagName, _ := cmd.Flags().GetString("tag")
-		tagRef := "refs/chain/_/tags/" + tagName
+		tagRef := "refs/zhi/_/tags/" + tagName
 		refPath := milestone.RefPrefix + name
 		if err := app.Store.WriteEntity(tagRef, "tag.txt", []byte(refPath), "Tag milestone: "+tagName); err != nil {
 			return fmt.Errorf("write tag ref: %w", err)
@@ -126,7 +126,7 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 	// Apply --untag: delete the named tag ref.
 	if cmd.Flags().Changed("untag") {
 		tagName, _ := cmd.Flags().GetString("untag")
-		tagRef := "refs/chain/_/tags/" + tagName
+		tagRef := "refs/zhi/_/tags/" + tagName
 		if err := app.Store.DeleteRef(tagRef); err != nil {
 			return fmt.Errorf("delete tag ref: %w", err)
 		}

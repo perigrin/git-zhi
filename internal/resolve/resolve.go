@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/perigrin/git-chain/internal/graph"
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/graph"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 // IsHead returns true if the input resolves to the HEAD reference.
@@ -39,11 +39,11 @@ func ResolveRef(store *storage.Store, input string) (string, error) {
 	return resolveTitleSubstring(store, input)
 }
 
-// resolveTag reads the tag entity at refs/chain/_/tags/<input> and returns
+// resolveTag reads the tag entity at refs/zhi/_/tags/<input> and returns
 // the target ref path stored in tag.txt. Returns an error if the tag does
 // not exist or points to a nonexistent ref.
 func resolveTag(store *storage.Store, input string) (string, error) {
-	tagRef := "refs/chain/_/tags/" + input
+	tagRef := "refs/zhi/_/tags/" + input
 	data, err := store.ReadEntity(tagRef, "tag.txt")
 	if err != nil {
 		return "", fmt.Errorf("tag %q not found: %w", input, err)

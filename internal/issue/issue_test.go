@@ -8,7 +8,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 func TestNewIssue(t *testing.T) {

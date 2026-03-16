@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 // runMilestoneAdd creates a new milestone ref. It errors if the milestone

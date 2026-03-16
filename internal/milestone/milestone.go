@@ -1,4 +1,4 @@
-// ABOUTME: Milestone domain model for git-chain. Defines the Milestone struct
+// ABOUTME: Milestone domain model for git-zhi. Defines the Milestone struct
 // ABOUTME: as pure YAML (no markdown body). Supports serialization via MarshalMilestone.
 package milestone
 

@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/milestone"
-	"github.com/perigrin/git-chain/internal/resolve"
-	"github.com/perigrin/git-chain/internal/telemetry"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/resolve"
+	"github.com/perigrin/git-zhi/internal/telemetry"
 )
 
 // milestoneShowJSON is the JSON presentation of a milestone with its issues

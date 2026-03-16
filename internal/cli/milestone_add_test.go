@@ -11,8 +11,8 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/perigrin/git-chain/internal/cli"
-	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/cli"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 // setupMilestoneTest creates a temporary git repo with chain initialized and

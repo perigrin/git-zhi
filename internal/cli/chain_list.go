@@ -11,9 +11,9 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
-	"github.com/perigrin/git-chain/internal/graph"
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/graph"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 // chainListJSON is the JSON output shape for chain list.

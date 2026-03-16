@@ -8,8 +8,8 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 func initLoadTestStore(t *testing.T) *storage.Store {

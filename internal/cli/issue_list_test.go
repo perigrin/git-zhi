@@ -14,8 +14,8 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/perigrin/git-chain/internal/cli"
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/cli"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 // createTestIssueWithMilestone writes an issue to the store with a specific milestone
@@ -40,7 +40,7 @@ func createTestIssueWithMilestone(t *testing.T, app *cli.App, title string, stat
 	if err != nil {
 		t.Fatalf("issue.Marshal: %v", err)
 	}
-	refPath := fmt.Sprintf("refs/chain/_/issues/%s", id.String())
+	refPath := fmt.Sprintf("refs/zhi/_/issues/%s", id.String())
 	if err := app.Store.WriteEntity(refPath, "issue.md", data, "Add test issue: "+title); err != nil {
 		t.Fatalf("WriteEntity: %v", err)
 	}

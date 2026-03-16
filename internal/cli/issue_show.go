@@ -11,8 +11,8 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/resolve"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/resolve"
 )
 
 // IssueJSON is the presentation struct for JSON output of a single issue.

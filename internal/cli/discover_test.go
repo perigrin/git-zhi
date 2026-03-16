@@ -1,4 +1,4 @@
-// ABOUTME: Tests for external git-chain-* subcommand discovery on $PATH.
+// ABOUTME: Tests for external git-zhi-* subcommand discovery on $PATH.
 // ABOUTME: Creates temporary executables and verifies they appear as commands.
 package cli_test
 
@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/cli"
+	"github.com/perigrin/git-zhi/internal/cli"
 )
 
 func TestDiscoverExternalCommands(t *testing.T) {
-	// Create a temp dir with a fake git-chain-foo executable
+	// Create a temp dir with a fake git-zhi-foo executable
 	dir := t.TempDir()
-	fooPath := filepath.Join(dir, "git-chain-foo")
+	fooPath := filepath.Join(dir, "git-zhi-foo")
 	os.WriteFile(fooPath, []byte("#!/bin/sh\necho foo"), 0755)
 
 	// Prepend to PATH
@@ -29,7 +29,7 @@ func TestDiscoverExternalCommands(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("expected to discover git-chain-foo as 'foo' subcommand")
+		t.Fatal("expected to discover git-zhi-foo as 'foo' subcommand")
 	}
 }
 
@@ -48,7 +48,7 @@ func TestDiscoverExternalCommands_Empty(t *testing.T) {
 func TestDiscoverExternalCommands_SkipsNonExecutable(t *testing.T) {
 	dir := t.TempDir()
 	// Write a file without executable bit
-	barPath := filepath.Join(dir, "git-chain-bar")
+	barPath := filepath.Join(dir, "git-zhi-bar")
 	os.WriteFile(barPath, []byte("#!/bin/sh\necho bar"), 0644)
 
 	origPath := os.Getenv("PATH")
@@ -58,7 +58,7 @@ func TestDiscoverExternalCommands_SkipsNonExecutable(t *testing.T) {
 	cmds := cli.DiscoverExternalCommands()
 	for _, cmd := range cmds {
 		if cmd.Use == "bar" {
-			t.Fatal("expected non-executable git-chain-bar to be skipped")
+			t.Fatal("expected non-executable git-zhi-bar to be skipped")
 		}
 	}
 }
@@ -68,7 +68,7 @@ func TestDiscoverExternalCommands_SkipsBuiltins(t *testing.T) {
 	// Write executables that shadow built-in command names
 	builtins := []string{"issue", "milestone", "list", "config", "next"}
 	for _, name := range builtins {
-		p := filepath.Join(dir, "git-chain-"+name)
+		p := filepath.Join(dir, "git-zhi-"+name)
 		os.WriteFile(p, []byte("#!/bin/sh\necho "+name), 0755)
 	}
 
@@ -89,9 +89,9 @@ func TestDiscoverExternalCommands_SkipsBuiltins(t *testing.T) {
 func TestDiscoverExternalCommands_FirstPathWins(t *testing.T) {
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
-	// Place git-chain-baz in both dirs; the first dir's entry should win
-	os.WriteFile(filepath.Join(dir1, "git-chain-baz"), []byte("#!/bin/sh\necho baz1"), 0755)
-	os.WriteFile(filepath.Join(dir2, "git-chain-baz"), []byte("#!/bin/sh\necho baz2"), 0755)
+	// Place git-zhi-baz in both dirs; the first dir's entry should win
+	os.WriteFile(filepath.Join(dir1, "git-zhi-baz"), []byte("#!/bin/sh\necho baz1"), 0755)
+	os.WriteFile(filepath.Join(dir2, "git-zhi-baz"), []byte("#!/bin/sh\necho baz2"), 0755)
 
 	origPath := os.Getenv("PATH")
 	t.Cleanup(func() { os.Setenv("PATH", origPath) })
@@ -111,7 +111,7 @@ func TestDiscoverExternalCommands_FirstPathWins(t *testing.T) {
 
 func TestDiscoverExternalCommands_ShortDescriptionContainsBinaryName(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "git-chain-qux"), []byte("#!/bin/sh\necho qux"), 0755)
+	os.WriteFile(filepath.Join(dir, "git-zhi-qux"), []byte("#!/bin/sh\necho qux"), 0755)
 
 	origPath := os.Getenv("PATH")
 	t.Cleanup(func() { os.Setenv("PATH", origPath) })
@@ -126,5 +126,5 @@ func TestDiscoverExternalCommands_ShortDescriptionContainsBinaryName(t *testing.
 			return
 		}
 	}
-	t.Fatal("expected to discover git-chain-qux")
+	t.Fatal("expected to discover git-zhi-qux")
 }

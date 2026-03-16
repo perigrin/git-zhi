@@ -7,8 +7,8 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/perigrin/git-chain/internal/graph"
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/graph"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 func makeIssue(title string, state issue.State) *issue.Issue {

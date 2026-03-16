@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/perigrin/git-chain/internal/config"
+	"github.com/perigrin/git-zhi/internal/config"
 )
 
 // runChainConfig reads the current chain config when called with no args,
@@ -32,7 +32,7 @@ func runChainConfig(cmd *cobra.Command, args []string) error {
 
 // displayChainConfig reads and renders the current chain configuration.
 func displayChainConfig(cmd *cobra.Command, app *App) error {
-	data, err := app.Store.ReadEntity("refs/chain/_/config", "config.yaml")
+	data, err := app.Store.ReadEntity("refs/zhi/_/config", "config.yaml")
 	if err != nil {
 		return fmt.Errorf("read config: %w", err)
 	}
@@ -57,7 +57,7 @@ func displayChainConfig(cmd *cobra.Command, app *App) error {
 
 // setChainConfig updates a single supported config key and writes back to storage.
 func setChainConfig(cmd *cobra.Command, app *App, key, value string) error {
-	data, err := app.Store.ReadEntity("refs/chain/_/config", "config.yaml")
+	data, err := app.Store.ReadEntity("refs/zhi/_/config", "config.yaml")
 	if err != nil {
 		return fmt.Errorf("read config: %w", err)
 	}
@@ -79,7 +79,7 @@ func setChainConfig(cmd *cobra.Command, app *App, key, value string) error {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 
-	if err := app.Store.WriteEntity("refs/chain/_/config", "config.yaml", newData, "Set config "+key+"="+value); err != nil {
+	if err := app.Store.WriteEntity("refs/zhi/_/config", "config.yaml", newData, "Set config "+key+"="+value); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 

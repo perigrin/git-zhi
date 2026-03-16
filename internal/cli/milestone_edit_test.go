@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 func TestMilestoneEdit_Due(t *testing.T) {
@@ -125,7 +125,7 @@ func TestMilestoneEdit_Tag(t *testing.T) {
 		t.Fatalf("milestone edit --tag failed: %v", err)
 	}
 
-	tagRef := "refs/chain/_/tags/current-sprint"
+	tagRef := "refs/zhi/_/tags/current-sprint"
 	if !app.Store.RefExists(tagRef) {
 		t.Fatalf("expected tag ref %s to exist after --tag", tagRef)
 	}
@@ -136,7 +136,7 @@ func TestMilestoneEdit_Tag(t *testing.T) {
 		t.Fatalf("ReadEntity tag.txt: %v", err)
 	}
 	content := strings.TrimSpace(string(data))
-	expectedTarget := "refs/chain/_/milestones/v0.1"
+	expectedTarget := "refs/zhi/_/milestones/v0.1"
 	if content != expectedTarget {
 		t.Fatalf("tag content = %q, want %q", content, expectedTarget)
 	}
@@ -151,7 +151,7 @@ func TestMilestoneEdit_Untag(t *testing.T) {
 		t.Fatalf("milestone edit --tag failed: %v", err)
 	}
 
-	tagRef := "refs/chain/_/tags/release"
+	tagRef := "refs/zhi/_/tags/release"
 	if !app.Store.RefExists(tagRef) {
 		t.Fatalf("expected tag ref to exist after --tag")
 	}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 // TestIssueEdit_Block creates two issues and verifies that --block adds
@@ -143,7 +143,7 @@ func TestIssueEdit_Tag(t *testing.T) {
 		t.Fatalf("issue edit --tag failed: %v", err)
 	}
 
-	tagRef := "refs/chain/_/tags/parser"
+	tagRef := "refs/zhi/_/tags/parser"
 	if !app.Store.RefExists(tagRef) {
 		t.Fatalf("expected tag ref %s to exist", tagRef)
 	}
@@ -160,7 +160,7 @@ func TestIssueEdit_Untag(t *testing.T) {
 		t.Fatalf("issue edit --tag failed: %v", err)
 	}
 
-	tagRef := "refs/chain/_/tags/mytag"
+	tagRef := "refs/zhi/_/tags/mytag"
 	if !app.Store.RefExists(tagRef) {
 		t.Fatalf("expected tag ref to exist after --tag")
 	}

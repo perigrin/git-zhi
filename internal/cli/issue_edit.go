@@ -12,10 +12,10 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
-	"github.com/perigrin/git-chain/internal/graph"
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/resolve"
-	"github.com/perigrin/git-chain/internal/uuids"
+	"github.com/perigrin/git-zhi/internal/graph"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/resolve"
+	"github.com/perigrin/git-zhi/internal/uuids"
 )
 
 // knownEditFlags lists all flags that trigger edit behaviour. Used to detect
@@ -244,7 +244,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --tag <name>: create a tag ref pointing to this issue's ref path.
 	if cmd.Flags().Changed("tag") {
 		tagName, _ := cmd.Flags().GetString("tag")
-		tagRef := "refs/chain/_/tags/" + tagName
+		tagRef := "refs/zhi/_/tags/" + tagName
 		if app.Store.RefExists(tagRef) {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: tag %q already exists, overwriting\n", tagName)
 		}
@@ -257,7 +257,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --untag <name>: delete the tag ref.
 	if cmd.Flags().Changed("untag") {
 		tagName, _ := cmd.Flags().GetString("untag")
-		tagRef := "refs/chain/_/tags/" + tagName
+		tagRef := "refs/zhi/_/tags/" + tagName
 		if err := app.Store.DeleteRef(tagRef); err != nil {
 			return fmt.Errorf("delete tag ref: %w", err)
 		}
@@ -965,7 +965,7 @@ func runIssueEditPurge(cmd *cobra.Command, app *App, refInput string) error {
 	}
 
 	// Clean up any tags that point to this issue's ref.
-	tagRefs, listErr := app.Store.ListRefs("refs/chain/_/tags/")
+	tagRefs, listErr := app.Store.ListRefs("refs/zhi/_/tags/")
 	if listErr == nil {
 		for _, tagRef := range tagRefs {
 			tagData, readErr := app.Store.ReadEntity(tagRef, "tag.txt")
