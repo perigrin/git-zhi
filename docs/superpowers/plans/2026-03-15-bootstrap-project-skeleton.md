@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Create the git-chain project skeleton so it compiles, runs `git-chain --help`, and has all internal packages stubbed with passing tests.
+**Goal:** Create the git-zhi project skeleton so it compiles, runs `git-zhi --help`, and has all internal packages stubbed with passing tests.
 
-**Architecture:** Single Go binary at `cmd/git-chain/main.go`. Cobra root command with subcommand groups (`issue`, `milestone`, top-level `list`/`config`/`next`). Internal packages under `internal/` own domain logic. Each package starts as a stub with its ABOUTME comment and a placeholder test.
+**Architecture:** Single Go binary at `cmd/git-zhi/main.go`. Cobra root command with subcommand groups (`issue`, `milestone`, top-level `list`/`config`/`next`). Internal packages under `internal/` own domain logic. Each package starts as a stub with its ABOUTME comment and a placeholder test.
 
 **Tech Stack:** Go 1.22+, Cobra (github.com/spf13/cobra), go-git (github.com/go-git/go-git/v5), gofrs/uuid, goccy/go-yaml
 
@@ -13,8 +13,8 @@
 ## File Structure
 
 ```
-git-chain/
-  cmd/git-chain/main.go            # Entry point: creates root command, calls Execute
+git-zhi/
+  cmd/git-zhi/main.go            # Entry point: creates root command, calls Execute
   internal/
     cli/
       root.go                      # NewRootCommand(), Execute(), --format flag
@@ -58,10 +58,10 @@ git-chain/
 
 - [ ] **Step 1: Initialize Go module**
 
-Run from the worktree root (`/home/perigrin/dev/git-chain/.worktrees/bootstrap`):
+Run from the worktree root (`/home/perigrin/dev/git-zhi/.worktrees/bootstrap`):
 
 ```bash
-go mod init github.com/perigrin/git-chain
+go mod init github.com/perigrin/git-zhi
 ```
 
 - [ ] **Step 2: Add dependencies**
@@ -78,7 +78,7 @@ Note: these are the latest versions as of 2026-03-15. If any fail due to transit
 - [ ] **Step 3: Verify go.mod and go.sum**
 
 Run: `head -5 go.mod`
-Expected: module line is `github.com/perigrin/git-chain`, go version is 1.22 or higher.
+Expected: module line is `github.com/perigrin/git-zhi`, go version is 1.22 or higher.
 
 Run: `go mod verify`
 Expected: `all modules verified`. If this fails, a dependency download was incomplete or corrupted — rerun `go get` for the failing module.
@@ -87,7 +87,7 @@ Expected: `all modules verified`. If this fails, a dependency download was incom
 
 Append to `.gitignore`:
 ```
-/git-chain
+/git-zhi
 *.test
 ```
 
@@ -108,7 +108,7 @@ goccy/go-yaml for frontmatter and config parsing."
 ## Task 2: Create main entry point and Cobra root command
 
 **Files:**
-- Create: `cmd/git-chain/main.go`
+- Create: `cmd/git-zhi/main.go`
 - Create: `internal/cli/root.go`
 - Create: `internal/cli/root_test.go`
 - Create: `internal/cli/issue.go`
@@ -127,7 +127,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/cli"
+	"github.com/perigrin/git-zhi/internal/cli"
 )
 
 func TestRootCommand_Help(t *testing.T) {
@@ -142,8 +142,8 @@ func TestRootCommand_Help(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "refs/chain/") {
-		t.Fatalf("expected help output to contain 'refs/chain/', got:\n%s", output)
+	if !strings.Contains(output, "refs/zhi/") {
+		t.Fatalf("expected help output to contain 'refs/zhi/', got:\n%s", output)
 	}
 }
 
@@ -210,7 +210,7 @@ func TestRootCommand_FormatFlagInheritedBySubcommands(t *testing.T) {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/cli/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/cli/...`
 Expected: FAIL — package and functions don't exist yet.
 
 - [ ] **Step 3: Write the root command**
@@ -218,7 +218,7 @@ Expected: FAIL — package and functions don't exist yet.
 Create `internal/cli/root.go`:
 
 ```go
-// ABOUTME: Cobra root command for git-chain. Wires up all subcommand groups
+// ABOUTME: Cobra root command for git-zhi. Wires up all subcommand groups
 // ABOUTME: and persistent flags (--format). Entry point for CLI execution.
 package cli
 
@@ -228,13 +228,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewRootCommand creates the top-level git-chain command with all subcommands.
+// NewRootCommand creates the top-level git-zhi command with all subcommands.
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "git-chain",
+		Use:   "git-zhi",
 		Short: "A git-native task graph for developers and agents",
-		Long: `git-chain manages development work as a dependency graph with
-built-in telemetry. All state lives in git refs under refs/chain/.
+		Long: `git-zhi manages development work as a dependency graph with
+built-in telemetry. All state lives in git refs under refs/zhi/.
 No external services required.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -435,7 +435,7 @@ func NewListCommand() *cobra.Command {
 func NewConfigCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "config [key] [value]",
-		Short: "Manage git-chain settings",
+		Short: "Manage git-zhi settings",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.Println("config: not yet implemented")
 			return nil
@@ -458,14 +458,14 @@ func NewNextCommand() *cobra.Command {
 
 - [ ] **Step 7: Create main.go**
 
-Create `cmd/git-chain/main.go`:
+Create `cmd/git-zhi/main.go`:
 
 ```go
-// ABOUTME: Entry point for the git-chain binary. Git discovers this as a
-// ABOUTME: subcommand when the binary is on $PATH (invoked as 'git chain').
+// ABOUTME: Entry point for the git-zhi binary. Git discovers this as a
+// ABOUTME: subcommand when the binary is on $PATH (invoked as 'git zhi').
 package main
 
-import "github.com/perigrin/git-chain/internal/cli"
+import "github.com/perigrin/git-zhi/internal/cli"
 
 func main() {
 	cli.Execute()
@@ -474,21 +474,21 @@ func main() {
 
 - [ ] **Step 8: Run tests to verify they pass**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/cli/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/cli/...`
 Expected: PASS (8 tests)
 
 - [ ] **Step 9: Verify binary compiles and runs**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go build -o git-chain ./cmd/git-chain && ./git-chain --help`
-Expected: Help text showing `git-chain` with `issue`, `milestone`, `list`, `config`, and `next` subcommands.
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go build -o git-zhi ./cmd/git-zhi && ./git-zhi --help`
+Expected: Help text showing `git-zhi` with `issue`, `milestone`, `list`, `config`, and `next` subcommands.
 
-Run: `./git-chain issue --help`
+Run: `./git-zhi issue --help`
 Expected: Shows `add`, `list`, `show`, `edit` subcommands.
 
-Run: `./git-chain milestone --help`
+Run: `./git-zhi milestone --help`
 Expected: Shows `add`, `list`, `show`, `edit` subcommands.
 
-Clean up: `rm git-chain`
+Clean up: `rm git-zhi`
 
 - [ ] **Step 10: Commit**
 
@@ -522,7 +522,7 @@ import (
 	git "github.com/go-git/go-git/v5"
 	gitstorage "github.com/go-git/go-git/v5/storage/memory"
 
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 // This test uses a bare in-memory repo for constructor validation only.
@@ -543,7 +543,7 @@ func TestNewStore(t *testing.T) {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/storage/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/storage/...`
 Expected: FAIL — package doesn't exist yet.
 
 - [ ] **Step 3: Write the store stub**
@@ -570,7 +570,7 @@ func NewStore(repo *git.Repository) *Store {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/storage/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/storage/...`
 Expected: PASS (1 test)
 
 - [ ] **Step 5: Commit**
@@ -606,7 +606,7 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 type contextKey string
@@ -642,7 +642,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/cli"
+	"github.com/perigrin/git-zhi/internal/cli"
 )
 
 func TestGetApp_NilOnBareContext(t *testing.T) {
@@ -664,7 +664,7 @@ func TestWithApp_RoundTrip(t *testing.T) {
 
 - [ ] **Step 3: Run tests to verify they pass**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/cli/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/cli/...`
 Expected: PASS (10 tests — 8 from root_test.go + 2 from app_test.go)
 
 - [ ] **Step 4: Commit**
@@ -699,7 +699,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 func TestNewIssue(t *testing.T) {
@@ -741,7 +741,7 @@ func TestStateConstants(t *testing.T) {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/issue/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/issue/...`
 Expected: FAIL — package doesn't exist yet.
 
 - [ ] **Step 3: Write the issue domain stub**
@@ -749,7 +749,7 @@ Expected: FAIL — package doesn't exist yet.
 Create `internal/issue/issue.go`:
 
 ```go
-// ABOUTME: Issue domain model for git-chain. Defines the Issue struct, state
+// ABOUTME: Issue domain model for git-zhi. Defines the Issue struct, state
 // ABOUTME: constants, and Session type. Parsing and marshaling added in issue 2.
 package issue
 
@@ -794,7 +794,7 @@ type Issue struct {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/issue/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/issue/...`
 Expected: PASS (2 tests)
 
 - [ ] **Step 5: Commit**
@@ -827,7 +827,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/perigrin/git-chain/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 func TestNewMilestone(t *testing.T) {
@@ -845,7 +845,7 @@ func TestNewMilestone(t *testing.T) {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/milestone/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/milestone/...`
 Expected: FAIL — package doesn't exist yet.
 
 - [ ] **Step 3: Write the milestone domain stub**
@@ -853,7 +853,7 @@ Expected: FAIL — package doesn't exist yet.
 Create `internal/milestone/milestone.go`:
 
 ```go
-// ABOUTME: Milestone domain model for git-chain. Defines the Milestone struct
+// ABOUTME: Milestone domain model for git-zhi. Defines the Milestone struct
 // ABOUTME: as pure YAML (no markdown body). Milestones group issues for delivery.
 package milestone
 
@@ -871,7 +871,7 @@ type Milestone struct {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/milestone/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/milestone/...`
 Expected: PASS (1 test)
 
 - [ ] **Step 5: Commit**
@@ -896,7 +896,7 @@ and resolution command. No markdown body — metadata only."
 
 - [ ] **Step 0: Verify prerequisite**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/issue/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/issue/...`
 Expected: PASS. If this fails, complete Task 5 first.
 
 - [ ] **Step 1: Write graph test**
@@ -909,8 +909,8 @@ package graph_test
 import (
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/graph"
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/graph"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 func TestNewGraph_Empty(t *testing.T) {
@@ -931,7 +931,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/config"
+	"github.com/perigrin/git-zhi/internal/config"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -947,7 +947,7 @@ func TestDefaultConfig(t *testing.T) {
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/graph/... ./internal/config/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/graph/... ./internal/config/...`
 Expected: FAIL — packages don't exist yet.
 
 - [ ] **Step 4: Write graph stub**
@@ -962,7 +962,7 @@ package graph
 import (
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 // Graph represents the issue dependency DAG.
@@ -987,7 +987,7 @@ func New(issues []*issue.Issue) *Graph {
 Create `internal/config/config.go`:
 
 ```go
-// ABOUTME: Chain configuration stored at refs/chain/_/config. Minimal for v0.1:
+// ABOUTME: Chain configuration stored at refs/zhi/_/config. Minimal for v0.1:
 // ABOUTME: just version and default_milestone. Read/write via config command.
 package config
 
@@ -1008,7 +1008,7 @@ func Default() *Config {
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/graph/... ./internal/config/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/graph/... ./internal/config/...`
 Expected: PASS (2 tests)
 
 - [ ] **Step 7: Commit**
@@ -1039,7 +1039,7 @@ package telemetry_test
 import (
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/telemetry"
+	"github.com/perigrin/git-zhi/internal/telemetry"
 )
 
 func TestStatusConstants(t *testing.T) {
@@ -1072,7 +1072,7 @@ package resolve_test
 import (
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/resolve"
+	"github.com/perigrin/git-zhi/internal/resolve"
 )
 
 func TestIsHead(t *testing.T) {
@@ -1090,7 +1090,7 @@ func TestIsHead(t *testing.T) {
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/telemetry/... ./internal/resolve/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/telemetry/... ./internal/resolve/...`
 Expected: FAIL — packages don't exist yet.
 
 - [ ] **Step 4: Write telemetry stub**
@@ -1142,7 +1142,7 @@ func IsHead(input string) bool {
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./internal/telemetry/... ./internal/resolve/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./internal/telemetry/... ./internal/resolve/...`
 Expected: PASS (3 tests — 2 telemetry + 1 resolve)
 
 - [ ] **Step 7: Commit**
@@ -1162,28 +1162,28 @@ in later issues."
 
 - [ ] **Step 1: Run all tests and vet**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go vet ./...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go vet ./...`
 Expected: no output (clean).
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go test ./...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go test ./...`
 Expected: PASS — all packages, all tests green.
 
 - [ ] **Step 2: Build and verify binary**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/bootstrap && go build -o git-chain ./cmd/git-chain && ./git-chain --help`
-Expected: Help output showing `git-chain` with `issue`, `milestone`, `list`, `config`, and `next` subcommands.
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/bootstrap && go build -o git-zhi ./cmd/git-zhi && ./git-zhi --help`
+Expected: Help output showing `git-zhi` with `issue`, `milestone`, `list`, `config`, and `next` subcommands.
 
 - [ ] **Step 3: Verify subcommand help**
 
-Run: `./git-chain issue --help`
+Run: `./git-zhi issue --help`
 Expected: Shows `add`, `list`, `show`, `edit` subcommands.
 
-Run: `./git-chain milestone --help`
+Run: `./git-zhi milestone --help`
 Expected: Shows `add`, `list`, `show`, `edit` subcommands.
 
 - [ ] **Step 4: Clean up binary**
 
-Run: `rm git-chain`
+Run: `rm git-zhi`
 
 - [ ] **Step 5: Final verification — no unexpected untracked files**
 

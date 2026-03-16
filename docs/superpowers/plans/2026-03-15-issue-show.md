@@ -66,7 +66,7 @@ func setupResolveRepo(t *testing.T) (*storage.Store, []string) {
 			Updated:   time.Now(),
 		}
 		data, _ := issue.Marshal(iss)
-		refPath := "refs/chain/_/issues/" + id.String()
+		refPath := "refs/zhi/_/issues/" + id.String()
 		store.WriteEntity(refPath, "issue.md", data, "create "+titles[i])
 		refPaths = append(refPaths, refPath)
 	}
@@ -76,7 +76,7 @@ func setupResolveRepo(t *testing.T) (*storage.Store, []string) {
 func TestResolveRef_UUIDPrefix(t *testing.T) {
 	store, refPaths := setupResolveRepo(t)
 	// Extract UUID from first ref path
-	fullUUID := strings.TrimPrefix(refPaths[0], "refs/chain/_/issues/")
+	fullUUID := strings.TrimPrefix(refPaths[0], "refs/zhi/_/issues/")
 	prefix := fullUUID[:8]
 
 	result, err := resolve.ResolveRef(store, prefix)
@@ -121,7 +121,7 @@ func TestResolveRef_HEAD_Pending(t *testing.T) {
 			Milestone: "v0.1", Created: time.Now(), Updated: time.Now(),
 		}
 		data, _ := issue.Marshal(iss)
-		store.WriteEntity("refs/chain/_/issues/"+id.String(), "issue.md", data, "create")
+		store.WriteEntity("refs/zhi/_/issues/"+id.String(), "issue.md", data, "create")
 		time.Sleep(time.Millisecond) // ensure distinct UUIDv7 timestamps
 	}
 
@@ -153,7 +153,7 @@ Note: `TestResolveRef_AmbiguousPrefix` is hard to construct deterministically wi
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/issue-show && go test ./internal/resolve/...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/issue-show && go test ./internal/resolve/...`
 
 - [ ] **Step 3: Implement ResolveRef**
 
@@ -169,8 +169,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/storage"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 // IsHead returns true if the input resolves to the HEAD reference.
@@ -196,7 +196,7 @@ func ResolveRef(store *storage.Store, input string) (string, error) {
 // creation time). This is a pre-graph placeholder; issue 7 replaces
 // it with critical-chain-aware HEAD resolution.
 func resolveHead(store *storage.Store) (string, error) {
-	refs, err := store.ListRefs("refs/chain/_/issues/")
+	refs, err := store.ListRefs("refs/zhi/_/issues/")
 	if err != nil {
 		return "", fmt.Errorf("list issues: %w", err)
 	}
@@ -241,14 +241,14 @@ func resolveHead(store *storage.Store) (string, error) {
 
 // resolveUUIDPrefix scans issue refs for a unique prefix match.
 func resolveUUIDPrefix(store *storage.Store, prefix string) (string, error) {
-	refs, err := store.ListRefs("refs/chain/_/issues/")
+	refs, err := store.ListRefs("refs/zhi/_/issues/")
 	if err != nil {
 		return "", fmt.Errorf("list issues: %w", err)
 	}
 
 	var matches []string
 	for _, ref := range refs {
-		uuid := strings.TrimPrefix(ref, "refs/chain/_/issues/")
+		uuid := strings.TrimPrefix(ref, "refs/zhi/_/issues/")
 		if strings.HasPrefix(uuid, prefix) {
 			matches = append(matches, ref)
 		}
@@ -262,7 +262,7 @@ func resolveUUIDPrefix(store *storage.Store, prefix string) (string, error) {
 	default:
 		ids := make([]string, len(matches))
 		for i, m := range matches {
-			ids[i] = strings.TrimPrefix(m, "refs/chain/_/issues/")[:8]
+			ids[i] = strings.TrimPrefix(m, "refs/zhi/_/issues/")[:8]
 		}
 		return "", fmt.Errorf("ambiguous prefix %q matches %d issues: %s", prefix, len(matches), strings.Join(ids, ", "))
 	}
@@ -271,7 +271,7 @@ func resolveUUIDPrefix(store *storage.Store, prefix string) (string, error) {
 
 - [ ] **Step 4: Run tests, verify pass**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/issue-show && go test ./internal/resolve/... -v`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/issue-show && go test ./internal/resolve/... -v`
 Expected: PASS (6 tests — 1 existing + 5 new)
 
 - [ ] **Step 5: Commit**
@@ -305,7 +305,7 @@ package issue_test
 import (
 	"testing"
 
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 func TestParseSections_Full(t *testing.T) {
@@ -640,8 +640,8 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/perigrin/git-chain/internal/cli"
-	"github.com/perigrin/git-chain/internal/issue"
+	"github.com/perigrin/git-zhi/internal/cli"
+	"github.com/perigrin/git-zhi/internal/issue"
 )
 
 // createTestIssue is a helper that creates an issue in the store and returns its UUID.
@@ -661,7 +661,7 @@ func createTestIssue(t *testing.T, app *cli.App, title string, state issue.State
 	if err != nil {
 		t.Fatalf("marshal issue: %v", err)
 	}
-	if err := app.Store.WriteEntity("refs/chain/_/issues/"+id.String(), "issue.md", data, "create"); err != nil {
+	if err := app.Store.WriteEntity("refs/zhi/_/issues/"+id.String(), "issue.md", data, "create"); err != nil {
 		t.Fatalf("write issue: %v", err)
 	}
 	return id
@@ -784,8 +784,8 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
-	"github.com/perigrin/git-chain/internal/issue"
-	"github.com/perigrin/git-chain/internal/resolve"
+	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/resolve"
 )
 
 // IssueJSON is the presentation struct for --format json output.
@@ -835,7 +835,7 @@ func runIssueShow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Extract ID from ref path
-	uuidStr := strings.TrimPrefix(refPath, "refs/chain/_/issues/")
+	uuidStr := strings.TrimPrefix(refPath, "refs/zhi/_/issues/")
 	id, err := uuid.FromString(uuidStr)
 	if err != nil {
 		return fmt.Errorf("parse issue ID from ref: %w", err)
@@ -907,7 +907,7 @@ func showHuman(cmd *cobra.Command, app *App, iss *issue.Issue) error {
 // resolveIssueTitle loads an issue by UUID and returns its title.
 // Returns a placeholder on error.
 func resolveIssueTitle(app *App, id uuid.UUID) string {
-	refPath := "refs/chain/_/issues/" + id.String()
+	refPath := "refs/zhi/_/issues/" + id.String()
 	content, err := app.Store.ReadEntity(refPath, "issue.md")
 	if err != nil {
 		return "(unknown)"
@@ -937,7 +937,7 @@ func newIssueShowCommand() *cobra.Command {
 
 - [ ] **Step 5: Run all tests, verify pass**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/issue-show && go vet ./... && go test ./...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/issue-show && go vet ./... && go test ./...`
 Expected: all pass.
 
 - [ ] **Step 6: Commit**
@@ -957,22 +957,22 @@ parsed sections (prerequisites, context, acceptance criteria) per PRD."
 
 - [ ] **Step 1: Run full suite with race detector**
 
-Run: `cd /home/perigrin/dev/git-chain/.worktrees/issue-show && go vet ./... && go test -race ./...`
+Run: `cd /home/perigrin/dev/git-zhi/.worktrees/issue-show && go vet ./... && go test -race ./...`
 
 - [ ] **Step 2: Build and smoke test**
 
 ```bash
-go build -o git-chain ./cmd/git-chain/
+go build -o git-zhi ./cmd/git-zhi/
 cd $(mktemp -d) && git init
-echo -e '---\ntitle: "Test issue"\n---\n\n## Prerequisites\n\n- [x] ready\n\n## Context\n\n- paths: main.go\n\nDo the thing.\n\n## Acceptance Criteria\n\n- [ ] it works' | ../git-chain issue add
-../git-chain issue show
-../git-chain issue show --format json
+echo -e '---\ntitle: "Test issue"\n---\n\n## Prerequisites\n\n- [x] ready\n\n## Context\n\n- paths: main.go\n\nDo the thing.\n\n## Acceptance Criteria\n\n- [ ] it works' | ../git-zhi issue add
+../git-zhi issue show
+../git-zhi issue show --format json
 ```
 
 - [ ] **Step 3: Clean up and verify git status**
 
 ```bash
-rm -f /home/perigrin/dev/git-chain/.worktrees/issue-show/git-chain
-cd /home/perigrin/dev/git-chain/.worktrees/issue-show && git status
+rm -f /home/perigrin/dev/git-zhi/.worktrees/issue-show/git-zhi
+cd /home/perigrin/dev/git-zhi/.worktrees/issue-show && git status
 ```
 Expected: clean working tree.

@@ -9,7 +9,7 @@
 ### `milestone add <name>`
 - Create a milestone with the given name
 - `--due <date>` flag (YYYY-MM-DD)
-- Write to `refs/chain/_/milestones/<name>`
+- Write to `refs/zhi/_/milestones/<name>`
 - Error if milestone already exists
 
 ### `milestone list`

@@ -33,12 +33,12 @@ Commit author read from git config (`user.name`, `user.email`) at Store construc
 
 ## Lazy Init
 
-Triggered by mutating commands. `App.EnsureInitialized()` checks for `refs/chain/_/config`:
+Triggered by mutating commands. `App.EnsureInitialized()` checks for `refs/zhi/_/config`:
 
 1. If exists, return early
-2. Write default config to `refs/chain/_/config`
-3. Write default milestone to `refs/chain/_/milestones/v0.1`
-4. Configure refspecs for `refs/chain/*` sync (if remote exists)
+2. Write default config to `refs/zhi/_/config`
+3. Write default milestone to `refs/zhi/_/milestones/v0.1`
+4. Configure refspecs for `refs/zhi/*` sync (if remote exists)
 
 Repo opening is lazy — `PersistentPreRunE` defers opening until first command that needs it, so `--help` always works regardless of current directory.
 

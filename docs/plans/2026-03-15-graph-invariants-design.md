@@ -22,7 +22,7 @@ The `internal/graph/graph.go` stub has `New(issues)` and `Len()`. Expand with:
 - `CriticalChain() []*issue.Issue` — longest path through non-done/non-cancelled issues via topo sort + DP
 - `ReadySet() []*issue.Issue` — unblocked pending issues
 - `Head() *issue.Issue` — in-progress issue, or next on critical chain with most downstream deps
-- `TopologicalSort() []*issue.Issue` — for `chain list` default view
+- `TopologicalSort() []*issue.Issue` — for `zhi list` default view
 
 ### Integration
 - Update `resolve.resolveHead` to use Graph.Head() when graph is available

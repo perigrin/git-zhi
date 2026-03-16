@@ -25,7 +25,7 @@ Non-interactive edit flags for `issue edit`: `--block`, `--unblock`, `--mileston
 
 ## Tags
 
-Tags are lightweight refs: `refs/chain/_/tags/<name>` stores a pointer to `refs/chain/_/issues/<uuid>`. The Store already supports this via WriteEntity/RefExists. Tag content is a simple text file containing the target ref path.
+Tags are lightweight refs: `refs/zhi/_/tags/<name>` stores a pointer to `refs/zhi/_/issues/<uuid>`. The Store already supports this via WriteEntity/RefExists. Tag content is a simple text file containing the target ref path.
 
 ## Files
 

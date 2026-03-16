@@ -6,7 +6,7 @@ List all open issues sorted by creation time (UUIDv7 lexicographic order). Filte
 
 ## Implementation
 
-Load all issue refs via `store.ListRefs("refs/chain/_/issues/")`, read and parse each, apply filters, sort by UUID (creation time), display.
+Load all issue refs via `store.ListRefs("refs/zhi/_/issues/")`, read and parse each, apply filters, sort by UUID (creation time), display.
 
 **Human output** (matches PRD):
 ```

@@ -1,23 +1,23 @@
-# Issue 9: `chain list` + `chain next` + `chain config` — Design
+# Issue 9: `zhi list` + `zhi next` + `zhi config` — Design
 
 ## Scope
 
-Three top-level commands. `chain list` uses the graph's topological sort with `--graph` and `--critical` modes. `chain next` aliases `issue show HEAD`. `chain config` reads/writes config ref.
+Three top-level commands. `zhi list` uses the graph's topological sort with `--graph` and `--critical` modes. `zhi next` aliases `issue show HEAD`. `zhi config` reads/writes config ref.
 
 ## Commands
 
-### `chain list`
+### `zhi list`
 - Default: topological sort of all issues, grouped by milestone
 - `--critical`: highlight critical chain (longest sequential path)
 - `--all`: include done/cancelled
 - `--milestone <name>`: filter to milestone
 - `--format json`
 
-### `chain next`
+### `zhi next`
 - Alias for `issue show HEAD`
 - Shows the current in-progress issue, or next on critical chain
 
-### `chain config`
+### `zhi config`
 - Without args: display current config
 - With key value: set a config option
 - Supports: `default_milestone <name>`

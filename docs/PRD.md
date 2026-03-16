@@ -1,18 +1,18 @@
 ---
-title: git-chain PRD v3
+title: git-zhi PRD v3
 tags: ["projects", "ideas"]
-description: "Product requirements document for git-chain, a local-first git-native dependency-driven development workflow scheduler with telemetry"
+description: "Product requirements document for git-zhi, a local-first git-native dependency-driven development workflow scheduler with telemetry"
 ---
 
-# git-chain: Product Requirements Document
+# git-zhi: Product Requirements Document
 
 ## Overview
 
-**`git-chain` is a git-native task graph that tells developers — and agents — what to do next.**
+**`git-zhi` is a git-native task graph that tells developers — and agents — what to do next.**
 
-`git-chain` is a git subcommand that manages development work as a dependency graph with built-in telemetry. All state lives locally in the git repository as per-entity refs under `refs/chain/`. It requires no external services, works offline, and syncs automatically via standard git push/pull. Invoked as `git chain` (git finds the `git-chain` binary on `$PATH`).
+`git-zhi` is a git subcommand that manages development work as a dependency graph with built-in telemetry. All state lives locally in the git repository as per-entity refs under `refs/zhi/`. It requires no external services, works offline, and syncs automatically via standard git push/pull. Invoked as `git zhi` (git finds the `git-zhi` binary on `$PATH`).
 
-Following git’s own convention, `git-chain` discovers subcommands on `$PATH`: any executable named `git-chain-<n>` can be invoked as `git chain <n>`. This enables third-party plugins, community extensions, and local scripts to extend the tool without modifying the core binary.
+Following git’s own convention, `git-zhi` discovers subcommands on `$PATH`: any executable named `git-zhi-<n>` can be invoked as `git zhi <n>`. This enables third-party plugins, community extensions, and local scripts to extend the tool without modifying the core binary.
 
 This is a standalone Go binary — no runtime dependencies, no GitHub dependency, no API tokens required.
 
@@ -20,38 +20,38 @@ This is a standalone Go binary — no runtime dependencies, no GitHub dependency
 
 ```bash
 # Install
-go install github.com/perigrin/git-chain@latest
+go install github.com/perigrin/git-zhi@latest
 
 # Create your first issue (lazy-inits everything)
 cd your-project
-git chain issue add
+git zhi issue add
 # $EDITOR opens — write your issue, save, exit.
 # Chain state initialized. Default milestone created. Refspecs configured.
 
 # Add a few more issues
-git chain issue add
+git zhi issue add
 # Write multiple issues separated by --- for batch creation with sequential dependencies
 
 # See the chain
-git chain list
+git zhi list
 
 # What should I work on?
-git chain issue show
+git zhi issue show
 # -> Shows the current in-progress issue, or the next issue to work on (HEAD)
 
 # Tag it for easy reference
-git chain issue edit 019444a1 --tag lexer
+git zhi issue edit 019444a1 --tag lexer
 
 # Start working
-git chain issue edit lexer --state start
+git zhi issue edit lexer --state start
 
 # Do your work, make commits as normal...
 
 # Finish
-git chain issue edit lexer --state done
+git zhi issue edit lexer --state done
 
 # Check project health
-git chain milestone show HEAD
+git zhi milestone show HEAD
 
 # Sync with team (just push/pull as normal)
 git push
@@ -60,12 +60,12 @@ git push
 An AI coding agent does the same thing:
 
 ```bash
-git chain issue show --format json
+git zhi issue show --format json
 # -> next issue on critical chain with full context
 
-git chain issue edit 019444a1 --state start
+git zhi issue edit 019444a1 --state start
 # agent works...
-git chain issue edit 019444a1 --state done
+git zhi issue edit 019444a1 --state done
 ```
 
 ## Problem Statement
@@ -74,7 +74,7 @@ Development work forms a dependency graph, not a flat list. Existing issue track
 
 Additionally, planning tools rely on manual estimates — developers guess how long tasks will take, then the plan drifts from reality as guesses prove wrong. Nobody goes back to update the estimates because it's busywork.
 
-git-chain takes a different approach:
+git-zhi takes a different approach:
 
 - **Dependencies are operational, not informational.** The task graph determines what's ready, what's blocked, and what the critical chain is. The scheduler selects work; developers don't have to figure out what to do next.
 - **Telemetry replaces estimation.** The tool observes repository activity signals — commit frequency, completion rate, elapsed time — and produces forecasts. Given a deadline, it tells you what scope fits. Without one, it tells you when you'll be done. Nobody enters estimates. Nobody updates estimates. The system watches what actually happens and projects forward.
@@ -89,7 +89,7 @@ git-chain takes a different approach:
 
 ## Non-Goals
 
-git-chain does not attempt to model:
+git-zhi does not attempt to model:
 
 - Developer resource allocation or team capacity planning (see v0.4 roadmap)
 - Calendar scheduling or time-of-day awareness
@@ -98,11 +98,11 @@ git-chain does not attempt to model:
 - External project management workflows (dashboards, reporting, Gantt charts — see v0.4 roadmap)
 - Enforcement of issue sizing — the tool assumes issues are session-sized (see Task Definition) and reflects deviations back to you via telemetry, but it won't reject an issue for being too large or too small
 
-If you need those things today, use Jira or Linear. git-chain is for people who want their task graph in git and their forecasts derived from what actually happened.
+If you need those things today, use Jira or Linear. git-zhi is for people who want their task graph in git and their forecasts derived from what actually happened.
 
 ## Conceptual Model
 
-git-chain represents work as a dependency DAG stored in git. Issues are nodes. Prerequisites are edges. The scheduler uses this graph to determine what's ready, what's critical, and what to work on next.
+git-zhi represents work as a dependency DAG stored in git. Issues are nodes. Prerequisites are edges. The scheduler uses this graph to determine what's ready, what's critical, and what to work on next.
 
 ### The DAG Scheduler
 
@@ -118,7 +118,7 @@ next issue (issue on critical chain with most downstream dependencies)
 HEAD (current or next issue)
 ```
 
-Position in the chain determines priority. `git chain list --critical` shows the critical chain — the longest sequential path through the dependency graph. Work not on the critical chain can happen in parallel or be cut without affecting the delivery date. The DAG is the real structure; `git chain list` shows a linearized view (topological sort) by default.
+Position in the chain determines priority. `git zhi list --critical` shows the critical chain — the longest sequential path through the dependency graph. Work not on the critical chain can happen in parallel or be cut without affecting the delivery date. The DAG is the real structure; `git zhi list` shows a linearized view (topological sort) by default.
 
 ### Core Concepts
 
@@ -143,7 +143,7 @@ Position in the chain determines priority. `git chain list --critical` shows the
 
 ### Task Definition
 
-An issue in git-chain is defined as a unit of work that can be comfortably completed in a single ideal session of uninterrupted work that stands alone as a deliverable slice of value for the product.
+An issue in git-zhi is defined as a unit of work that can be comfortably completed in a single ideal session of uninterrupted work that stands alone as a deliverable slice of value for the product.
 
 **Ideal session:** A focused block of work with minimal context switches, interruptions, or external dependencies.
 
@@ -164,11 +164,11 @@ An issue in git-chain is defined as a unit of work that can be comfortably compl
 
 ### Critical Chain Scheduling
 
-git-chain adapts the scheduling model from Critical Chain Project Management (CCPM). Tasks are sized assuming ideal conditions. Uncertainty is pooled into a shared milestone buffer, which absorbs variance in execution. git-chain differs by deriving buffer signals from repository telemetry rather than manual estimates.
+git-zhi adapts the scheduling model from Critical Chain Project Management (CCPM). Tasks are sized assuming ideal conditions. Uncertainty is pooled into a shared milestone buffer, which absorbs variance in execution. git-zhi differs by deriving buffer signals from repository telemetry rather than manual estimates.
 
 ## Development Telemetry
 
-git-chain treats the repository as a **sensor**. It observes activity signals and produces derived indicators. This is closer to observability than project management — the system instruments what's actually happening rather than tracking what someone planned to happen.
+git-zhi treats the repository as a **sensor**. It observes activity signals and produces derived indicators. This is closer to observability than project management — the system instruments what's actually happening rather than tracking what someone planned to happen.
 
 **The core distinction: telemetry + forecasting ≠ estimation.** Nobody enters estimates. Nobody updates estimates. The system watches what actually happens — commits, completions, elapsed time — and projects forward. Forecasts get more accurate as data accumulates. They are never promises.
 
@@ -209,7 +209,7 @@ Both modes use the same signals. The question just flips: *will you make the dea
 
 ### Shadow Work Detection
 
-Gaps between measurement windows — time when no issue is actively being worked — represent shadow work: context switches, meetings, untracked tasks, exploratory work, scope creep. A git-chain issue represents one ideal session; any time spent outside that session is treated as shadow work. git-chain doesn't know *what* the shadow work is, but it knows it's there, and it adjusts forecast confidence accordingly. A time-in-chain ratio of 60% means 40% of your time is invisible to the scheduler. That's not a problem the tool can fix, but it's information you should have.
+Gaps between measurement windows — time when no issue is actively being worked — represent shadow work: context switches, meetings, untracked tasks, exploratory work, scope creep. A git-zhi issue represents one ideal session; any time spent outside that session is treated as shadow work. git-zhi doesn't know *what* the shadow work is, but it knows it's there, and it adjusts forecast confidence accordingly. A time-in-chain ratio of 60% means 40% of your time is invisible to the scheduler. That's not a problem the tool can fix, but it's information you should have.
 
 ### Signal Noise
 
@@ -221,7 +221,7 @@ The observed signals list is not closed. As the tool matures, additional inputs 
 
 ## Architecture
 
-Issues and milestones are stored as per-entity git refs under `refs/chain/`. Each ref is an append-only event stream. Current state is derived from the latest commit on each ref. The issue dependency graph is reconstructed dynamically from these states. No mutable state files, no external databases — just git objects and refs.
+Issues and milestones are stored as per-entity git refs under `refs/zhi/`. Each ref is an append-only event stream. Current state is derived from the latest commit on each ref. The issue dependency graph is reconstructed dynamically from these states. No mutable state files, no external databases — just git objects and refs.
 
 ### Event-Sourced Chain Graph
 
@@ -230,7 +230,7 @@ Chain state is not stored as mutable records. Instead, all operations append com
 This design has several important consequences:
 
 - **Merges combine event streams.** Two developers editing different issues touch different refs — zero merge conflicts ever. Same-issue edits produce parallel commit histories on the same ref, resolved the same way git resolves any diverged branch.
-- **History never mutates.** Every change to an issue is a new commit on that issue's ref. `git log refs/chain/_/issues/<id>` is the complete audit trail.
+- **History never mutates.** Every change to an issue is a new commit on that issue's ref. `git log refs/zhi/_/issues/<id>` is the complete audit trail.
 - **State is reconstructed.** The current state of an issue or milestone is derived by reading the latest commit on its ref. The full history of changes is available by walking the commit chain.
 
 This is the same pattern used by git-bug and similar git-native tools: per-entity refs where each ref's commit history is the event log for that entity.
@@ -279,11 +279,11 @@ Issue identities use **UUIDv7** to ensure stable, globally unique identifiers ac
 
 ```bash
 # All of these work:
-git chain issue show 019444a1
-git chain issue show 019444a1-b2c3-7def
-git chain issue show auth-refactor   # resolves by tag
-git chain issue show oauth           # resolves by title if unambiguous
-git chain issue show                 # HEAD — current or next issue on critical chain
+git zhi issue show 019444a1
+git zhi issue show 019444a1-b2c3-7def
+git zhi issue show auth-refactor   # resolves by tag
+git zhi issue show oauth           # resolves by title if unambiguous
+git zhi issue show                 # HEAD — current or next issue on critical chain
 ```
 
 ### Graph Invariants
@@ -300,14 +300,14 @@ These invariants are checked locally on every mutating operation. Violations fro
 
 ### Storage Layout
 
-State is stored as per-entity refs under `refs/chain/`, similar to git-bug. Each issue and milestone gets its own git ref, and each ref's commit history is the audit trail for that entity. State never appears in the working tree.
+State is stored as per-entity refs under `refs/zhi/`, similar to git-bug. Each issue and milestone gets its own git ref, and each ref's commit history is the audit trail for that entity. State never appears in the working tree.
 
 **Why per-entity refs:** Two people editing different issues touch different refs — zero merge conflicts ever. Same-issue conflict means the same ref — fast-forward or explicit conflict. Git's existing push/pull handles sync. No custom merge logic needed.
 
 #### Ref Layout
 
 ```
-.git/refs/chain/
+.git/refs/zhi/
   _/                                  # default chain (unnamed)
     config                            # ref → config blob
     issues/
@@ -326,21 +326,21 @@ State is stored as per-entity refs under `refs/chain/`, similar to git-bug. Each
 
 **Reading state:**
 
-- `git show refs/chain/_/issues/<id>:issue.md` — read current issue state
-- `git for-each-ref refs/chain/_/issues/` — list all issues
-- `git log refs/chain/_/issues/<id>` — view audit trail for an issue
+- `git show refs/zhi/_/issues/<id>:issue.md` — read current issue state
+- `git for-each-ref refs/zhi/_/issues/` — list all issues
+- `git log refs/zhi/_/issues/<id>` — view audit trail for an issue
 
 **Writing state:** The CLI creates a new commit on the entity's ref with the updated blob.
 
-**Chain naming:** Chains are always named. The default chain is `_`. Multi-chain support (different namespaces under `refs/chain/<name>/`) is planned for v0.3. The ref layout supports multi-chain without migration.
+**Chain naming:** Chains are always named. The default chain is `_`. Multi-chain support (different namespaces under `refs/zhi/<name>/`) is planned for v0.3. The ref layout supports multi-chain without migration.
 
 #### Performance Note
 
-Walking commit history to rebuild state is fast for the expected scale (tens to low hundreds of issues). Each entity ref has a short commit chain — one commit per mutation of that entity, not one commit per mutation of the entire system. For projects that accumulate very long entity histories, a `chain gc` command could snapshot derived state, but this is an optimization for v0.3, not a design concern for v0.1.
+Walking commit history to rebuild state is fast for the expected scale (tens to low hundreds of issues). Each entity ref has a short commit chain — one commit per mutation of that entity, not one commit per mutation of the entire system. For projects that accumulate very long entity histories, a `zhi gc` command could snapshot derived state, but this is an optimization for v0.3, not a design concern for v0.1.
 
 ### Sync
 
-Sync is automatic. Lazy init configures refspecs so `git push` and `git pull` sync `refs/chain/*` alongside normal branches.
+Sync is automatic. Lazy init configures refspecs so `git push` and `git pull` sync `refs/zhi/*` alongside normal branches.
 
 **Per-entity ref merge semantics:**
 
@@ -351,12 +351,12 @@ Sync is automatic. Lazy init configures refspecs so `git push` and `git pull` sy
 **Semantic reconciliation:** Git merges commits structurally, but the tool must interpret them at the domain level. When semantic conflicts occur — for example, one branch closes an issue while another splits it — both commits land on the same ref. The tool detects the divergence on the next read and reports it:
 
 ```
-$ git chain-sync
+$ git zhi-sync
 ⚠ Conflict on 019444a2: Parse basic sub declarations
   Local:  state → done (closed by abc123)
   Remote: split into 019444a2 + 019444d1 (by def456)
 
-  Both events preserved. Run: git chain issue edit 019444a2
+  Both events preserved. Run: git zhi issue edit 019444a2
   to resolve.
 ```
 
@@ -369,9 +369,9 @@ Because the full event log is preserved, resolution is always possible without d
 ```bash
 # .gitconfig
 [alias]
-  chain-push = push origin refs/chain/*:refs/chain/*
-  chain-pull = fetch origin refs/chain/*:refs/chain/*
-  chain-sync = !git chain-pull && git chain-push
+  chain-push = push origin refs/zhi/*:refs/zhi/*
+  chain-pull = fetch origin refs/zhi/*:refs/zhi/*
+  chain-sync = !git zhi-pull && git zhi-push
 ```
 
 There is no `sync` command — `git push` and `git pull` handle everything. The aliases are a convenience for syncing chain state independently of your working branches.
@@ -438,7 +438,7 @@ All fields are optional. The context block is not required — issues work fine 
 **Example: what an agent sees**
 
 ```bash
-$ git chain issue show 019444a2 --format json
+$ git zhi issue show 019444a2 --format json
 ```
 
 ```json
@@ -487,7 +487,7 @@ Listed at the bottom of the body, after the main description. `issue edit --stat
 - [x] error messages include line numbers (`grep -c 'line [0-9]' t/parser/errors.expected`)
 ```
 
-The criteria text stays human-readable, but now carries its own verification. Plugins like `git-chain-smoker` can parse the backtick-delimited commands and run them as regression tests. The issue becomes progressively more machine-verifiable as work happens — acceptance criteria start as intent and finish as executable specifications.
+The criteria text stays human-readable, but now carries its own verification. Plugins like `git-zhi-smoker` can parse the backtick-delimited commands and run them as regression tests. The issue becomes progressively more machine-verifiable as work happens — acceptance criteria start as intent and finish as executable specifications.
 
 **Verifiable done states:** Because issues track the exact commit SHA when they were marked done, checking out that reference and running the acceptance criteria commands should produce a clean pass. If it doesn't, either someone rewrote history or the criteria were checked without the implementation actually meeting them. Git's content-addressed storage plus executable acceptance criteria means "done" is a provable claim, not just a checkbox.
 
@@ -553,28 +553,28 @@ Configuration is minimal. No hook configuration — hooks are the user's respons
 
 ## Lazy Initialization
 
-There is no `init` command. The first `git chain` command that modifies state (e.g., `issue add`) performs lazy initialization:
+There is no `init` command. The first `git zhi` command that modifies state (e.g., `issue add`) performs lazy initialization:
 
-1. Creates the ref namespace under `refs/chain/_/`
+1. Creates the ref namespace under `refs/zhi/_/`
 2. Creates default config
 3. Configures refspecs for automatic sync on push/pull
 4. Creates a default milestone if none exists
 
-The first `git chain` command on a clone detects existing refs, fetches them, and configures local refspecs.
+The first `git zhi` command on a clone detects existing refs, fetches them, and configures local refspecs.
 
 ## Commands
 
-git-chain has 10 commands organized into three groups: top-level (2), issue (4), and milestone (4).
+git-zhi has 10 commands organized into three groups: top-level (2), issue (4), and milestone (4).
 
 All commands that produce output support `--format json` for machine-readable output. User-defined templates for custom reporting are future work.
 
 **Tags:** Issues and milestones can be tagged with short human-readable names, following the same mental model as git tags — lightweight named references that point at entities. `HEAD` is a built-in tag that resolves contextually: for issue commands, it points to the current in-progress issue, or if none, the next issue on the critical chain (selected by most downstream dependencies); for milestone commands, it points to the milestone of the HEAD issue. Where commands accept a `<ref>` argument, any of the following work: UUIDv7 (or unique prefix), tag name, title substring, or `HEAD`. If `<ref>` is omitted, `HEAD` is the implicit default.
 
-**`git chain next`:** Effectively an alias for `git chain issue show HEAD` — show the current in-progress issue, or if none, the next issue on the critical chain with the most downstream dependencies, with full context, prerequisites, and acceptance criteria.
+**`git zhi next`:** Effectively an alias for `git zhi issue show HEAD` — show the current in-progress issue, or if none, the next issue on the critical chain with the most downstream dependencies, with full context, prerequisites, and acceptance criteria.
 
 ### Top-Level Commands
 
-#### `git chain list`
+#### `git zhi list`
 
 Show the full chain, linearized by default.
 
@@ -643,24 +643,24 @@ Parallel work available: 019444a3, 019444a4, 019444a5, 019444b2
 
 -----
 
-#### `git chain config`
+#### `git zhi config`
 
-Manage git-chain settings.
+Manage git-zhi settings.
 
 **Behavior:**
 
 - Without arguments: display current configuration
 - With key/value: set a configuration option
-- Settings stored in `refs/chain/_/config`
+- Settings stored in `refs/zhi/_/config`
 
 **Examples:**
 
 ```
-$ git chain config
+$ git zhi config
 version: 1
 default_milestone: v0.1
 
-$ git chain config default_milestone v0.2
+$ git zhi config default_milestone v0.2
 Set default_milestone = v0.2
 ```
 
@@ -668,7 +668,7 @@ Set default_milestone = v0.2
 
 ### Issue Commands
 
-#### `git chain issue add`
+#### `git zhi issue add`
 
 Create one or more new issues.
 
@@ -685,7 +685,7 @@ Create one or more new issues.
 Quick capture (single issue):
 
 ```
-$ git chain issue add
+$ git zhi issue add
 # $EDITOR opens with template:
 # ---
 # title: ""
@@ -709,7 +709,7 @@ Created 019444c1: Fix heredoc edge case
 Batch capture (multiple issues):
 
 ```
-$ git chain issue add
+$ git zhi issue add
 # $EDITOR opens, user writes:
 # ---
 # title: "Parse basic signatures"
@@ -737,7 +737,7 @@ Created 2 issues (chained sequentially):
 
 -----
 
-#### `git chain issue list`
+#### `git zhi issue list`
 
 List issues.
 
@@ -767,7 +767,7 @@ List issues.
 
 -----
 
-#### `git chain issue show <ref>`
+#### `git zhi issue show <ref>`
 
 View an issue with full context: dependencies, measurement windows, execution context, and chain position.
 
@@ -821,11 +821,11 @@ View an issue with full context: dependencies, measurement windows, execution co
     [ ] error messages include line numbers
 ```
 
-**Audit trail:** Use `git log refs/chain/_/issues/<id>` to view the full history of changes to an issue.
+**Audit trail:** Use `git log refs/zhi/_/issues/<id>` to view the full history of changes to an issue.
 
 -----
 
-#### `git chain issue edit <ref>`
+#### `git zhi issue edit <ref>`
 
 Modify an issue. The swiss army knife — state transitions, positioning, dependencies, splitting, merging, and cancellation are all available via flags or `$EDITOR` frontmatter editing.
 
@@ -854,23 +854,23 @@ Modify an issue. The swiss army knife — state transitions, positioning, depend
 **State transitions with `--state`:**
 
 ```
-$ git chain issue edit 019444a2 --state start
+$ git zhi issue edit 019444a2 --state start
 Started 019444a2: Parse basic sub declarations
   Recorded HEAD: abc1234
   ⚠ Unchecked prerequisites:
     [ ] staging environment deployed
   Start anyway? [y/N]
 
-$ git chain issue edit 019444a2 --state pause
+$ git zhi issue edit 019444a2 --state pause
 Paused 019444a2: Parse basic sub declarations
   Recorded HEAD: def5678
   Window: abc1234..def5678 (4 commits)
 
-$ git chain issue edit 019444a2 --state resume
+$ git zhi issue edit 019444a2 --state resume
 Resumed 019444a2: Parse basic sub declarations
   Recorded HEAD: ghi9012
 
-$ git chain issue edit 019444a2 --state done
+$ git zhi issue edit 019444a2 --state done
 Completed 019444a2: Parse basic sub declarations
   Recorded HEAD: jkl3456
   Window: ghi9012..jkl3456 (3 commits)
@@ -884,7 +884,7 @@ Completed 019444a2: Parse basic sub declarations
 **`$EDITOR` workflow:**
 
 ```
-$ git chain issue edit 019444a2
+$ git zhi issue edit 019444a2
 # $EDITOR opens with current issue content:
 # ---
 # title: "Parse basic sub declarations"
@@ -917,7 +917,7 @@ Updated 019444a2: Parse basic sub declarations
 **Splitting with `--split`:**
 
 ```
-$ git chain issue edit 019444a2 --split
+$ git zhi issue edit 019444a2 --split
 # $EDITOR opens with issue content.
 # User inserts --- to split into multiple blocks.
 # Each block becomes a separate issue, chained sequentially.
@@ -934,7 +934,7 @@ Dependencies transferred: 019444b1 now blocked by 019444d1
 **Merging (combining trivially small issues):**
 
 ```
-$ git chain issue edit 019444a4 --merge 019444a5
+$ git zhi issue edit 019444a4 --merge 019444a5
 Merged 019444a5 into 019444a4:
   019444a4  Error recovery + full method modifier support
 
@@ -945,7 +945,7 @@ Measurement windows combined.
 **Cancellation:**
 
 ```
-$ git chain issue edit 019444a5 --state cancel
+$ git zhi issue edit 019444a5 --state cancel
 Cancelled 019444a5: Full method modifier support
   Reconnected dependencies around cancelled issue
 ```
@@ -953,7 +953,7 @@ Cancelled 019444a5: Full method modifier support
 **Purging (permanent deletion):**
 
 ```
-$ git chain issue edit 019444a5 --purge
+$ git zhi issue edit 019444a5 --purge
 Permanently delete 019444a5: Full method modifier support? [y/N] y
 Purged 019444a5 (permanently deleted)
 ```
@@ -962,7 +962,7 @@ Purged 019444a5 (permanently deleted)
 
 ### Milestone Commands
 
-#### `git chain milestone add <name>`
+#### `git zhi milestone add <name>`
 
 Create a new milestone.
 
@@ -974,7 +974,7 @@ Create a new milestone.
 **Examples:**
 
 ```
-$ git chain milestone add v0.2
+$ git zhi milestone add v0.2
 Created milestone: v0.2
 ```
 
@@ -984,7 +984,7 @@ Created milestone: v0.2
 
 -----
 
-#### `git chain milestone list`
+#### `git zhi milestone list`
 
 List all milestones.
 
@@ -1015,7 +1015,7 @@ List all milestones.
 
 -----
 
-#### `git chain milestone show <ref>`
+#### `git zhi milestone show <ref>`
 
 Show milestone detail with issues and fever chart.
 
@@ -1027,7 +1027,7 @@ Show milestone detail with issues and fever chart.
 **Output:**
 
 ```
-$ git chain milestone show HEAD
+$ git zhi milestone show HEAD
 
 v0.1 [due: Apr 15 — 22 days left]
 
@@ -1082,7 +1082,7 @@ RED:    buffer burn % > progress % + 20  (behind, consider cutting scope)
 
 -----
 
-#### `git chain milestone edit <ref>`
+#### `git zhi milestone edit <ref>`
 
 Modify a milestone.
 
@@ -1094,10 +1094,10 @@ Modify a milestone.
 **Examples:**
 
 ```
-$ git chain milestone edit v0.1 --due 2026-04-30
+$ git zhi milestone edit v0.1 --due 2026-04-30
 v0.1: due date → Apr 30 (was: Apr 15)
 
-$ git chain milestone edit v0.1 --name "Parser MVP"
+$ git zhi milestone edit v0.1 --name "Parser MVP"
 v0.1: renamed → Parser MVP
 ```
 
@@ -1121,15 +1121,15 @@ All commands support `--format json`. This is the primary integration point for 
 
 ```bash
 # Get the next issue with full execution context
-git chain issue show --format json
+git zhi issue show --format json
 
 # Start work
-git chain issue edit 019444a2 --state start
+git zhi issue edit 019444a2 --state start
 
 # agent works using context.paths, context.commands, acceptance_criteria...
 
 # Finish
-git chain issue edit 019444a2 --state done
+git zhi issue edit 019444a2 --state done
 ```
 
 The structured execution context on issues (`context.paths`, `context.docs`, `context.commands`, `context.entrypoints`) gives agents everything they need to begin work immediately without repo archaeology.
@@ -1138,12 +1138,12 @@ The structured execution context on issues (`context.paths`, `context.docs`, `co
 
 ```
 loop:
-  issue = git chain issue show --format json
+  issue = git zhi issue show --format json
   if no pending issues: run milestone resolution command → stop
-  git chain issue edit <id> --state start
+  git zhi issue edit <id> --state start
   # work using context, paths, entrypoints
   # verify using acceptance criteria commands
-  git chain issue edit <id> --state done
+  git zhi issue edit <id> --state done
   # HEAD advances to next issue → repeat
 ```
 
@@ -1151,7 +1151,7 @@ Issue acceptance criteria are the per-issue verification. The milestone's `resol
 
 ### 2. Direct ref access via `git show`
 
-Read individual issues with `git show refs/chain/_/issues/<id>:issue.md`. List issues with `git for-each-ref refs/chain/_/issues/`. No chain binary needed.
+Read individual issues with `git show refs/zhi/_/issues/<id>:issue.md`. List issues with `git for-each-ref refs/zhi/_/issues/`. No chain binary needed.
 
 ### 3. Future: MCP server
 
@@ -1168,24 +1168,24 @@ Expose chain state as MCP tools for deeper agent integration. See Future Conside
 ### Installation
 
 ```bash
-go install github.com/perigrin/git-chain@latest
+go install github.com/perigrin/git-zhi@latest
 ```
 
-Or download a prebuilt binary from releases (place `git-chain` on your `$PATH`).
+Or download a prebuilt binary from releases (place `git-zhi` on your `$PATH`).
 
 ### Build
 
 ```bash
-git clone https://github.com/perigrin/git-chain
-cd git-chain
-go build -o git-chain .
+git clone https://github.com/perigrin/git-zhi
+cd git-zhi
+go build -o git-zhi .
 ```
 
 ## Implementation Phases
 
 ### v0.1 — Core
 
-- Event-sourced per-entity ref storage under `refs/chain/_/`
+- Event-sourced per-entity ref storage under `refs/zhi/_/`
 - Graph invariant enforcement (acyclicity, referential integrity, reconnection on cancel)
 - Lazy init (no init command)
 - All 10 commands with `--format json` support
@@ -1196,16 +1196,16 @@ go build -o git-chain .
 - Fever chart in `milestone show`
 - Automatic refspec configuration for sync
 - UUIDv7 issue IDs with prefix-based, tag-based, and title-based resolution
-- Lightweight tags on issues and milestones (`refs/chain/_/tags/`)
+- Lightweight tags on issues and milestones (`refs/zhi/_/tags/`)
 - `HEAD` as built-in tag resolving to current in-progress issue (or next on critical chain by downstream dependency count); milestone HEAD derived from issue HEAD
-- `git-chain-*` subcommand discovery on `$PATH`
+- `git-zhi-*` subcommand discovery on `$PATH`
 - Single chain only (default `_`)
 
 ### v0.2 — Agentic
 
 - Milestone resolution commands (integration-test-level verification)
-- `chain validate` command (aggregate integrity check)
-- `git-chain-smoker` plugin (acceptance criteria as regression tests, milestone resolution as stop condition)
+- `zhi validate` command (aggregate integrity check)
+- `git-zhi-smoker` plugin (acceptance criteria as regression tests, milestone resolution as stop condition)
 - Autonomous agent loop support (Ralph Loop walks the chain, issue by issue, milestone resolution as completion gate)
 - Urgency metadata on issues
 - Scope cutting recommendations based on urgency
@@ -1213,16 +1213,16 @@ go build -o git-chain .
 ### v0.3 — Multi-Chain + Polish
 
 - Multi-chain support (`--chain <name>` flag)
-- Named chains under `refs/chain/<name>/`
+- Named chains under `refs/zhi/<name>/`
 - Cross-chain visibility
-- `chain gc` / `chain snapshot` for compacting long entity histories
-- Post-commit hooks (scan commit messages for `closes <ref>`, `starts <ref>` — documented as a recommended `.githooks` pattern, not git-chain's responsibility)
+- `zhi gc` / `zhi snapshot` for compacting long entity histories
+- Post-commit hooks (scan commit messages for `closes <ref>`, `starts <ref>` — documented as a recommended `.githooks` pattern, not git-zhi's responsibility)
 
 ### v0.4 — Multi-Player + UI
 
 v0.1 through v0.3 cover two legs of the iron triangle: scope and time. Multiplayer unlocks the third — resources. With contributor attribution on issues, the tool can predict where adding people will actually *help* versus where it just adds communication overhead (the critical chain already shows where the work bottleneck is; resource awareness shows whether parallelizing it is possible or whether shared context/files make it slower).
 
-- External tracker sync via `git-chain-*` plugins (GitHub Issues, Jira, GitLab)
+- External tracker sync via `git-zhi-*` plugins (GitHub Issues, Jira, GitLab)
 - Resource contention and expertise routing — if the same contributor is assigned to parallel issues on the critical chain, they're actually sequential. If parallel issues share files (via context paths), adding a second contributor may cause merge friction rather than speedup. And critically: if the commit history shows Developer A has deep experience in the code an issue touches, delaying that issue until Developer A is available *may actually improve overall delivery timelines* compared to starting Developer B immediately. The data to make these predictions — commit history crossed with issue context paths — is already in git.
 - External dependencies in graph calculations
 - Web UI (HTMX-driven, reads from git refs) — fever charts, drag-and-drop issue ordering, visual DAG, clickable state transitions
@@ -1236,17 +1236,17 @@ Beyond v0.4:
 1. **User-defined output templates** — Expand `--format` beyond `json` to support user-defined templates (Go `text/template` or similar) for custom reporting, dashboards, and integration with other tools.
 2. **Fever chart history** — Track buffer burn over time using the commit history on entity refs. Would enable trend analysis: "buffer burn accelerating."
 3. **Multi-repo chains** — Cross-repo dependencies using remote refs. One chain spanning multiple repositories.
-4. **`git chain place`** — Mise-en-place for development. Reads the current issue's Context block and sets up your working environment: opens files and entrypoints in your editor, loads docs, runs baseline test commands. Everything in its place before you start cooking. (Agents already get equivalent data from `git chain issue show --format json`.)
-5. **`git-crochet`** — A `git-chain-*` plugin that uses an LLM to decompose a PRD or project description into a chain: issues with dependencies, context blocks, acceptance criteria, and milestone structure. The LLM does the decomposition; `git-chain` stores the result.
+4. **`git zhi place`** — Mise-en-place for development. Reads the current issue's Context block and sets up your working environment: opens files and entrypoints in your editor, loads docs, runs baseline test commands. Everything in its place before you start cooking. (Agents already get equivalent data from `git zhi issue show --format json`.)
+5. **`git-crochet`** — A `git-zhi-*` plugin that uses an LLM to decompose a PRD or project description into a chain: issues with dependencies, context blocks, acceptance criteria, and milestone structure. The LLM does the decomposition; `git-zhi` stores the result.
 
 ## Success Criteria
 
 The tool is successful if:
 
-1. Time from "I have an idea" to "it's captured as an issue" is under 10 seconds (`git chain issue add`)
-2. "What should I work on next?" is answered instantly (`git chain issue show`)
-3. Daily workflow (`git chain list`, `git chain issue edit --state start/done`) requires no browser and no network
-4. Project health is visible at a glance (`git chain milestone show HEAD`)
+1. Time from "I have an idea" to "it's captured as an issue" is under 10 seconds (`git zhi issue add`)
+2. "What should I work on next?" is answered instantly (`git zhi issue show`)
+3. Daily workflow (`git zhi list`, `git zhi issue edit --state start/done`) requires no browser and no network
+4. Project health is visible at a glance (`git zhi milestone show HEAD`)
 5. Zero configuration required — lazy init handles everything
 6. Works completely offline; syncs transparently when connectivity returns
 7. A human or agent can learn the tool from `--help` alone

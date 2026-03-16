@@ -22,13 +22,13 @@ Wire `Compute` into `milestone show` to display real telemetry.
 
 Add refspec configuration to `EnsureInitialized`:
 - Check if repo has a remote named "origin"
-- If yes, add fetch/push refspecs for `refs/chain/*` to the remote config
+- If yes, add fetch/push refspecs for `refs/zhi/*` to the remote config
 - Skip silently if no remote
 
 ## Tag Resolution
 
 Add tag resolution to `resolve.ResolveRef` between HEAD and UUID prefix:
-- Check `refs/chain/_/tags/<input>` — if exists, read content to get target ref path
+- Check `refs/zhi/_/tags/<input>` — if exists, read content to get target ref path
 - This makes tags created by `--tag` resolvable in show/edit/etc.
 
 ## Files
