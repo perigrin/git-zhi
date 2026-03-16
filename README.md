@@ -143,7 +143,7 @@ development. Tasks are sized for ideal conditions. Uncertainty pools into
 shared milestone buffers. The dependency graph determines what is ready, what
 is critical, and what to work on next.
 
-For the full design, see [docs/PRD.md](docs/PRD.md).
+For the full design, see [docs/PRD/](docs/PRD/).
 
 ## Contributing
 

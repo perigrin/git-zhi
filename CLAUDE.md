@@ -6,7 +6,7 @@ For architecture, conventions, build commands, and testing instructions, see [CO
 
 ## Project Overview
 
-git-zhi is a git-native task graph that manages development work as a dependency DAG with built-in telemetry. It is a standalone Go binary invoked as `git zhi` (git discovers `git-zhi` on `$PATH`). All state lives in git refs under `refs/zhi/`, requiring no external services. The full PRD is at `docs/PRD.md`.
+git-zhi is a git-native task graph that manages development work as a dependency DAG with built-in telemetry. It is a standalone Go binary invoked as `git zhi` (git discovers `git-zhi` on `$PATH`). All state lives in git refs under `refs/zhi/`, requiring no external services. PRDs are at `docs/PRD/` (v0.1, v0.2).
 
 ## Build & Test
 
