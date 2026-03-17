@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 	"github.com/perigrin/git-zhi/internal/resolve"
 )
 
@@ -34,6 +35,10 @@ type IssueJSON struct {
 	NegativeScenarios  []issue.Checkbox        `json:"negative_scenarios,omitempty"`
 	Description        string                  `json:"description,omitempty"`
 	Body               string                  `json:"body,omitempty"`
+	// MilestoneContext is the markdown body of the parent milestone, providing
+	// agents with the delivery context for this issue. Empty when no milestone
+	// is assigned or when the milestone cannot be loaded.
+	MilestoneContext string `json:"milestone_context,omitempty"`
 }
 
 // runIssueShow resolves the ref argument (or HEAD if absent), loads the issue,
@@ -115,8 +120,22 @@ func showHuman(cmd *cobra.Command, app *App, iss *issue.Issue) error {
 }
 
 // showJSON encodes the issue and its parsed sections as indented JSON.
+// The parent milestone's body is embedded in the milestone_context field so
+// that agents have delivery context without a separate round-trip.
 func showJSON(cmd *cobra.Command, iss *issue.Issue) error {
 	sections := issue.ParseSections(iss.Body)
+
+	var milestoneContext string
+	if iss.Milestone != "" {
+		app := GetApp(cmd.Context())
+		if app != nil {
+			ms, err := milestone.LoadMilestone(app.Store, iss.Milestone)
+			if err == nil {
+				milestoneContext = ms.Body
+			}
+			// err != nil means milestone is missing or unreadable; leave empty.
+		}
+	}
 
 	out := IssueJSON{
 		ID:                 iss.ID,
@@ -135,6 +154,7 @@ func showJSON(cmd *cobra.Command, iss *issue.Issue) error {
 		NegativeScenarios:  sections.NegativeScenarios,
 		Description:        sections.Description,
 		Body:               iss.Body,
+		MilestoneContext:   milestoneContext,
 	}
 
 	enc := json.NewEncoder(cmd.OutOrStdout())

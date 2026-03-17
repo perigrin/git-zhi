@@ -16,6 +16,7 @@ import (
 
 	"github.com/perigrin/git-zhi/internal/cli"
 	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 // setupShowTest creates a temporary git repo and returns an App plus a run function.
@@ -263,4 +264,83 @@ func keys(m map[string]interface{}) []string {
 		ks = append(ks, k)
 	}
 	return ks
+}
+
+// createTestMilestoneWithBody writes a milestone with an optional markdown body
+// to the store. Used to verify milestone_context in issue show JSON output.
+func createTestMilestoneWithBody(t *testing.T, app *cli.App, name string, body string) {
+	t.Helper()
+	ms := &milestone.Milestone{
+		Name:    name,
+		Created: time.Now(),
+		Body:    body,
+	}
+	data, err := milestone.MarshalMilestone(ms)
+	if err != nil {
+		t.Fatalf("MarshalMilestone: %v", err)
+	}
+	refPath := "refs/zhi/_/milestones/" + name
+	if err := app.Store.WriteEntity(refPath, "milestone.yaml", data, "Add test milestone: "+name); err != nil {
+		t.Fatalf("WriteEntity milestone: %v", err)
+	}
+}
+
+func TestIssueShowIncludesMilestoneContext(t *testing.T) {
+	app, run := setupShowTest(t)
+
+	milestoneBody := "## Context\n\nThis milestone delivers the parser MVP.\n\n## Goals\n\n- Fast parsing\n- Good errors\n"
+	createTestMilestoneWithBody(t, app, "v0.1", milestoneBody)
+
+	id := createTestIssue(t, app, "Parse tokens", issue.StatePending, "Parse all the tokens.")
+
+	prefix := id.String()[:8]
+	stdout, err := run("issue", "show", "--format", "json", prefix)
+	if err != nil {
+		t.Fatalf("issue show --format json failed: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\noutput: %s", err, stdout.String())
+	}
+
+	ctx, ok := result["milestone_context"]
+	if !ok {
+		t.Fatalf("expected 'milestone_context' key in JSON output, got keys: %v", keys(result))
+	}
+	ctxStr, ok := ctx.(string)
+	if !ok {
+		t.Fatalf("expected milestone_context to be a string, got %T: %v", ctx, ctx)
+	}
+	if !strings.Contains(ctxStr, "parser MVP") {
+		t.Fatalf("expected milestone body in milestone_context, got: %q", ctxStr)
+	}
+}
+
+func TestIssueShowMilestoneContext_NoMilestone(t *testing.T) {
+	app, run := setupShowTest(t)
+
+	// createTestIssue sets milestone to "v0.1" but we do NOT create that milestone,
+	// so LoadMilestone will fail and milestone_context should be empty string.
+	id := createTestIssue(t, app, "Orphan issue", issue.StatePending, "No milestone exists.")
+
+	prefix := id.String()[:8]
+	stdout, err := run("issue", "show", "--format", "json", prefix)
+	if err != nil {
+		t.Fatalf("issue show --format json failed: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\noutput: %s", err, stdout.String())
+	}
+
+	// milestone_context should be absent (omitempty empty string) or an empty string.
+	if ctx, exists := result["milestone_context"]; exists {
+		ctxStr, ok := ctx.(string)
+		if !ok || ctxStr != "" {
+			t.Fatalf("expected milestone_context to be empty string or absent, got: %v", ctx)
+		}
+	}
+	// If the key is absent entirely (omitempty), that is also acceptable.
 }
