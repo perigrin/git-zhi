@@ -139,6 +139,23 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 				iss.Sessions[openIdx].Commits = commitCount
 			}
 
+			// On done, compute ObservedPaths via git diff --name-only spanning
+			// the full history from the first session's StartSHA to the current
+			// HEAD. This captures all files touched across all sessions.
+			if stateAction == "done" && len(iss.Sessions) > 0 {
+				firstStartSHA := iss.Sessions[0].StartSHA
+				if firstStartSHA != "" {
+					paths, diffErr := app.Store.DiffNameOnly(firstStartSHA, currentHEAD)
+					if diffErr != nil {
+						// Non-fatal: record empty paths rather than blocking the
+						// state transition on a diff failure.
+						iss.ObservedPaths = []string{}
+					} else {
+						iss.ObservedPaths = paths
+					}
+				}
+			}
+
 		case "cancel":
 			openIdx := findOpenSession(iss.Sessions)
 			if openIdx >= 0 {

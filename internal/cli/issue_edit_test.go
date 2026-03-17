@@ -544,3 +544,147 @@ func TestIssueEdit_DoubleResume(t *testing.T) {
 		t.Fatalf("expected 'measurement session is already open' in error, got: %v", err)
 	}
 }
+
+func TestIssueEdit_Done_RecordsObservedPaths(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Feature with observed paths")
+	prefix := uuidStr[:8]
+
+	// Start the issue.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	// Make commits that touch specific files — makeTestCommit creates unique
+	// files so these will appear in the diff between start SHA and done SHA.
+	makeTestCommit(t, app, "work commit 1")
+	makeTestCommit(t, app, "work commit 2")
+
+	// Mark done — should populate ObservedPaths with files touched.
+	if _, _, err := run("issue", "edit", "--state", "done", prefix); err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if iss.State != issue.StateDone {
+		t.Fatalf("expected state done, got %s", iss.State)
+	}
+	// ObservedPaths should be non-empty because we made commits that touched files.
+	if len(iss.ObservedPaths) == 0 {
+		t.Fatal("expected ObservedPaths to be populated after done, got empty slice")
+	}
+}
+
+func TestIssueEdit_Done_MultiSession_ObservedPaths(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Multi-session observed paths")
+	prefix := uuidStr[:8]
+
+	// Session 1: start → make commits → pause.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	makeTestCommit(t, app, "session 1 commit")
+
+	if _, _, err := run("issue", "edit", "--state", "pause", prefix); err != nil {
+		t.Fatalf("pause failed: %v", err)
+	}
+
+	// Commit between sessions (not attributed to this issue).
+	makeTestCommit(t, app, "between sessions commit")
+
+	// Session 2: resume → make commits → done.
+	if _, _, err := run("issue", "edit", "--state", "resume", prefix); err != nil {
+		t.Fatalf("resume failed: %v", err)
+	}
+	makeTestCommit(t, app, "session 2 commit")
+
+	if _, _, err := run("issue", "edit", "--state", "done", prefix); err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	// ObservedPaths should span the full range (first session start → current HEAD).
+	if len(iss.ObservedPaths) == 0 {
+		t.Fatal("expected ObservedPaths to be populated after multi-session done")
+	}
+	// Should have at least 3 files (one per commit in the diff range, including
+	// the between-sessions commit which is within the first-SHA..HEAD range).
+	if len(iss.ObservedPaths) < 3 {
+		t.Fatalf("expected at least 3 observed paths (commits span first session to HEAD), got %d: %v",
+			len(iss.ObservedPaths), iss.ObservedPaths)
+	}
+}
+
+func TestIssueEdit_Done_NoSession_ObservedPathsEmpty(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	// Create an issue and transition it directly to done without starting
+	// (simulate a direct pending→done via reopen→done path or force via store).
+	// Since the state machine requires start before done, we test that when
+	// there are no sessions the ObservedPaths remains empty rather than panicking.
+	uuidStr := createEditTestIssue(t, app, "Direct done no sessions")
+
+	// Manually write the issue in in-progress state with no sessions so we
+	// can transition to done without going through start.
+	ref := issue.RefPrefix + uuidStr
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	iss.State = issue.StateInProgress
+	iss.Sessions = nil // explicitly no sessions
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := app.Store.WriteEntity(ref, "issue.md", out, "force in-progress no sessions"); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+
+	prefix := uuidStr[:8]
+	if _, _, err := run("issue", "edit", "--state", "done", prefix); err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+
+	data2, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss2, err := issue.Parse(data2)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if iss2.State != issue.StateDone {
+		t.Fatalf("expected state done, got %s", iss2.State)
+	}
+	// No sessions means no first SHA to diff from; ObservedPaths must be empty.
+	if len(iss2.ObservedPaths) != 0 {
+		t.Fatalf("expected empty ObservedPaths when no sessions, got %v", iss2.ObservedPaths)
+	}
+}
