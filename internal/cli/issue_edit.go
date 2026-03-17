@@ -27,6 +27,7 @@ import (
 var knownEditFlags = []string{
 	"state", "block", "unblock", "milestone", "tag", "untag",
 	"label", "unlabel",
+	"assign", "unassign",
 	"before", "after", "split", "merge", "purge",
 }
 
@@ -81,7 +82,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --state: handled separately because it needs RepoHEAD and outputs a
 	// formatted result. refInput was already set above.
 	if cmd.Flags().Changed("state") {
-		for _, name := range []string{"block", "unblock", "milestone", "tag", "untag", "label", "unlabel", "before", "after"} {
+		for _, name := range []string{"block", "unblock", "milestone", "tag", "untag", "label", "unlabel", "assign", "unassign", "before", "after"} {
 			if cmd.Flags().Changed(name) {
 				return fmt.Errorf("--%s cannot be combined with --state; run them as separate commands", name)
 			}
@@ -326,6 +327,17 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		iss.Labels = filtered
 	}
 
+	// --assign <worker>: set the Assigned field to the given worker identity.
+	if cmd.Flags().Changed("assign") {
+		worker, _ := cmd.Flags().GetString("assign")
+		iss.Assigned = worker
+	}
+
+	// --unassign: clear the Assigned field.
+	if cmd.Flags().Changed("unassign") {
+		iss.Assigned = ""
+	}
+
 	// Write the (potentially modified) primary issue back only if one of the
 	// flags that modifies it directly was set.
 	issueDirty := cmd.Flags().Changed("milestone") ||
@@ -334,7 +346,9 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		cmd.Flags().Changed("before") ||
 		cmd.Flags().Changed("after") ||
 		cmd.Flags().Changed("label") ||
-		cmd.Flags().Changed("unlabel")
+		cmd.Flags().Changed("unlabel") ||
+		cmd.Flags().Changed("assign") ||
+		cmd.Flags().Changed("unassign")
 
 	if issueDirty {
 		iss.Updated = time.Now()

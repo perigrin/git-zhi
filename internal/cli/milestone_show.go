@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/spf13/cobra"
 
@@ -24,16 +25,23 @@ type forecastPoint struct {
 	ParallelTracks int  `json:"parallel_tracks"`
 }
 
+// workerCapacityEntry holds per-worker capacity information for the capacity summary.
+type workerCapacityEntry struct {
+	InProgress int `json:"in_progress"`
+	Assigned   int `json:"assigned"`
+}
+
 // milestoneShowJSON is the JSON presentation of a milestone with its issues
 // and computed telemetry.
 type milestoneShowJSON struct {
 	*milestone.Milestone
-	Issues      []*issue.Issue   `json:"issues"`
-	TotalIssues int              `json:"total_issues"`
-	DoneIssues  int              `json:"done_issues"`
-	Progress    int              `json:"progress_pct"`
-	Telemetry   *telemetry.Stats `json:"telemetry"`
-	Forecast    []forecastPoint  `json:"forecast,omitempty"`
+	Issues         []*issue.Issue                  `json:"issues"`
+	TotalIssues    int                             `json:"total_issues"`
+	DoneIssues     int                             `json:"done_issues"`
+	Progress       int                             `json:"progress_pct"`
+	Telemetry      *telemetry.Stats                `json:"telemetry"`
+	Forecast       []forecastPoint                 `json:"forecast,omitempty"`
+	WorkerCapacity map[string]*workerCapacityEntry `json:"worker_capacity,omitempty"`
 }
 
 // coordinationTaxPerPair is the fixed overhead fraction added per parallel pair.
@@ -116,6 +124,43 @@ func computeForecast(msIssues []*issue.Issue, stats *telemetry.Stats, maxWorkers
 	}
 
 	return points
+}
+
+// computeWorkerCapacity builds a per-worker capacity map from the milestone's
+// issues. For each issue:
+//   - If in-progress, the last transition actor is credited with an in-progress count.
+//   - If pending and assigned, the assignee is credited with an assigned count.
+//
+// Workers with no in-progress issues but at least one assigned issue are idle.
+// Returns nil when no workers are found (no in-progress or assigned issues).
+func computeWorkerCapacity(msIssues []*issue.Issue) map[string]*workerCapacityEntry {
+	capacity := make(map[string]*workerCapacityEntry)
+
+	for _, iss := range msIssues {
+		if iss.State == issue.StateInProgress {
+			actor := ""
+			if len(iss.Transitions) > 0 {
+				actor = iss.Transitions[len(iss.Transitions)-1].Actor
+			}
+			if actor != "" {
+				if capacity[actor] == nil {
+					capacity[actor] = &workerCapacityEntry{}
+				}
+				capacity[actor].InProgress++
+			}
+		}
+		if iss.Assigned != "" && (iss.State == issue.StatePending || iss.State == issue.StateInProgress) {
+			if capacity[iss.Assigned] == nil {
+				capacity[iss.Assigned] = &workerCapacityEntry{}
+			}
+			capacity[iss.Assigned].Assigned++
+		}
+	}
+
+	if len(capacity) == 0 {
+		return nil
+	}
+	return capacity
 }
 
 // runMilestoneShow loads a milestone by name (or the current milestone if no
@@ -226,16 +271,20 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 		forecast = computeForecast(msIssues, stats, maxWorkers)
 	}
 
+	// Compute per-worker capacity summary from in-progress and assigned issues.
+	workerCap := computeWorkerCapacity(msIssues)
+
 	format, _ := cmd.Root().PersistentFlags().GetString("format")
 	if format == "json" {
 		out := &milestoneShowJSON{
-			Milestone:   ms,
-			Issues:      msIssues,
-			TotalIssues: len(msIssues),
-			DoneIssues:  doneCount,
-			Progress:    progressPct,
-			Telemetry:   stats,
-			Forecast:    forecast,
+			Milestone:      ms,
+			Issues:         msIssues,
+			TotalIssues:    len(msIssues),
+			DoneIssues:     doneCount,
+			Progress:       progressPct,
+			Telemetry:      stats,
+			Forecast:       forecast,
+			WorkerCapacity: workerCap,
 		}
 		if out.Issues == nil {
 			out.Issues = []*issue.Issue{}
@@ -245,12 +294,12 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 		return enc.Encode(out)
 	}
 
-	return showMilestoneHuman(cmd, ms, msIssues, doneCount, progressPct, stats, forecast)
+	return showMilestoneHuman(cmd, ms, msIssues, doneCount, progressPct, stats, forecast, workerCap)
 }
 
 // showMilestoneHuman renders the milestone detail view in human-readable format,
-// including telemetry signals and an optional forecast below the progress line.
-func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*issue.Issue, doneCount, progressPct int, stats *telemetry.Stats, forecast []forecastPoint) error {
+// including telemetry signals, an optional forecast, and a worker capacity summary.
+func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*issue.Issue, doneCount, progressPct int, stats *telemetry.Stats, forecast []forecastPoint, workerCap map[string]*workerCapacityEntry) error {
 	w := cmd.OutOrStdout()
 
 	fmt.Fprintf(w, "Milestone: %s\n", ms.Name)
@@ -291,6 +340,25 @@ func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*i
 			}
 			fmt.Fprintf(w, "  At %d %s:  ~%.1f weeks (critical chain: %d issues)%s\n",
 				pt.Workers, workerLabel, pt.WeeksEst, pt.CritIssues, parallelNote)
+		}
+	}
+
+	// Worker capacity section (only present when workers have in-progress or assigned issues).
+	if len(workerCap) > 0 {
+		fmt.Fprintln(w, "\nWorker capacity:")
+		// Sort worker names for deterministic output.
+		workers := make([]string, 0, len(workerCap))
+		for name := range workerCap {
+			workers = append(workers, name)
+		}
+		sort.Strings(workers)
+		for _, name := range workers {
+			entry := workerCap[name]
+			if entry.InProgress == 0 {
+				fmt.Fprintf(w, "  %s: idle, %d assigned\n", name, entry.Assigned)
+			} else {
+				fmt.Fprintf(w, "  %s: %d in-progress, %d assigned\n", name, entry.InProgress, entry.Assigned)
+			}
 		}
 	}
 

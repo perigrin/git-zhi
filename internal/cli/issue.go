@@ -179,6 +179,7 @@ func newIssueListCommand() *cobra.Command {
 	cmd.Flags().String("milestone", "", "filter by milestone")
 	cmd.Flags().String("state", "", "filter by state (pending, in-progress, done, cancelled)")
 	cmd.Flags().String("label", "", "filter by label")
+	cmd.Flags().String("assigned", "", "filter by assigned worker")
 	return cmd
 }
 
@@ -206,6 +207,8 @@ func newIssueEditCommand() *cobra.Command {
 	cmd.Flags().String("untag", "", "remove a tag")
 	cmd.Flags().String("label", "", "add a label to this issue")
 	cmd.Flags().String("unlabel", "", "remove a label from this issue")
+	cmd.Flags().String("assign", "", "assign this issue to a worker (e.g. agent:claude-code-1)")
+	cmd.Flags().Bool("unassign", false, "clear the assignment on this issue")
 	cmd.Flags().String("before", "", "position before another issue (this issue blocks <ref>)")
 	cmd.Flags().String("after", "", "position after another issue (<ref> blocks this issue)")
 	cmd.Flags().Bool("split", false, "split into multiple issues (reads replacement content from stdin)")

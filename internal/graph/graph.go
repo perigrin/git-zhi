@@ -398,6 +398,9 @@ func (g *Graph) headGlobal() (*issue.Issue, error) {
 }
 
 // headForActor implements per-worker WIP=1 semantics for a named actor.
+// Assignment preference: when picking from the ready set, issues assigned to
+// the actor are preferred over unassigned issues, which are preferred over
+// issues assigned to a different actor.
 func (g *Graph) headForActor(actor string) (*issue.Issue, error) {
 	// Step 1: check if this actor already has an in-progress issue.
 	for _, iss := range g.issues {
@@ -418,7 +421,9 @@ func (g *Graph) headForActor(actor string) (*issue.Issue, error) {
 	}
 
 	// Step 2: build a temporary sub-graph that excludes issues held by other
-	// workers, then apply the standard head logic on it.
+	// workers, then apply the standard head logic on it. Within that sub-graph,
+	// check for assigned issues first so that issues explicitly assigned to this
+	// actor are preferred over unassigned issues from the ready set.
 	var filtered []*issue.Issue
 	for _, iss := range g.issues {
 		if !otherWorkerIDs[iss.ID.String()] {
@@ -430,6 +435,17 @@ func (g *Graph) headForActor(actor string) (*issue.Issue, error) {
 	}
 
 	sub, _ := Build(filtered)
+
+	// Step 3: prefer pending issues assigned to this actor that are in the ready
+	// set over the standard critical-chain resolution. This respects the explicit
+	// assignment while still honouring graph constraints (unblocked only).
+	readySet := sub.ReadySet()
+	for _, iss := range readySet {
+		if iss.Assigned == actor {
+			return iss, nil
+		}
+	}
+
 	return sub.headGlobal()
 }
 
