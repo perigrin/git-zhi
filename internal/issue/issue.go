@@ -80,6 +80,10 @@ type Issue struct {
 	// Labels is a set of free-form tag strings for categorizing and filtering
 	// issues (e.g. "LOPS", "microservices"). Introduced in v0.3.
 	Labels []string `yaml:"labels,omitempty" json:"labels,omitempty"`
+	// Assigned records the actor identity (e.g. "human:perigrin",
+	// "agent:claude-code-1") responsible for working this issue. Empty string
+	// means unassigned. Introduced in v0.3.
+	Assigned string `yaml:"assigned,omitempty" json:"assigned,omitempty"`
 	// Body is the raw markdown below the YAML frontmatter separator.
 	// Handled separately from YAML marshaling. Included in JSON output
 	// so --format json consumers get the full issue content.

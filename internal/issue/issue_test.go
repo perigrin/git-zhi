@@ -512,6 +512,75 @@ func TestParseLabels_BackwardCompat(t *testing.T) {
 	}
 }
 
+func TestParseAssigned(t *testing.T) {
+	raw := []byte(`---
+title: "Assigned issue"
+state: pending
+assigned: "human:perigrin"
+---
+`)
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Assigned != "human:perigrin" {
+		t.Fatalf("expected assigned %q, got %q", "human:perigrin", iss.Assigned)
+	}
+}
+
+func TestMarshal_RoundTrip_Assigned(t *testing.T) {
+	iss := &issue.Issue{
+		Title:    "Assigned round trip",
+		State:    issue.StatePending,
+		Urgency:  issue.UrgencyNormal,
+		Assigned: "agent:claude-code-1",
+		Created:  time.Now().Truncate(time.Second),
+		Updated:  time.Now().Truncate(time.Second),
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	iss2, err := issue.Parse(out)
+	if err != nil {
+		t.Fatalf("re-Parse failed: %v", err)
+	}
+	if iss2.Assigned != "agent:claude-code-1" {
+		t.Fatalf("expected assigned %q after round-trip, got %q", "agent:claude-code-1", iss2.Assigned)
+	}
+}
+
+func TestParseAssigned_BackwardCompat(t *testing.T) {
+	// Issues without an assigned field must have an empty string (zero value)
+	// for backward compatibility with v0.1/v0.2 issues that predate this field.
+	raw := []byte("---\ntitle: \"Old issue\"\nstate: done\n---\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Assigned != "" {
+		t.Fatalf("expected empty Assigned for backward compat, got %q", iss.Assigned)
+	}
+}
+
+func TestMarshal_Assigned_OmitWhenEmpty(t *testing.T) {
+	// Empty assigned must not appear in the serialized YAML (omitempty).
+	iss := &issue.Issue{
+		Title:   "No assigned issue",
+		State:   issue.StatePending,
+		Urgency: issue.UrgencyNormal,
+		Created: time.Now().Truncate(time.Second),
+		Updated: time.Now().Truncate(time.Second),
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	if bytes.Contains(out, []byte("assigned:")) {
+		t.Fatalf("expected assigned field to be omitted when empty, but found it in:\n%s", out)
+	}
+}
+
 func TestMarshal_Labels_OmitWhenEmpty(t *testing.T) {
 	// Empty labels must not appear in the serialized YAML (omitempty).
 	iss := &issue.Issue{
