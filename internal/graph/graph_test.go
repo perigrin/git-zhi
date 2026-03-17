@@ -215,7 +215,8 @@ func TestReadySet(t *testing.T) {
 	}
 }
 
-// TestHead_InProgress verifies Head returns the in-progress issue when one exists.
+// TestHead_InProgress verifies Head("") returns the in-progress issue when one
+// exists (v0.1 compatible behavior with empty actor string).
 func TestHead_InProgress(t *testing.T) {
 	a := makeIssue("A", issue.StatePending)
 	b := makeIssue("B", issue.StateInProgress)
@@ -225,7 +226,7 @@ func TestHead_InProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build failed: %v", err)
 	}
-	head, err := g.Head()
+	head, err := g.Head("")
 	if err != nil {
 		t.Fatalf("Head failed: %v", err)
 	}
@@ -234,7 +235,7 @@ func TestHead_InProgress(t *testing.T) {
 	}
 }
 
-// TestHead_CriticalChainLeader verifies Head returns the critical chain issue
+// TestHead_CriticalChainLeader verifies Head("") returns the critical chain issue
 // with the most downstream dependencies when no issue is in-progress.
 // Setup: A->B->C (all pending). A has 2 downstream (B and C), B has 1 (C).
 // Head should return A.
@@ -249,10 +250,109 @@ func TestHead_CriticalChainLeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build failed: %v", err)
 	}
-	head, err := g.Head()
+	head, err := g.Head("")
 	if err != nil {
 		t.Fatalf("Head failed: %v", err)
 	}
+	if head.ID != a.ID {
+		t.Errorf("expected critical chain leader A, got %s", head.Title)
+	}
+}
+
+// makeIssueWithTransitions creates an issue with a given state and a set of
+// transitions. Each transition pair is [state, actor].
+func makeIssueWithTransitions(title string, state issue.State, transitions []issue.Transition) *issue.Issue {
+	iss := makeIssue(title, state)
+	iss.Transitions = transitions
+	return iss
+}
+
+// TestHeadNoActor_InProgress verifies Head("") returns any in-progress issue
+// regardless of actor, preserving v0.1 semantics.
+func TestHeadNoActor_InProgress(t *testing.T) {
+	actor1Trans := []issue.Transition{
+		{State: string(issue.StateInProgress), Actor: "agent:claude-code-1"},
+	}
+	a := makeIssue("A", issue.StatePending)
+	b := makeIssueWithTransitions("B", issue.StateInProgress, actor1Trans)
+
+	g, err := graph.Build([]*issue.Issue{a, b})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	head, err := g.Head("")
+	if err != nil {
+		t.Fatalf("Head(\"\") failed: %v", err)
+	}
+	if head.ID != b.ID {
+		t.Errorf("expected in-progress B, got %s", head.Title)
+	}
+}
+
+// TestHeadActor_OwnInProgress verifies that Head("agent:claude-code-1") returns
+// the issue currently in-progress by that actor (last transition actor match).
+func TestHeadActor_OwnInProgress(t *testing.T) {
+	actor1Trans := []issue.Transition{
+		{State: string(issue.StateInProgress), Actor: "agent:claude-code-1"},
+	}
+	a := makeIssue("A", issue.StatePending)
+	b := makeIssueWithTransitions("B", issue.StateInProgress, actor1Trans)
+
+	g, err := graph.Build([]*issue.Issue{a, b})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	head, err := g.Head("agent:claude-code-1")
+	if err != nil {
+		t.Fatalf("Head(actor) failed: %v", err)
+	}
+	if head.ID != b.ID {
+		t.Errorf("expected actor's own in-progress issue B, got %s", head.Title)
+	}
+}
+
+// TestHeadActor_OtherWorkerInProgress verifies that Head("agent:claude-code-1")
+// when another worker has an in-progress issue picks from the ready set
+// excluding that worker's in-progress issue.
+//
+// Setup: A is pending (ready), B is in-progress by "agent:claude-code-2".
+// Head("agent:claude-code-1") must return A, not B.
+func TestHeadActor_OtherWorkerInProgress(t *testing.T) {
+	actor2Trans := []issue.Transition{
+		{State: string(issue.StateInProgress), Actor: "agent:claude-code-2"},
+	}
+	a := makeIssue("A", issue.StatePending)
+	b := makeIssueWithTransitions("B", issue.StateInProgress, actor2Trans)
+
+	g, err := graph.Build([]*issue.Issue{a, b})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	head, err := g.Head("agent:claude-code-1")
+	if err != nil {
+		t.Fatalf("Head(actor) failed: %v", err)
+	}
+	if head.ID != a.ID {
+		t.Errorf("expected pending A (B is taken by another worker), got %s", head.Title)
+	}
+}
+
+// TestHeadActor_NoInProgress verifies that Head("agent:claude-code-1") with no
+// in-progress issues at all behaves identically to v0.1 Head("").
+func TestHeadActor_NoInProgress(t *testing.T) {
+	a := makeIssue("A", issue.StatePending)
+	b := makeIssue("B", issue.StatePending)
+	linkIssues(a, b)
+
+	g, err := graph.Build([]*issue.Issue{a, b})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	head, err := g.Head("agent:claude-code-1")
+	if err != nil {
+		t.Fatalf("Head(actor) failed: %v", err)
+	}
+	// With no in-progress issues, Head returns the critical chain leader.
 	if head.ID != a.ID {
 		t.Errorf("expected critical chain leader A, got %s", head.Title)
 	}

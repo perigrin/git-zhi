@@ -336,16 +336,34 @@ func (g *Graph) ReadySet() []*issue.Issue {
 	return ready
 }
 
-// Head returns the current "work item" for the chain:
-//  1. If any issue is in-progress, return it (first by UUID sort if multiple).
-//  2. Otherwise, return the first issue in the critical chain.
-//  3. If no critical chain exists, return the first pending issue by UUID sort.
-//  4. If no issues at all, return an error.
-func (g *Graph) Head() (*issue.Issue, error) {
+// Head returns the current "work item" for the chain.
+//
+// When actor is empty, the behavior is identical to the v0.1 global WIP=1
+// semantics: any in-progress issue is returned first; if none, the critical
+// chain leader is returned; if no chain, the first pending issue by UUID sort.
+//
+// When actor is non-empty, per-worker semantics apply:
+//  1. If the actor has their own in-progress issue (last transition actor
+//     matches), return it.
+//  2. Otherwise build the ready set, exclude issues held by other workers
+//     (in-progress issues whose last-transition actor differs), then apply
+//     the standard critical-chain / pending fallback on that filtered set.
+//
+// In all cases, if no issues exist at all, an error is returned.
+func (g *Graph) Head(actor string) (*issue.Issue, error) {
 	if len(g.issues) == 0 {
 		return nil, fmt.Errorf("graph: no issues")
 	}
 
+	if actor == "" {
+		return g.headGlobal()
+	}
+	return g.headForActor(actor)
+}
+
+// headGlobal implements v0.1 semantics: any in-progress issue wins, then
+// critical chain, then first pending by UUID sort.
+func (g *Graph) headGlobal() (*issue.Issue, error) {
 	// Step 1: in-progress issue.
 	var inProgress []*issue.Issue
 	for _, iss := range g.issues {
@@ -377,6 +395,51 @@ func (g *Graph) Head() (*issue.Issue, error) {
 	}
 
 	return nil, fmt.Errorf("graph: no actionable issues")
+}
+
+// headForActor implements per-worker WIP=1 semantics for a named actor.
+func (g *Graph) headForActor(actor string) (*issue.Issue, error) {
+	// Step 1: check if this actor already has an in-progress issue.
+	for _, iss := range g.issues {
+		if iss.State == issue.StateInProgress && lastTransitionActor(iss) == actor {
+			return iss, nil
+		}
+	}
+
+	// Build the set of issue IDs currently held by other workers (in-progress
+	// issues whose last-transition actor is someone other than this actor).
+	otherWorkerIDs := make(map[string]bool)
+	for _, iss := range g.issues {
+		if iss.State == issue.StateInProgress {
+			if a := lastTransitionActor(iss); a != actor {
+				otherWorkerIDs[iss.ID.String()] = true
+			}
+		}
+	}
+
+	// Step 2: build a temporary sub-graph that excludes issues held by other
+	// workers, then apply the standard head logic on it.
+	var filtered []*issue.Issue
+	for _, iss := range g.issues {
+		if !otherWorkerIDs[iss.ID.String()] {
+			filtered = append(filtered, iss)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, fmt.Errorf("graph: no actionable issues for actor %s", actor)
+	}
+
+	sub, _ := Build(filtered)
+	return sub.headGlobal()
+}
+
+// lastTransitionActor returns the actor field from the last entry in
+// iss.Transitions, or an empty string if there are no transitions.
+func lastTransitionActor(iss *issue.Issue) string {
+	if len(iss.Transitions) == 0 {
+		return ""
+	}
+	return iss.Transitions[len(iss.Transitions)-1].Actor
 }
 
 // Cancel removes all edges involving the cancelled issue and reconnects the
