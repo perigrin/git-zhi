@@ -243,6 +243,12 @@ func Pull(jiraClient *jclient.Client, issues []*issue.Issue, snapshotDir string)
 				})
 			}
 		}
+
+		// Save the current Jira field values as the new snapshot baseline so
+		// repeated pulls do not re-detect the same changes.
+		if err := SaveSnapshot(snapshotDir, iss.ID.String(), jiraCurrent); err != nil {
+			return nil, fmt.Errorf("save snapshot for %s: %w", iss.ID, err)
+		}
 	}
 
 	return result, nil

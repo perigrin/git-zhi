@@ -397,6 +397,55 @@ func TestPullNoChanges(t *testing.T) {
 	}
 }
 
+// TestPullSavesSnapshot verifies that Pull updates the snapshot after each
+// comparison so a second pull with unchanged Jira state produces no updates.
+func TestPullSavesSnapshot(t *testing.T) {
+	dir := t.TempDir()
+
+	issueID := "01900000-0000-7000-0000-000000000010"
+	trackerKey := "LOPS-600"
+
+	iss := makeIssue(t, issueID, "in-progress", "jira:"+trackerKey)
+
+	// Write an initial snapshot showing urgency=normal so that the first pull
+	// can detect Jira's "high" as a change.
+	_ = sync.SaveSnapshot(dir, issueID, map[string]string{
+		"state":    "in-progress",
+		"urgency":  "normal",
+		"labels":   "",
+		"assigned": "",
+	})
+
+	// Jira reports urgency=high — Jira side changed since snapshot.
+	srv := buildSyncServer(t, map[string]map[string]interface{}{
+		trackerKey: jiraIssueFixture(trackerKey, "In Progress", "High", "", []string{}),
+	}, nil)
+	defer srv.Close()
+
+	c := jclient.NewClient(srv.URL, "user@example.com", "token")
+
+	// First pull: detects high urgency (snapshot said normal, Jira now high).
+	result1, err := sync.Pull(c, []*issue.Issue{iss}, dir)
+	if err != nil {
+		t.Fatalf("first Pull: %v", err)
+	}
+	if len(result1.Pulled) == 0 {
+		t.Fatal("expected at least one PullUpdate on first pull")
+	}
+
+	// Second pull: snapshot now matches Jira — no updates expected.
+	result2, err := sync.Pull(c, []*issue.Issue{iss}, dir)
+	if err != nil {
+		t.Fatalf("second Pull: %v", err)
+	}
+	if len(result2.Pulled) != 0 {
+		t.Errorf("expected no PullUpdates on second pull (snapshot converged), got %v", result2.Pulled)
+	}
+	if len(result2.Conflicts) != 0 {
+		t.Errorf("expected no Conflicts on second pull, got %v", result2.Conflicts)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Push tests
 // ---------------------------------------------------------------------------
