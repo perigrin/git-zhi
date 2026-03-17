@@ -1,8 +1,9 @@
 // ABOUTME: Implementation of the 'issue edit' command, handling --state transitions,
-// ABOUTME: dependency edges (block/unblock/before/after), --split, --merge, --purge, milestone, and tag operations.
+// ABOUTME: dependency edges (block/unblock/before/after), --split, --merge, --purge, --batch, and tag operations.
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,7 +29,7 @@ var knownEditFlags = []string{
 	"state", "block", "unblock", "milestone", "tag", "untag",
 	"label", "unlabel",
 	"assign", "unassign",
-	"before", "after", "split", "merge", "purge",
+	"before", "after", "split", "merge", "purge", "batch",
 }
 
 // runIssueEdit handles 'issue edit [ref] [flags]'.
@@ -64,6 +65,9 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	}
 	if cmd.Flags().Changed("purge") {
 		return runIssueEditPurge(cmd, app, refInput)
+	}
+	if cmd.Flags().Changed("batch") {
+		return runIssueEditBatch(cmd, app)
 	}
 
 	// If no known flag is set, this is the bare interactive edit ($EDITOR).
@@ -1066,6 +1070,155 @@ func runIssueEditPurge(cmd *cobra.Command, app *App, refInput string) error {
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Purged %s: %s (permanently deleted)\n", uuidStr[:8], iss.Title)
 
+	return nil
+}
+
+// batchOp is a single operation parsed from a --batch JSON line.
+// Fields maps field names to their raw JSON values so each can be decoded
+// individually without requiring all fields to be present at once.
+type batchOp struct {
+	IssueID string                     `json:"issue_id"`
+	Fields  map[string]json.RawMessage `json:"fields"`
+}
+
+// runIssueEditBatch handles 'issue edit --batch'. Reads JSON-line operations
+// from stdin, applies each field update to the named issue, and writes one
+// result line per operation. Errors per operation are reported without aborting
+// the remaining operations.
+func runIssueEditBatch(cmd *cobra.Command, app *App) error {
+	scanner := bufio.NewScanner(cmd.InOrStdin())
+	lineNum := 0
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		lineNum++
+
+		var op batchOp
+		if err := json.Unmarshal([]byte(line), &op); err != nil {
+			fmt.Fprintf(cmd.OutOrStdout(), "%d error: parse JSON: %v\n", lineNum, err)
+			continue
+		}
+
+		if err := applyBatchOp(app, op); err != nil {
+			fmt.Fprintf(cmd.OutOrStdout(), "%d error: %s: %v\n", lineNum, op.IssueID, err)
+			continue
+		}
+
+		fmt.Fprintf(cmd.OutOrStdout(), "%d ok: %s\n", lineNum, op.IssueID)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read stdin: %w", err)
+	}
+	return nil
+}
+
+// applyBatchOp resolves the issue identified by op.IssueID, applies all
+// fields from op.Fields, and writes the updated issue back to storage.
+// State changes use ValidateTransition and record a Transition entry.
+func applyBatchOp(app *App, op batchOp) error {
+	refPath, err := resolve.ResolveRef(app.Store, op.IssueID)
+	if err != nil {
+		return fmt.Errorf("resolve ref: %w", err)
+	}
+
+	data, err := app.Store.ReadEntity(refPath, "issue.md")
+	if err != nil {
+		return fmt.Errorf("read issue: %w", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		return fmt.Errorf("parse issue: %w", err)
+	}
+	uuidStr := strings.TrimPrefix(refPath, issue.RefPrefix)
+
+	dirty := false
+	now := time.Now()
+
+	// Apply each supported field.
+	for fieldName, rawVal := range op.Fields {
+		switch fieldName {
+		case "assigned":
+			var v string
+			if err := json.Unmarshal(rawVal, &v); err != nil {
+				return fmt.Errorf("field %q: %w", fieldName, err)
+			}
+			iss.Assigned = v
+			dirty = true
+
+		case "urgency":
+			var v string
+			if err := json.Unmarshal(rawVal, &v); err != nil {
+				return fmt.Errorf("field %q: %w", fieldName, err)
+			}
+			iss.Urgency = issue.Urgency(v)
+			dirty = true
+
+		case "labels":
+			var v []string
+			if err := json.Unmarshal(rawVal, &v); err != nil {
+				return fmt.Errorf("field %q: %w", fieldName, err)
+			}
+			iss.Labels = v
+			dirty = true
+
+		case "tracker_id":
+			var v string
+			if err := json.Unmarshal(rawVal, &v); err != nil {
+				return fmt.Errorf("field %q: %w", fieldName, err)
+			}
+			iss.TrackerID = v
+			dirty = true
+
+		case "last_synced_at":
+			var v time.Time
+			if err := json.Unmarshal(rawVal, &v); err != nil {
+				return fmt.Errorf("field %q: %w", fieldName, err)
+			}
+			iss.LastSyncedAt = &v
+			dirty = true
+
+		case "state":
+			var action string
+			if err := json.Unmarshal(rawVal, &action); err != nil {
+				return fmt.Errorf("field %q: %w", fieldName, err)
+			}
+			newState, transErr := issue.ValidateTransition(iss.State, action)
+			if transErr != nil {
+				return transErr
+			}
+			// Record the transition with actor identity derived from git config.
+			authorName, authorEmail := app.Store.AuthorInfo()
+			a := actor.DeriveActor(authorName, authorEmail)
+			iss.Transitions = append(iss.Transitions, issue.Transition{
+				State:     string(newState),
+				Actor:     a.String(),
+				Timestamp: now,
+			})
+			iss.State = newState
+			dirty = true
+
+		default:
+			return fmt.Errorf("unsupported field %q in batch operation", fieldName)
+		}
+	}
+
+	if !dirty {
+		return nil
+	}
+
+	iss.Updated = now
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		return fmt.Errorf("marshal issue: %w", err)
+	}
+	commitMsg := fmt.Sprintf("Batch edit issue %s", uuidStr[:8])
+	if err := app.Store.WriteEntity(refPath, "issue.md", out, commitMsg); err != nil {
+		return fmt.Errorf("write issue: %w", err)
+	}
 	return nil
 }
 
