@@ -369,6 +369,50 @@ func TestIssueEditBatch_TrackerID(t *testing.T) {
 	}
 }
 
+// TestIssueEditBatch_InvalidUrgency verifies that an unknown urgency value
+// produces a per-line error and does not update the issue.
+func TestIssueEditBatch_InvalidUrgency(t *testing.T) {
+	app, _ := setupEditTest(t)
+
+	id := createEditTestIssue(t, app, "Urgency validation issue")
+
+	batchInput := fmt.Sprintf(
+		`{"issue_id": "%s", "fields": {"urgency": "extreme"}}`,
+		id[:8],
+	)
+
+	stdout, _, err := runWithStdin(app, batchInput, "issue", "edit", "--batch")
+	if err != nil {
+		t.Fatalf("issue edit --batch returned unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	lines := nonEmptyLines(out)
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 result line, got %d:\n%s", len(lines), out)
+	}
+	if !strings.Contains(lines[0], "error") {
+		t.Errorf("expected 'error' for invalid urgency, got: %s", lines[0])
+	}
+	if !strings.Contains(lines[0], "invalid urgency") {
+		t.Errorf("expected 'invalid urgency' in error message, got: %s", lines[0])
+	}
+
+	// The issue should not have been modified.
+	ref := issue.RefPrefix + id
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if iss.Urgency != issue.UrgencyNormal {
+		t.Errorf("urgency should remain normal after invalid update, got %q", iss.Urgency)
+	}
+}
+
 // TestIssueEditBatch_Title verifies that a "title" field updates the issue
 // title and does not return an "unsupported field" error.
 func TestIssueEditBatch_Title(t *testing.T) {

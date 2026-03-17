@@ -1162,6 +1162,12 @@ func applyBatchOp(app *App, op batchOp) error {
 			if err := json.Unmarshal(rawVal, &v); err != nil {
 				return fmt.Errorf("field %q: %w", fieldName, err)
 			}
+			switch issue.Urgency(v) {
+			case issue.UrgencyHigh, issue.UrgencyNormal, issue.UrgencyLow:
+				// valid
+			default:
+				return fmt.Errorf("field %q: invalid urgency %q (must be high, normal, or low)", fieldName, v)
+			}
 			iss.Urgency = issue.Urgency(v)
 			dirty = true
 
