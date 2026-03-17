@@ -47,6 +47,15 @@ type Session struct {
 	EndedAt   *time.Time `yaml:"ended_at,omitempty" json:"ended_at,omitempty"`
 }
 
+// Transition records a single state-change event on an issue: what state was
+// entered, which actor triggered it, and when it occurred. Used for lineage
+// tracking, DORA metrics, and per-actor HEAD resolution.
+type Transition struct {
+	State     string    `yaml:"state" json:"state"`
+	Actor     string    `yaml:"actor" json:"actor"`
+	Timestamp time.Time `yaml:"timestamp" json:"timestamp"`
+}
+
 // Issue represents a node in the chain dependency graph.
 type Issue struct {
 	// ID is derived from the entity ref path (refs/zhi/_/issues/<uuid>),
@@ -60,7 +69,8 @@ type Issue struct {
 	Blocks    []uuid.UUID `yaml:"blocks,omitempty" json:"blocks,omitempty"`
 	Created   time.Time   `yaml:"created" json:"created"`
 	Updated   time.Time   `yaml:"updated" json:"updated"`
-	Sessions  []Session   `yaml:"sessions,omitempty" json:"sessions,omitempty"`
+	Sessions    []Session    `yaml:"sessions,omitempty" json:"sessions,omitempty"`
+	Transitions []Transition `yaml:"transitions,omitempty" json:"transitions,omitempty"`
 	// Body is the raw markdown below the YAML frontmatter separator.
 	// Handled separately from YAML marshaling. Included in JSON output
 	// so --format json consumers get the full issue content.
@@ -82,6 +92,11 @@ func Parse(raw []byte) (*Issue, error) {
 	// that predate the urgency field.
 	if iss.Urgency == "" {
 		iss.Urgency = UrgencyNormal
+	}
+	// Ensure Transitions is never nil for backward compatibility with v0.1
+	// issues that predate this field. Callers can always append safely.
+	if iss.Transitions == nil {
+		iss.Transitions = []Transition{}
 	}
 	return &iss, nil
 }

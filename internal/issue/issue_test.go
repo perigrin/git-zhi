@@ -275,3 +275,99 @@ func TestMarshal_RoundTrip_Urgency(t *testing.T) {
 		t.Fatalf("urgency mismatch: %q vs %q", iss.Urgency, iss2.Urgency)
 	}
 }
+
+func TestParseTransitions(t *testing.T) {
+	raw := []byte(`---
+title: "Issue with transitions"
+state: done
+transitions:
+  - state: start
+    actor: "human:perigrin"
+    timestamp: "2026-03-16T10:30:00Z"
+  - state: done
+    actor: "agent:claude-code-1"
+    timestamp: "2026-03-16T14:22:00Z"
+---
+`)
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if len(iss.Transitions) != 2 {
+		t.Fatalf("expected 2 transitions, got %d", len(iss.Transitions))
+	}
+	if iss.Transitions[0].State != "start" {
+		t.Fatalf("expected first transition state %q, got %q", "start", iss.Transitions[0].State)
+	}
+	if iss.Transitions[0].Actor != "human:perigrin" {
+		t.Fatalf("expected first transition actor %q, got %q", "human:perigrin", iss.Transitions[0].Actor)
+	}
+	expectedTime0, _ := time.Parse(time.RFC3339, "2026-03-16T10:30:00Z")
+	if !iss.Transitions[0].Timestamp.Equal(expectedTime0) {
+		t.Fatalf("expected first transition timestamp %v, got %v", expectedTime0, iss.Transitions[0].Timestamp)
+	}
+	if iss.Transitions[1].State != "done" {
+		t.Fatalf("expected second transition state %q, got %q", "done", iss.Transitions[1].State)
+	}
+	if iss.Transitions[1].Actor != "agent:claude-code-1" {
+		t.Fatalf("expected second transition actor %q, got %q", "agent:claude-code-1", iss.Transitions[1].Actor)
+	}
+}
+
+func TestMarshal_RoundTrip_Transitions(t *testing.T) {
+	ts1, _ := time.Parse(time.RFC3339, "2026-03-16T10:30:00Z")
+	ts2, _ := time.Parse(time.RFC3339, "2026-03-16T14:22:00Z")
+	iss := &issue.Issue{
+		Title:   "Transition round trip",
+		State:   issue.StateDone,
+		Urgency: issue.UrgencyNormal,
+		Transitions: []issue.Transition{
+			{State: "start", Actor: "human:perigrin", Timestamp: ts1},
+			{State: "done", Actor: "agent:claude-code-1", Timestamp: ts2},
+		},
+		Created: time.Now().Truncate(time.Second),
+		Updated: time.Now().Truncate(time.Second),
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	iss2, err := issue.Parse(out)
+	if err != nil {
+		t.Fatalf("re-Parse failed: %v", err)
+	}
+	if len(iss2.Transitions) != 2 {
+		t.Fatalf("expected 2 transitions after round-trip, got %d", len(iss2.Transitions))
+	}
+	if iss2.Transitions[0].State != "start" {
+		t.Fatalf("expected first transition state %q, got %q", "start", iss2.Transitions[0].State)
+	}
+	if iss2.Transitions[0].Actor != "human:perigrin" {
+		t.Fatalf("expected first transition actor %q, got %q", "human:perigrin", iss2.Transitions[0].Actor)
+	}
+	if !iss2.Transitions[0].Timestamp.Equal(ts1) {
+		t.Fatalf("expected first transition timestamp %v, got %v", ts1, iss2.Transitions[0].Timestamp)
+	}
+	if iss2.Transitions[1].State != "done" {
+		t.Fatalf("expected second transition state %q, got %q", "done", iss2.Transitions[1].State)
+	}
+	if iss2.Transitions[1].Actor != "agent:claude-code-1" {
+		t.Fatalf("expected second transition actor %q, got %q", "agent:claude-code-1", iss2.Transitions[1].Actor)
+	}
+}
+
+func TestParseTransitions_BackwardCompat(t *testing.T) {
+	// Issues without a transitions field must produce an empty (non-nil) slice
+	// for backward compatibility with v0.1 issues that predate this field.
+	raw := []byte("---\ntitle: \"Old issue\"\nstate: done\n---\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Transitions == nil {
+		t.Fatal("expected non-nil Transitions slice for backward compat, got nil")
+	}
+	if len(iss.Transitions) != 0 {
+		t.Fatalf("expected 0 transitions for issue without transitions field, got %d", len(iss.Transitions))
+	}
+}
