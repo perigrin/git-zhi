@@ -84,6 +84,18 @@ type Issue struct {
 	// "agent:claude-code-1") responsible for working this issue. Empty string
 	// means unassigned. Introduced in v0.3.
 	Assigned string `yaml:"assigned,omitempty" json:"assigned,omitempty"`
+	// Confidence records the historian's mapping reliability for this issue
+	// on a 0.0-1.0 scale. Planned issues leave this at zero. Introduced in v0.3.
+	Confidence float64 `yaml:"confidence,omitempty" json:"confidence,omitempty"`
+	// Source records how the issue was constructed: tracker-match, ticket-ref,
+	// cluster, single-commit, manual, or planned. Introduced in v0.3.
+	Source string `yaml:"source,omitempty" json:"source,omitempty"`
+	// TrackerID records an external tracker reference (e.g. "jira:LOPS-142").
+	// Introduced in v0.3.
+	TrackerID string `yaml:"tracker_id,omitempty" json:"tracker_id,omitempty"`
+	// LastSyncedAt records the timestamp of the last sync cycle for this issue.
+	// Used by sync plugins for conflict resolution. Introduced in v0.3.
+	LastSyncedAt *time.Time `yaml:"last_synced_at,omitempty" json:"last_synced_at,omitempty"`
 	// Body is the raw markdown below the YAML frontmatter separator.
 	// Handled separately from YAML marshaling. Included in JSON output
 	// so --format json consumers get the full issue content.

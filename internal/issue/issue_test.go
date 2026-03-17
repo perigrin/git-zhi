@@ -599,3 +599,95 @@ func TestMarshal_Labels_OmitWhenEmpty(t *testing.T) {
 		t.Fatalf("expected labels field to be omitted when empty, but found it in:\n%s", out)
 	}
 }
+
+func TestParseConfidence(t *testing.T) {
+	raw := []byte("---\ntitle: \"Historian issue\"\nconfidence: 0.85\nsource: tracker-match\ntracker_id: \"jira:LOPS-142\"\n---\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Confidence != 0.85 {
+		t.Fatalf("expected confidence 0.85, got %f", iss.Confidence)
+	}
+	if iss.Source != "tracker-match" {
+		t.Fatalf("expected source tracker-match, got %q", iss.Source)
+	}
+	if iss.TrackerID != "jira:LOPS-142" {
+		t.Fatalf("expected tracker_id jira:LOPS-142, got %q", iss.TrackerID)
+	}
+}
+
+func TestMarshal_RoundTrip_HistorianFields(t *testing.T) {
+	syncTime := time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC)
+	iss := &issue.Issue{
+		Title:        "Historian roundtrip",
+		State:        issue.StateDone,
+		Urgency:      issue.UrgencyNormal,
+		Confidence:   0.72,
+		Source:       "cluster",
+		TrackerID:    "jira:PLAT-99",
+		LastSyncedAt: &syncTime,
+		Created:      time.Now().Truncate(time.Second),
+		Updated:      time.Now().Truncate(time.Second),
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	parsed, err := issue.Parse(out)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if parsed.Confidence != 0.72 {
+		t.Fatalf("expected confidence 0.72, got %f", parsed.Confidence)
+	}
+	if parsed.Source != "cluster" {
+		t.Fatalf("expected source cluster, got %q", parsed.Source)
+	}
+	if parsed.TrackerID != "jira:PLAT-99" {
+		t.Fatalf("expected tracker_id jira:PLAT-99, got %q", parsed.TrackerID)
+	}
+	if parsed.LastSyncedAt == nil || !parsed.LastSyncedAt.Equal(syncTime) {
+		t.Fatalf("expected last_synced_at %v, got %v", syncTime, parsed.LastSyncedAt)
+	}
+}
+
+func TestParseHistorianFields_BackwardCompat(t *testing.T) {
+	// v0.1/v0.2 issues without historian fields should parse with zero defaults
+	raw := []byte("---\ntitle: \"Old issue\"\n---\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Confidence != 0 {
+		t.Fatalf("expected confidence 0, got %f", iss.Confidence)
+	}
+	if iss.Source != "" {
+		t.Fatalf("expected empty source, got %q", iss.Source)
+	}
+	if iss.TrackerID != "" {
+		t.Fatalf("expected empty tracker_id, got %q", iss.TrackerID)
+	}
+	if iss.LastSyncedAt != nil {
+		t.Fatalf("expected nil last_synced_at, got %v", iss.LastSyncedAt)
+	}
+}
+
+func TestMarshal_HistorianFields_OmitWhenEmpty(t *testing.T) {
+	iss := &issue.Issue{
+		Title:   "Planned issue",
+		State:   issue.StatePending,
+		Urgency: issue.UrgencyNormal,
+		Created: time.Now().Truncate(time.Second),
+		Updated: time.Now().Truncate(time.Second),
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	for _, field := range []string{"confidence:", "source:", "tracker_id:", "last_synced_at:"} {
+		if bytes.Contains(out, []byte(field)) {
+			t.Fatalf("expected %s to be omitted when zero, but found it in:\n%s", field, out)
+		}
+	}
+}

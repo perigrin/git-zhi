@@ -43,6 +43,10 @@ type IssueJSON struct {
 	ObservedPaths      []string                `json:"observed_paths,omitempty"`
 	Labels             []string                `json:"labels,omitempty"`
 	Assigned           string                  `json:"assigned,omitempty"`
+	Confidence         float64                 `json:"confidence,omitempty"`
+	Source             string                  `json:"source,omitempty"`
+	TrackerID          string                  `json:"tracker_id,omitempty"`
+	LastSyncedAt       *time.Time              `json:"last_synced_at,omitempty"`
 	Prerequisites      []issue.Checkbox        `json:"prerequisites,omitempty"`
 	Context            *issue.StructuredContext `json:"context,omitempty"`
 	Steps              []string                `json:"steps,omitempty"`
@@ -185,6 +189,10 @@ func showJSON(cmd *cobra.Command, iss *issue.Issue) error {
 		ObservedPaths:      iss.ObservedPaths,
 		Labels:             iss.Labels,
 		Assigned:           iss.Assigned,
+		Confidence:         iss.Confidence,
+		Source:             iss.Source,
+		TrackerID:          iss.TrackerID,
+		LastSyncedAt:       iss.LastSyncedAt,
 		Prerequisites:      sections.Prerequisites,
 		Context:            sections.Context,
 		Steps:              sections.Steps,
