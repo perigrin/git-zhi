@@ -12,8 +12,10 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
+	"github.com/perigrin/git-zhi/internal/actor"
 	"github.com/perigrin/git-zhi/internal/graph"
 	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 	"github.com/perigrin/git-zhi/internal/resolve"
 	"github.com/perigrin/git-zhi/internal/uuids"
 )
@@ -139,6 +141,23 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 				iss.Sessions[openIdx].Commits = commitCount
 			}
 
+			// On done, compute ObservedPaths via git diff --name-only spanning
+			// the full history from the first session's StartSHA to the current
+			// HEAD. This captures all files touched across all sessions.
+			if stateAction == "done" && len(iss.Sessions) > 0 {
+				firstStartSHA := iss.Sessions[0].StartSHA
+				if firstStartSHA != "" {
+					paths, diffErr := app.Store.DiffNameOnly(firstStartSHA, currentHEAD)
+					if diffErr != nil {
+						// Non-fatal: record empty paths rather than blocking the
+						// state transition on a diff failure.
+						iss.ObservedPaths = []string{}
+					} else {
+						iss.ObservedPaths = paths
+					}
+				}
+			}
+
 		case "cancel":
 			openIdx := findOpenSession(iss.Sessions)
 			if openIdx >= 0 {
@@ -155,6 +174,16 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 				}
 			}
 		}
+
+		// Record a Transition for every state change. Derive the actor from
+		// the Store's git author config so lineage tracking knows who acted.
+		authorName, authorEmail := app.Store.AuthorInfo()
+		a := actor.DeriveActor(authorName, authorEmail)
+		iss.Transitions = append(iss.Transitions, issue.Transition{
+			State:     string(newState),
+			Actor:     a.String(),
+			Timestamp: now,
+		})
 
 		iss.State = newState
 		iss.Updated = time.Now()
@@ -202,10 +231,16 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 
 	uuidStr := strings.TrimPrefix(refPath, issue.RefPrefix)
 
-	// --milestone: update the milestone field.
+	// --milestone: update the milestone field. Reject assignment to completed milestones.
 	if cmd.Flags().Changed("milestone") {
-		ms, _ := cmd.Flags().GetString("milestone")
-		iss.Milestone = ms
+		msName, _ := cmd.Flags().GetString("milestone")
+		if msName != "" {
+			ms, msErr := milestone.LoadMilestone(app.Store, msName)
+			if msErr == nil && ms.State == "completed" {
+				return fmt.Errorf("cannot assign issue to completed milestone %q", msName)
+			}
+		}
+		iss.Milestone = msName
 	}
 
 	// --block <target>: this issue blocks target.
@@ -512,6 +547,9 @@ func printEditResult(cmd *cobra.Command, action, uuidStr string, iss *issue.Issu
 
 	case "cancel":
 		fmt.Fprintf(cmd.OutOrStdout(), "Cancelled %s: %s\n", shortID, iss.Title)
+
+	case "reopen":
+		fmt.Fprintf(cmd.OutOrStdout(), "Reopened %s: %s\n", shortID, iss.Title)
 	}
 
 	return nil

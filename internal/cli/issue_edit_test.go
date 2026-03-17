@@ -17,6 +17,7 @@ import (
 
 	"github.com/perigrin/git-zhi/internal/cli"
 	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 // setupEditTest creates a temporary git repo, makes an initial commit so
@@ -544,3 +545,318 @@ func TestIssueEdit_DoubleResume(t *testing.T) {
 		t.Fatalf("expected 'measurement session is already open' in error, got: %v", err)
 	}
 }
+
+func TestIssueEdit_Done_RecordsObservedPaths(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Feature with observed paths")
+	prefix := uuidStr[:8]
+
+	// Start the issue.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	// Make commits that touch specific files — makeTestCommit creates unique
+	// files so these will appear in the diff between start SHA and done SHA.
+	makeTestCommit(t, app, "work commit 1")
+	makeTestCommit(t, app, "work commit 2")
+
+	// Mark done — should populate ObservedPaths with files touched.
+	if _, _, err := run("issue", "edit", "--state", "done", prefix); err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if iss.State != issue.StateDone {
+		t.Fatalf("expected state done, got %s", iss.State)
+	}
+	// ObservedPaths should be non-empty because we made commits that touched files.
+	if len(iss.ObservedPaths) == 0 {
+		t.Fatal("expected ObservedPaths to be populated after done, got empty slice")
+	}
+}
+
+func TestIssueEdit_Done_MultiSession_ObservedPaths(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Multi-session observed paths")
+	prefix := uuidStr[:8]
+
+	// Session 1: start → make commits → pause.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	makeTestCommit(t, app, "session 1 commit")
+
+	if _, _, err := run("issue", "edit", "--state", "pause", prefix); err != nil {
+		t.Fatalf("pause failed: %v", err)
+	}
+
+	// Commit between sessions (not attributed to this issue).
+	makeTestCommit(t, app, "between sessions commit")
+
+	// Session 2: resume → make commits → done.
+	if _, _, err := run("issue", "edit", "--state", "resume", prefix); err != nil {
+		t.Fatalf("resume failed: %v", err)
+	}
+	makeTestCommit(t, app, "session 2 commit")
+
+	if _, _, err := run("issue", "edit", "--state", "done", prefix); err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	// ObservedPaths should span the full range (first session start → current HEAD).
+	if len(iss.ObservedPaths) == 0 {
+		t.Fatal("expected ObservedPaths to be populated after multi-session done")
+	}
+	// Should have at least 3 files (one per commit in the diff range, including
+	// the between-sessions commit which is within the first-SHA..HEAD range).
+	if len(iss.ObservedPaths) < 3 {
+		t.Fatalf("expected at least 3 observed paths (commits span first session to HEAD), got %d: %v",
+			len(iss.ObservedPaths), iss.ObservedPaths)
+	}
+}
+
+func TestIssueEdit_Done_NoSession_ObservedPathsEmpty(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	// Create an issue and transition it directly to done without starting
+	// (simulate a direct pending→done via reopen→done path or force via store).
+	// Since the state machine requires start before done, we test that when
+	// there are no sessions the ObservedPaths remains empty rather than panicking.
+	uuidStr := createEditTestIssue(t, app, "Direct done no sessions")
+
+	// Manually write the issue in in-progress state with no sessions so we
+	// can transition to done without going through start.
+	ref := issue.RefPrefix + uuidStr
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	iss.State = issue.StateInProgress
+	iss.Sessions = nil // explicitly no sessions
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := app.Store.WriteEntity(ref, "issue.md", out, "force in-progress no sessions"); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+
+	prefix := uuidStr[:8]
+	if _, _, err := run("issue", "edit", "--state", "done", prefix); err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+
+	data2, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss2, err := issue.Parse(data2)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if iss2.State != issue.StateDone {
+		t.Fatalf("expected state done, got %s", iss2.State)
+	}
+	// No sessions means no first SHA to diff from; ObservedPaths must be empty.
+	if len(iss2.ObservedPaths) != 0 {
+		t.Fatalf("expected empty ObservedPaths when no sessions, got %v", iss2.ObservedPaths)
+	}
+}
+
+// setupEditTestWithAuthor creates a temporary git repo with a specific git
+// user.name and user.email configured, so tests can assert on actor values.
+func setupEditTestWithAuthor(t *testing.T, name, email string) (*cli.App, func(args ...string) (*bytes.Buffer, *bytes.Buffer, error)) {
+	t.Helper()
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+
+	// Set git user config so the Store picks up the desired author.
+	cfg, err := repo.Config()
+	if err != nil {
+		t.Fatalf("get repo config: %v", err)
+	}
+	cfg.User.Name = name
+	cfg.User.Email = email
+	if err := repo.SetConfig(cfg); err != nil {
+		t.Fatalf("set repo config: %v", err)
+	}
+
+	store, err := storage.NewStore(repo)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	app := &cli.App{Store: store, Repo: repo}
+	if err := app.EnsureInitialized(); err != nil {
+		t.Fatalf("EnsureInitialized: %v", err)
+	}
+
+	// Make an initial commit so RepoHEAD() resolves.
+	makeTestCommit(t, app, "initial commit")
+
+	run := func(args ...string) (*bytes.Buffer, *bytes.Buffer, error) {
+		stdout := new(bytes.Buffer)
+		stderr := new(bytes.Buffer)
+		cmd := cli.NewRootCommand()
+		cmd.SetOut(stdout)
+		cmd.SetErr(stderr)
+		cmd.SetIn(strings.NewReader(""))
+		cmd.SetArgs(args)
+		cmd.SetContext(cli.WithApp(context.Background(), app))
+		err := cmd.Execute()
+		return stdout, stderr, err
+	}
+	return app, run
+}
+
+// TestStartRecordsTransition verifies that --state start appends a Transition
+// record with the actor derived from the Store's git author config.
+func TestStartRecordsTransition(t *testing.T) {
+	app, run := setupEditTestWithAuthor(t, "alice", "alice@example.com")
+
+	uuidStr := createEditTestIssue(t, app, "Transition start test")
+	prefix := uuidStr[:8]
+
+	before := time.Now().Add(-time.Second)
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	after := time.Now().Add(time.Second)
+
+	ref := issue.RefPrefix + uuidStr
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if len(iss.Transitions) != 1 {
+		t.Fatalf("expected 1 transition after start, got %d: %v", len(iss.Transitions), iss.Transitions)
+	}
+	tr := iss.Transitions[0]
+	if string(tr.State) != string(issue.StateInProgress) {
+		t.Fatalf("expected transition state %q, got %q", issue.StateInProgress, tr.State)
+	}
+	if tr.Actor != "human:alice" {
+		t.Fatalf("expected actor 'human:alice', got %q", tr.Actor)
+	}
+	if tr.Timestamp.Before(before) || tr.Timestamp.After(after) {
+		t.Fatalf("transition timestamp %v outside expected range [%v, %v]", tr.Timestamp, before, after)
+	}
+}
+
+// TestDoneRecordsTransition verifies that --state done appends a Transition.
+func TestDoneRecordsTransition(t *testing.T) {
+	app, run := setupEditTestWithAuthor(t, "bob", "bob@example.com")
+
+	uuidStr := createEditTestIssue(t, app, "Transition done test")
+	prefix := uuidStr[:8]
+
+	// Start it first (required by state machine).
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	makeTestCommit(t, app, "work commit")
+
+	if _, _, err := run("issue", "edit", "--state", "done", prefix); err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	// Expect two transitions: one for start, one for done.
+	if len(iss.Transitions) != 2 {
+		t.Fatalf("expected 2 transitions after start+done, got %d: %v", len(iss.Transitions), iss.Transitions)
+	}
+	doneTransition := iss.Transitions[1]
+	if string(doneTransition.State) != string(issue.StateDone) {
+		t.Fatalf("expected done transition state %q, got %q", issue.StateDone, doneTransition.State)
+	}
+	if doneTransition.Actor != "human:bob" {
+		t.Fatalf("expected actor 'human:bob', got %q", doneTransition.Actor)
+	}
+}
+
+// TestReopenRecordsTransition verifies that --state reopen appends a Transition.
+func TestReopenRecordsTransition(t *testing.T) {
+	app, run := setupEditTestWithAuthor(t, "carol", "carol@example.com")
+
+	uuidStr := createEditTestIssue(t, app, "Transition reopen test")
+	prefix := uuidStr[:8]
+
+	// Bring the issue to done before reopening.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	makeTestCommit(t, app, "work commit")
+	if _, _, err := run("issue", "edit", "--state", "done", prefix); err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+
+	if _, _, err := run("issue", "edit", "--state", "reopen", prefix); err != nil {
+		t.Fatalf("reopen failed: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	// Expect three transitions: start, done, reopen.
+	if len(iss.Transitions) != 3 {
+		t.Fatalf("expected 3 transitions after start+done+reopen, got %d: %v", len(iss.Transitions), iss.Transitions)
+	}
+	reopenTransition := iss.Transitions[2]
+	if string(reopenTransition.State) != string(issue.StateReopened) {
+		t.Fatalf("expected reopened transition state %q, got %q", issue.StateReopened, reopenTransition.State)
+	}
+	if reopenTransition.Actor != "human:carol" {
+		t.Fatalf("expected actor 'human:carol', got %q", reopenTransition.Actor)
+	}
+}
+

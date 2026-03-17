@@ -223,6 +223,76 @@ func (s *Store) RepoHEAD() (string, error) {
 	return ref.Hash().String(), nil
 }
 
+// DiffNameOnly returns the file paths changed between fromSHA (exclusive) and
+// toSHA (inclusive), equivalent to `git diff --name-only fromSHA..toSHA`.
+// Returns an empty slice when fromSHA == toSHA.
+func (s *Store) DiffNameOnly(fromSHA, toSHA string) ([]string, error) {
+	if fromSHA == toSHA {
+		return []string{}, nil
+	}
+
+	fromHash := plumbing.NewHash(fromSHA)
+	toHash := plumbing.NewHash(toSHA)
+
+	fromCommitObj, err := s.repo.Storer.EncodedObject(plumbing.CommitObject, fromHash)
+	if err != nil {
+		return nil, fmt.Errorf("get from-commit %s: %w", fromSHA, err)
+	}
+	fromCommit, err := object.DecodeCommit(s.repo.Storer, fromCommitObj)
+	if err != nil {
+		return nil, fmt.Errorf("decode from-commit: %w", err)
+	}
+
+	toCommitObj, err := s.repo.Storer.EncodedObject(plumbing.CommitObject, toHash)
+	if err != nil {
+		return nil, fmt.Errorf("get to-commit %s: %w", toSHA, err)
+	}
+	toCommit, err := object.DecodeCommit(s.repo.Storer, toCommitObj)
+	if err != nil {
+		return nil, fmt.Errorf("decode to-commit: %w", err)
+	}
+
+	fromTree, err := fromCommit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("get from-tree: %w", err)
+	}
+
+	toTree, err := toCommit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("get to-tree: %w", err)
+	}
+
+	changes, err := fromTree.Diff(toTree)
+	if err != nil {
+		return nil, fmt.Errorf("diff trees: %w", err)
+	}
+
+	seen := make(map[string]struct{})
+	var paths []string
+	for _, change := range changes {
+		// Use the To path when available (file added or modified); fall back
+		// to From path for deleted files.
+		name := change.To.Name
+		if name == "" {
+			name = change.From.Name
+		}
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; !exists {
+			seen[name] = struct{}{}
+			paths = append(paths, name)
+		}
+	}
+	return paths, nil
+}
+
+// AuthorInfo returns the git author name and email configured for this Store.
+// These values come from the repository's git config at store creation time.
+func (s *Store) AuthorInfo() (name, email string) {
+	return s.authorName, s.authorEmail
+}
+
 // CountCommits counts the number of commits between startSHA (exclusive) and
 // endSHA (inclusive) by walking the commit log backward from endSHA.
 // Returns 0 if startSHA == endSHA.

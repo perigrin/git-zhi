@@ -70,7 +70,7 @@ they only add facts (two-phase set pattern for dependencies).
 - **UUIDv7** over git OIDs or sequential numbers: stable across rebases
 - **Lazy init** over explicit `init` command: first mutating command bootstraps
 - **Events as commits**: event type is implicit in the diff between commits
-- **Markdown+YAML** for issues (human-readable), **pure YAML** for milestones
+- **Markdown+YAML** for issues (human-readable), **YAML frontmatter + markdown body** for milestones (backward-compatible with pure YAML v0.1 milestones)
 - **Critical Chain scheduling** (Goldratt): safety pooled into shared buffer
 
 ## Conventions

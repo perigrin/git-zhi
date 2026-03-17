@@ -308,3 +308,131 @@ func TestChainList_GraphFlagNotImplemented(t *testing.T) {
 		t.Fatalf("expected 'not yet implemented' in error, got: %v", err)
 	}
 }
+
+// TestListReady verifies --ready shows the ready set with path analysis.
+func TestListReady(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	// Create two independent pending issues with context paths.
+	createTestIssueWithDeps(t, app, "Parse signatures", issue.StatePending, "v0.1", nil)
+	createTestIssueWithDeps(t, app, "Config persistence", issue.StatePending, "v0.1", nil)
+
+	stdout, err := run("list", "--ready")
+	if err != nil {
+		t.Fatalf("list --ready failed: %v", err)
+	}
+
+	output := stdout.String()
+
+	// Output must contain "Ready set" header.
+	if !strings.Contains(output, "Ready set") {
+		t.Errorf("expected 'Ready set' header in --ready output, got:\n%s", output)
+	}
+
+	// Both issues must appear.
+	if !strings.Contains(output, "Parse signatures") {
+		t.Errorf("expected 'Parse signatures' in --ready output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Config persistence") {
+		t.Errorf("expected 'Config persistence' in --ready output, got:\n%s", output)
+	}
+}
+
+// TestListReady_DoneBlockerReleases verifies that a pending issue whose
+// blocker is done appears in the ready set.
+func TestListReady_DoneBlockerReleases(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	idA := createTestIssueWithDeps(t, app, "Blocker", issue.StateDone, "v0.1", nil)
+	createTestIssueWithDeps(t, app, "Unblocked", issue.StatePending, "v0.1", []uuid.UUID{idA})
+
+	stdout, err := run("list", "--ready")
+	if err != nil {
+		t.Fatalf("list --ready failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Unblocked") {
+		t.Errorf("expected 'Unblocked' in --ready output when blocker is done, got:\n%s", output)
+	}
+	// The done blocker itself must not appear in ready set.
+	if strings.Contains(output, "Blocker") {
+		t.Errorf("expected done issue 'Blocker' to NOT appear in --ready output, got:\n%s", output)
+	}
+}
+
+// TestListReady_PathOverlap verifies --ready reports overlap when issues
+// share a directory.
+func TestListReady_PathOverlap(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	// Both issues declare paths inside internal/parser — same directory.
+	bodyA := "## Context\n- paths: internal/parser/signature.go\n"
+	bodyB := "## Context\n- paths: internal/parser/error.go\n"
+	createTestIssueWithBody(t, app, "Parse sigs", issue.StatePending, "v0.1", bodyA)
+	createTestIssueWithBody(t, app, "Parse errors", issue.StatePending, "v0.1", bodyB)
+
+	stdout, err := run("list", "--ready")
+	if err != nil {
+		t.Fatalf("list --ready failed: %v", err)
+	}
+
+	output := stdout.String()
+	// Should report overlap warning.
+	if !strings.Contains(output, "overlap") && !strings.Contains(output, "Overlap") {
+		t.Errorf("expected overlap mention in --ready output for issues sharing a directory, got:\n%s", output)
+	}
+}
+
+// TestListReady_Json verifies --ready --format json returns structured ready set.
+func TestListReady_Json(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	createTestIssueWithDeps(t, app, "Ready JSON A", issue.StatePending, "v0.1", nil)
+	createTestIssueWithDeps(t, app, "Ready JSON B", issue.StatePending, "v0.1", nil)
+
+	stdout, err := run("list", "--ready", "--format", "json")
+	if err != nil {
+		t.Fatalf("list --ready --format json failed: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\noutput: %s", err, stdout.String())
+	}
+
+	if _, ok := result["ready_set"]; !ok {
+		t.Fatalf("expected 'ready_set' key in JSON output, got keys: %v", keys(result))
+	}
+	if _, ok := result["overlap_detected"]; !ok {
+		t.Fatalf("expected 'overlap_detected' key in JSON output, got keys: %v", keys(result))
+	}
+}
+
+// createTestIssueWithBody creates an issue with a specific body in the store.
+func createTestIssueWithBody(t *testing.T, app *cli.App, title string, state issue.State, ms string, body string) uuid.UUID {
+	t.Helper()
+	id, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("uuid.NewV7: %v", err)
+	}
+	now := time.Now()
+	iss := &issue.Issue{
+		ID:        id,
+		Title:     title,
+		State:     state,
+		Milestone: ms,
+		Body:      body,
+		Created:   now,
+		Updated:   now,
+	}
+	data, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("issue.Marshal: %v", err)
+	}
+	refPath := fmt.Sprintf("refs/zhi/_/issues/%s", id.String())
+	if err := app.Store.WriteEntity(refPath, "issue.md", data, "Add test issue: "+title); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+	return id
+}

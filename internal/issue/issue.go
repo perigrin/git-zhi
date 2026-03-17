@@ -21,6 +21,16 @@ const (
 	StateInProgress State = "in-progress"
 	StateDone       State = "done"
 	StateCancelled  State = "cancelled"
+	StateReopened   State = "reopened"
+)
+
+// Urgency represents the scheduling priority of an issue within its milestone.
+type Urgency string
+
+const (
+	UrgencyHigh   Urgency = "high"
+	UrgencyNormal Urgency = "normal"
+	UrgencyLow    Urgency = "low"
 )
 
 // RefPrefix is the git ref namespace under which all issues are stored.
@@ -38,6 +48,15 @@ type Session struct {
 	EndedAt   *time.Time `yaml:"ended_at,omitempty" json:"ended_at,omitempty"`
 }
 
+// Transition records a single state-change event on an issue: what state was
+// entered, which actor triggered it, and when it occurred. Used for lineage
+// tracking, DORA metrics, and per-actor HEAD resolution.
+type Transition struct {
+	State     string    `yaml:"state" json:"state"`
+	Actor     string    `yaml:"actor" json:"actor"`
+	Timestamp time.Time `yaml:"timestamp" json:"timestamp"`
+}
+
 // Issue represents a node in the chain dependency graph.
 type Issue struct {
 	// ID is derived from the entity ref path (refs/zhi/_/issues/<uuid>),
@@ -45,12 +64,19 @@ type Issue struct {
 	ID        uuid.UUID   `yaml:"-" json:"id"`
 	Title     string      `yaml:"title" json:"title"`
 	State     State       `yaml:"state" json:"state"`
+	Urgency   Urgency     `yaml:"urgency,omitempty" json:"urgency"`
 	Milestone string      `yaml:"milestone" json:"milestone"`
 	BlockedBy []uuid.UUID `yaml:"blocked_by,omitempty" json:"blocked_by,omitempty"`
 	Blocks    []uuid.UUID `yaml:"blocks,omitempty" json:"blocks,omitempty"`
 	Created   time.Time   `yaml:"created" json:"created"`
 	Updated   time.Time   `yaml:"updated" json:"updated"`
-	Sessions  []Session   `yaml:"sessions,omitempty" json:"sessions,omitempty"`
+	Sessions      []Session    `yaml:"sessions,omitempty" json:"sessions,omitempty"`
+	Transitions   []Transition `yaml:"transitions,omitempty" json:"transitions,omitempty"`
+	// ObservedPaths records the file paths touched during sessions for this
+	// issue. Populated by --state done from git diff --name-only. Used by
+	// git-zhi-verify to prioritize re-verification and by the parallelizer
+	// to detect path overlap between concurrent workers.
+	ObservedPaths []string `yaml:"observed_paths,omitempty" json:"observed_paths,omitempty"`
 	// Body is the raw markdown below the YAML frontmatter separator.
 	// Handled separately from YAML marshaling. Included in JSON output
 	// so --format json consumers get the full issue content.
@@ -68,6 +94,21 @@ func Parse(raw []byte) (*Issue, error) {
 	}
 	// frontmatter.Parse returns the body as []byte
 	iss.Body = strings.TrimSpace(string(rest))
+	// Default urgency to normal for backward compatibility with v0.1 issues
+	// that predate the urgency field.
+	if iss.Urgency == "" {
+		iss.Urgency = UrgencyNormal
+	}
+	// Ensure Transitions is never nil for backward compatibility with v0.1
+	// issues that predate this field. Callers can always append safely.
+	if iss.Transitions == nil {
+		iss.Transitions = []Transition{}
+	}
+	// Ensure ObservedPaths is never nil for backward compatibility with issues
+	// that predate this field. Callers can always append safely.
+	if iss.ObservedPaths == nil {
+		iss.ObservedPaths = []string{}
+	}
 	return &iss, nil
 }
 

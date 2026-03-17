@@ -1,18 +1,28 @@
 // ABOUTME: Implementation of the milestone show command: displays milestone
-// ABOUTME: details with issue list, progress percentage, and telemetry signals.
+// ABOUTME: details with issue list, progress percentage, telemetry signals, and optional forecast.
 package cli
 
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/spf13/cobra"
 
+	"github.com/perigrin/git-zhi/internal/graph"
 	"github.com/perigrin/git-zhi/internal/issue"
 	"github.com/perigrin/git-zhi/internal/milestone"
 	"github.com/perigrin/git-zhi/internal/resolve"
 	"github.com/perigrin/git-zhi/internal/telemetry"
 )
+
+// forecastPoint holds the estimated duration and context for a single worker count.
+type forecastPoint struct {
+	Workers     int     `json:"workers"`
+	WeeksEst    float64 `json:"weeks_est"`
+	CritIssues  int     `json:"critical_chain_issues"`
+	ParallelTracks int  `json:"parallel_tracks"`
+}
 
 // milestoneShowJSON is the JSON presentation of a milestone with its issues
 // and computed telemetry.
@@ -23,6 +33,89 @@ type milestoneShowJSON struct {
 	DoneIssues  int              `json:"done_issues"`
 	Progress    int              `json:"progress_pct"`
 	Telemetry   *telemetry.Stats `json:"telemetry"`
+	Forecast    []forecastPoint  `json:"forecast,omitempty"`
+}
+
+// coordinationTaxPerPair is the fixed overhead fraction added per parallel pair.
+const coordinationTaxPerPair = 0.10
+
+// computeForecast estimates delivery time at each worker count from 1 to maxWorkers.
+// The floor is always the sequential time of the critical chain (can't go faster
+// than the longest path). For each additional worker beyond 1, the effective issue
+// count is reduced by the ready set width (capped at remaining issues), with a
+// 10% coordination tax per parallel pair.
+//
+// When speed is zero (no done issues yet), weeks are reported as 0 for all points.
+func computeForecast(msIssues []*issue.Issue, stats *telemetry.Stats, maxWorkers int) []forecastPoint {
+	if maxWorkers <= 0 {
+		return nil
+	}
+
+	// Count remaining (non-done, non-cancelled) issues.
+	var remaining []*issue.Issue
+	for _, iss := range msIssues {
+		if iss.State != issue.StateDone && iss.State != issue.StateCancelled {
+			remaining = append(remaining, iss)
+		}
+	}
+	remainingCount := len(remaining)
+
+	// Build the graph for the remaining issues to get critical chain length and ready set.
+	g := graph.New(remaining)
+	critChain := g.CriticalChain()
+	critLen := len(critChain)
+	readySet := g.ReadySet()
+	readyWidth := len(readySet)
+
+	speed := stats.Speed // issues per week; 0 when no done issues exist
+
+	// Sequential time is the baseline; parallel can only be faster down to the
+	// floor set by the critical chain length.
+	seqWeeks := 0.0
+	if speed > 0 && remainingCount > 0 {
+		seqWeeks = float64(remainingCount) / speed
+	}
+	critFloor := 0.0
+	if speed > 0 && critLen > 0 {
+		critFloor = float64(critLen) / speed
+	}
+
+	points := make([]forecastPoint, 0, maxWorkers)
+	for w := 1; w <= maxWorkers; w++ {
+		var weeksEst float64
+		parallelTracks := 0
+
+		if w == 1 || readyWidth <= 1 {
+			// Single worker or no parallelism available: sequential time.
+			weeksEst = seqWeeks
+		} else {
+			// Effective parallel workers capped at the ready set width.
+			effectiveWorkers := w
+			if effectiveWorkers > readyWidth {
+				effectiveWorkers = readyWidth
+			}
+			parallelTracks = effectiveWorkers - 1
+
+			// Coordination tax: 10% overhead per parallel pair.
+			taxFactor := 1.0 + coordinationTaxPerPair*float64(parallelTracks)
+
+			// Parallel speedup: divide sequential time by effective workers,
+			// apply coordination tax, then bound below by critical chain floor.
+			if speed > 0 {
+				parallel := (seqWeeks / float64(effectiveWorkers)) * taxFactor
+				weeksEst = math.Max(parallel, critFloor)
+			}
+		}
+
+		points = append(points, forecastPoint{
+			Workers:        w,
+			WeeksEst:       math.Round(weeksEst*10) / 10, // round to 1 decimal
+			CritIssues:     critLen,
+			ParallelTracks: parallelTracks,
+		})
+	}
+
+	return points
 }
 
 // runMilestoneShow loads a milestone by name (or the current milestone if no
@@ -109,6 +202,13 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 	// Compute telemetry from milestone issues.
 	stats := telemetry.Compute(allIssues, ms)
 
+	// Compute forecast if --workers flag was provided.
+	maxWorkers, _ := cmd.Flags().GetInt("workers")
+	var forecast []forecastPoint
+	if maxWorkers > 0 {
+		forecast = computeForecast(msIssues, stats, maxWorkers)
+	}
+
 	format, _ := cmd.Root().PersistentFlags().GetString("format")
 	if format == "json" {
 		out := &milestoneShowJSON{
@@ -118,6 +218,7 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 			DoneIssues:  doneCount,
 			Progress:    progressPct,
 			Telemetry:   stats,
+			Forecast:    forecast,
 		}
 		if out.Issues == nil {
 			out.Issues = []*issue.Issue{}
@@ -127,12 +228,12 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 		return enc.Encode(out)
 	}
 
-	return showMilestoneHuman(cmd, ms, msIssues, doneCount, progressPct, stats)
+	return showMilestoneHuman(cmd, ms, msIssues, doneCount, progressPct, stats, forecast)
 }
 
 // showMilestoneHuman renders the milestone detail view in human-readable format,
-// including telemetry signals below the progress line.
-func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*issue.Issue, doneCount, progressPct int, stats *telemetry.Stats) error {
+// including telemetry signals and an optional forecast below the progress line.
+func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*issue.Issue, doneCount, progressPct int, stats *telemetry.Stats, forecast []forecastPoint) error {
 	w := cmd.OutOrStdout()
 
 	fmt.Fprintf(w, "Milestone: %s\n", ms.Name)
@@ -150,6 +251,29 @@ func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*i
 		if stats.TimeInChain > 0 {
 			fmt.Fprintf(w, "  Time-in-chain: %.0f%%\n", stats.TimeInChain*100)
 			fmt.Fprintf(w, "  Shadow work:   %.0f%%\n", stats.ShadowWork*100)
+		}
+	}
+
+	// Forecast section (only present when --workers was given).
+	if len(forecast) > 0 {
+		fmt.Fprintln(w, "\nForecast:")
+		for _, pt := range forecast {
+			workerLabel := "worker"
+			if pt.Workers > 1 {
+				workerLabel = "workers"
+			}
+			parallelNote := ""
+			if pt.ParallelTracks > 0 {
+				parallelNote = fmt.Sprintf(" (%d off-chain parallel track", pt.ParallelTracks)
+				if pt.ParallelTracks > 1 {
+					parallelNote += "s"
+				}
+				parallelNote += ")"
+			} else if pt.Workers > 1 {
+				parallelNote = " (diminishing returns)"
+			}
+			fmt.Fprintf(w, "  At %d %s:  ~%.1f weeks (critical chain: %d issues)%s\n",
+				pt.Workers, workerLabel, pt.WeeksEst, pt.CritIssues, parallelNote)
 		}
 	}
 

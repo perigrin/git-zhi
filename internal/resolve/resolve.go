@@ -71,7 +71,7 @@ func resolveHead(store *storage.Store) (string, error) {
 	}
 
 	g := graph.New(issues)
-	head, err := g.Head()
+	head, err := g.Head("")
 	if err != nil {
 		return "", fmt.Errorf("resolve HEAD: %w", err)
 	}

@@ -1,9 +1,12 @@
-// ABOUTME: Implementation of the milestone edit command: set or clear due date
-// ABOUTME: and rename milestones, updating all issues on rename.
+// ABOUTME: Implementation of the milestone edit command: set or clear due date,
+// ABOUTME: rename milestones, tag/untag, run the resolution command, and complete the milestone.
 package cli
 
 import (
 	"fmt"
+	"io"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,7 +16,7 @@ import (
 )
 
 // knownMilestoneEditFlags lists all flags that constitute a valid edit operation.
-var knownMilestoneEditFlags = []string{"due", "name", "tag", "untag"}
+var knownMilestoneEditFlags = []string{"due", "name", "tag", "untag", "resolve", "state"}
 
 // runMilestoneEdit loads a milestone, applies --due, --name, --tag, and/or
 // --untag changes. On rename, the old ref is deleted and all issues'
@@ -39,7 +42,7 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if !anyFlagSet {
-		return fmt.Errorf("no changes specified: use --due, --name, --tag, or --untag")
+		return fmt.Errorf("no changes specified: use --due, --name, --tag, --untag, or --resolve")
 	}
 
 	ms, err := milestone.LoadMilestone(app.Store, name)
@@ -48,6 +51,22 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	w := cmd.OutOrStdout()
+
+	// Apply --resolve: execute the milestone's resolution command and report results.
+	// This is a standalone operation; it does not persist any changes to the milestone.
+	if cmd.Flags().Changed("resolve") {
+		return runMilestoneResolve(app, ms, w)
+	}
+
+	// Apply --state: only "complete" is supported. Runs all quality gates before
+	// transitioning state to "completed" and persisting the milestone.
+	if cmd.Flags().Changed("state") {
+		stateVal, _ := cmd.Flags().GetString("state")
+		if stateVal != "complete" {
+			return fmt.Errorf("unsupported milestone state %q: only 'complete' is supported", stateVal)
+		}
+		return runMilestoneComplete(app, ms, w)
+	}
 
 	// Apply --due change.
 	if cmd.Flags().Changed("due") {
@@ -132,6 +151,106 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	return nil
+}
+
+// runMilestoneResolve executes the milestone's resolution command via `sh -c`
+// in the repository working directory. Stdout and stderr from the command are
+// written to w. Returns an error wrapping the command's exit status when the
+// command exits non-zero, or an error if no resolution command is configured.
+func runMilestoneResolve(app *App, ms *milestone.Milestone, w io.Writer) error {
+	if ms.Resolution == "" {
+		return fmt.Errorf("no resolution command configured for milestone %s", ms.Name)
+	}
+
+	// Determine the repository working directory for subprocess execution.
+	wt, err := app.Repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("get repo worktree: %w", err)
+	}
+	repoRoot := wt.Filesystem.Root()
+
+	cmd := exec.Command("sh", "-c", ms.Resolution)
+	cmd.Dir = repoRoot
+	cmd.Stdout = w
+	cmd.Stderr = w
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("resolution command failed: %w", err)
+	}
+	return nil
+}
+
+// runMilestoneComplete enforces quality gates before marking a milestone as
+// completed. Gates are applied in this order:
+//  1. Issue gate: all issues in the milestone must be done or cancelled.
+//  2. Resolution gate: the milestone's resolution command (if any) must pass.
+//  3. Verify gate: if git-zhi-verify is on PATH, run it; if not, warn and skip.
+//
+// If all gates pass, the milestone State is set to "completed", the Completed
+// timestamp is recorded, and the milestone is written back to storage.
+func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer) error {
+	// Gate 1: all issues in the milestone must be done or cancelled.
+	allIssues, err := issue.LoadAllIssues(app.Store)
+	if err != nil {
+		return fmt.Errorf("load issues: %w", err)
+	}
+	var blocking []string
+	for _, iss := range allIssues {
+		if iss.Milestone != ms.Name {
+			continue
+		}
+		if iss.State != issue.StateDone && iss.State != issue.StateCancelled {
+			blocking = append(blocking, fmt.Sprintf("  %s  %s (%s)", iss.ID.String()[:8], iss.Title, iss.State))
+		}
+	}
+	if len(blocking) > 0 {
+		return fmt.Errorf("cannot complete milestone %s: %d issue(s) are not done or cancelled:\n%s",
+			ms.Name, len(blocking), strings.Join(blocking, "\n"))
+	}
+
+	// Gate 2: run the resolution command if configured.
+	if ms.Resolution != "" {
+		if err := runMilestoneResolve(app, ms, w); err != nil {
+			return err
+		}
+	}
+
+	// Gate 3: run git-zhi-verify if it is on PATH; warn and skip if not found.
+	verifyPath, lookErr := exec.LookPath("git-zhi-verify")
+	if lookErr != nil {
+		fmt.Fprintf(w, "warning: git-zhi-verify not found on PATH; skipping verify gate\n")
+	} else {
+		wt, wtErr := app.Repo.Worktree()
+		if wtErr != nil {
+			return fmt.Errorf("get repo worktree: %w", wtErr)
+		}
+		repoRoot := wt.Filesystem.Root()
+
+		verifyCmd := exec.Command(verifyPath, ms.Name)
+		verifyCmd.Dir = repoRoot
+		verifyCmd.Stdout = w
+		verifyCmd.Stderr = w
+		if runErr := verifyCmd.Run(); runErr != nil {
+			return fmt.Errorf("verify gate failed: %w", runErr)
+		}
+	}
+
+	// All gates passed: transition to completed.
+	now := time.Now()
+	ms.State = "completed"
+	ms.Completed = &now
+
+	data, err := milestone.MarshalMilestone(ms)
+	if err != nil {
+		return fmt.Errorf("marshal milestone: %w", err)
+	}
+	refPath := milestone.RefPrefix + ms.Name
+	if err := app.Store.WriteEntity(refPath, "milestone.yaml", data, "Complete milestone: "+ms.Name); err != nil {
+		return fmt.Errorf("write milestone: %w", err)
+	}
+
+	fmt.Fprintf(w, "%s: state → completed\n", ms.Name)
 	return nil
 }
 

@@ -1,5 +1,5 @@
 // ABOUTME: Tests for state machine validation: valid and invalid issue lifecycle transitions.
-// ABOUTME: Covers all action strings (start, pause, resume, done, cancel) and error cases.
+// ABOUTME: Covers all action strings (start, pause, resume, done, cancel, reopen) and error cases.
 package issue_test
 
 import (
@@ -78,4 +78,46 @@ func TestValidateTransition_Invalid(t *testing.T) {
 			t.Fatalf("expected error for action %q from state %q, got nil", tc.action, tc.current)
 		}
 	}
+}
+
+// TestReopenedTransition covers the full reopened state lifecycle:
+// done→reopened via "reopen", reopened→in-progress via "start",
+// and rejected transitions from reopened (cancel, done directly).
+func TestReopenedTransition(t *testing.T) {
+	t.Run("done to reopened via reopen", func(t *testing.T) {
+		next, err := issue.ValidateTransition(issue.StateDone, "reopen")
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if next != issue.StateReopened {
+			t.Fatalf("expected %q, got %q", issue.StateReopened, next)
+		}
+	})
+
+	t.Run("reopened to in-progress via start", func(t *testing.T) {
+		next, err := issue.ValidateTransition(issue.StateReopened, "start")
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if next != issue.StateInProgress {
+			t.Fatalf("expected %q, got %q", issue.StateInProgress, next)
+		}
+	})
+
+	t.Run("invalid transitions from reopened", func(t *testing.T) {
+		cases := []struct {
+			action string
+		}{
+			{"cancel"},
+			{"done"},
+			{"pause"},
+			{"resume"},
+		}
+		for _, tc := range cases {
+			_, err := issue.ValidateTransition(issue.StateReopened, tc.action)
+			if err == nil {
+				t.Fatalf("expected error for action %q from state %q, got nil", tc.action, issue.StateReopened)
+			}
+		}
+	})
 }

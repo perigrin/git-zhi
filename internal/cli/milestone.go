@@ -41,12 +41,14 @@ func newMilestoneListCommand() *cobra.Command {
 }
 
 func newMilestoneShowCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "show [name]",
 		Short: "Show milestone detail with issues and progress",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runMilestoneShow,
 	}
+	cmd.Flags().Int("workers", 0, "show forecast for up to N parallel workers (0 = no forecast)")
+	return cmd
 }
 
 func newMilestoneEditCommand() *cobra.Command {
@@ -60,5 +62,7 @@ func newMilestoneEditCommand() *cobra.Command {
 	cmd.Flags().String("name", "", "rename the milestone")
 	cmd.Flags().String("tag", "", "create a named tag pointing to this milestone")
 	cmd.Flags().String("untag", "", "delete a named tag")
+	cmd.Flags().Bool("resolve", false, "execute the milestone's resolution command")
+	cmd.Flags().String("state", "", "transition milestone state (only 'complete' is supported)")
 	return cmd
 }

@@ -336,16 +336,34 @@ func (g *Graph) ReadySet() []*issue.Issue {
 	return ready
 }
 
-// Head returns the current "work item" for the chain:
-//  1. If any issue is in-progress, return it (first by UUID sort if multiple).
-//  2. Otherwise, return the first issue in the critical chain.
-//  3. If no critical chain exists, return the first pending issue by UUID sort.
-//  4. If no issues at all, return an error.
-func (g *Graph) Head() (*issue.Issue, error) {
+// Head returns the current "work item" for the chain.
+//
+// When actor is empty, the behavior is identical to the v0.1 global WIP=1
+// semantics: any in-progress issue is returned first; if none, the critical
+// chain leader is returned; if no chain, the first pending issue by UUID sort.
+//
+// When actor is non-empty, per-worker semantics apply:
+//  1. If the actor has their own in-progress issue (last transition actor
+//     matches), return it.
+//  2. Otherwise build the ready set, exclude issues held by other workers
+//     (in-progress issues whose last-transition actor differs), then apply
+//     the standard critical-chain / pending fallback on that filtered set.
+//
+// In all cases, if no issues exist at all, an error is returned.
+func (g *Graph) Head(actor string) (*issue.Issue, error) {
 	if len(g.issues) == 0 {
 		return nil, fmt.Errorf("graph: no issues")
 	}
 
+	if actor == "" {
+		return g.headGlobal()
+	}
+	return g.headForActor(actor)
+}
+
+// headGlobal implements v0.1 semantics: any in-progress issue wins, then
+// critical chain, then first pending by UUID sort.
+func (g *Graph) headGlobal() (*issue.Issue, error) {
 	// Step 1: in-progress issue.
 	var inProgress []*issue.Issue
 	for _, iss := range g.issues {
@@ -377,6 +395,51 @@ func (g *Graph) Head() (*issue.Issue, error) {
 	}
 
 	return nil, fmt.Errorf("graph: no actionable issues")
+}
+
+// headForActor implements per-worker WIP=1 semantics for a named actor.
+func (g *Graph) headForActor(actor string) (*issue.Issue, error) {
+	// Step 1: check if this actor already has an in-progress issue.
+	for _, iss := range g.issues {
+		if iss.State == issue.StateInProgress && lastTransitionActor(iss) == actor {
+			return iss, nil
+		}
+	}
+
+	// Build the set of issue IDs currently held by other workers (in-progress
+	// issues whose last-transition actor is someone other than this actor).
+	otherWorkerIDs := make(map[string]bool)
+	for _, iss := range g.issues {
+		if iss.State == issue.StateInProgress {
+			if a := lastTransitionActor(iss); a != actor {
+				otherWorkerIDs[iss.ID.String()] = true
+			}
+		}
+	}
+
+	// Step 2: build a temporary sub-graph that excludes issues held by other
+	// workers, then apply the standard head logic on it.
+	var filtered []*issue.Issue
+	for _, iss := range g.issues {
+		if !otherWorkerIDs[iss.ID.String()] {
+			filtered = append(filtered, iss)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, fmt.Errorf("graph: no actionable issues for actor %s", actor)
+	}
+
+	sub, _ := Build(filtered)
+	return sub.headGlobal()
+}
+
+// lastTransitionActor returns the actor field from the last entry in
+// iss.Transitions, or an empty string if there are no transitions.
+func lastTransitionActor(iss *issue.Issue) string {
+	if len(iss.Transitions) == 0 {
+		return ""
+	}
+	return iss.Transitions[len(iss.Transitions)-1].Actor
 }
 
 // Cancel removes all edges involving the cancelled issue and reconnects the
@@ -414,6 +477,72 @@ func (g *Graph) Cancel(id uuid.UUID) error {
 	g.backward[id] = []uuid.UUID{}
 
 	return nil
+}
+
+// ParallelAssignment partitions a ready set into worker groups for concurrent
+// execution. Issues on the critical chain are prioritised over off-chain issues.
+// Within each tier, issues are sorted by UUID for determinism.
+//
+// The greedy assignment loop accumulates a single "assigned paths" set across
+// all groups. For each candidate issue (in priority order):
+//   - If its paths do NOT overlap with any already-assigned paths, it is given
+//     its own worker group and its paths are added to the accumulated set.
+//   - If its paths DO overlap with already-assigned paths, it is deferred and
+//     will be sequenced after the current batch.
+//
+// Assignment stops once workerCount groups are filled or the ready set is
+// exhausted. Each inner slice in the result holds the issue(s) for one worker;
+// issues in different groups are safe for concurrent execution.
+func (g *Graph) ParallelAssignment(ready []uuid.UUID, workerCount int, pathsFn func(uuid.UUID) []string) [][]uuid.UUID {
+	if len(ready) == 0 {
+		return nil
+	}
+
+	// Determine which issues are on the critical chain.
+	chain := g.CriticalChain()
+	onChain := make(map[uuid.UUID]bool, len(chain))
+	for _, iss := range chain {
+		onChain[iss.ID] = true
+	}
+
+	// Sort ready set: critical chain issues first, then off-chain; UUID within
+	// each tier for determinism.
+	sorted := make([]uuid.UUID, len(ready))
+	copy(sorted, ready)
+	sort.Slice(sorted, func(i, j int) bool {
+		iOnChain := onChain[sorted[i]]
+		jOnChain := onChain[sorted[j]]
+		if iOnChain != jOnChain {
+			return iOnChain // on-chain sorts before off-chain
+		}
+		return sorted[i].String() < sorted[j].String()
+	})
+
+	// assignedPaths is the union of paths across all worker groups assigned so
+	// far. A candidate may only be assigned if it does not overlap with this set
+	// (ensuring all assigned issues are safe for parallel execution).
+	var assignedPaths []string
+	var groups [][]uuid.UUID
+
+	for _, id := range sorted {
+		if len(groups) >= workerCount {
+			break
+		}
+
+		candidate := pathsFn(id)
+
+		// If the candidate overlaps with any already-assigned issue's paths,
+		// defer it to a subsequent batch.
+		if PathsOverlap(assignedPaths, candidate) {
+			continue
+		}
+
+		// No overlap: give this issue its own worker group and record its paths.
+		groups = append(groups, []uuid.UUID{id})
+		assignedPaths = append(assignedPaths, candidate...)
+	}
+
+	return groups
 }
 
 // activeIssues returns all issues that are not done or cancelled.

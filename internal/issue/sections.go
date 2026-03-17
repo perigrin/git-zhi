@@ -1,5 +1,5 @@
 // ABOUTME: ParseSections extracts structured sections from an issue's markdown body.
-// ABOUTME: Recognizes Prerequisites, Context, and Acceptance Criteria headings; remaining text becomes Description.
+// ABOUTME: Recognizes Prerequisites, Steps, Context, and Acceptance Criteria (with optional Positive/Negative subsections) headings; remaining text becomes Description.
 package issue
 
 import (
@@ -23,10 +23,13 @@ type StructuredContext struct {
 
 // Sections holds all parsed sections from an issue body.
 type Sections struct {
-	Prerequisites      []Checkbox         `json:"prerequisites,omitempty"`
-	Context            *StructuredContext  `json:"context,omitempty"`
-	AcceptanceCriteria []Checkbox         `json:"acceptance_criteria,omitempty"`
-	Description        string             `json:"description,omitempty"`
+	Prerequisites      []Checkbox        `json:"prerequisites,omitempty"`
+	Context            *StructuredContext `json:"context,omitempty"`
+	Steps              []string          `json:"steps,omitempty"`
+	AcceptanceCriteria []Checkbox        `json:"acceptance_criteria,omitempty"`
+	PositiveScenarios  []Checkbox        `json:"positive_scenarios,omitempty"`
+	NegativeScenarios  []Checkbox        `json:"negative_scenarios,omitempty"`
+	Description        string            `json:"description,omitempty"`
 }
 
 var checkboxRe = regexp.MustCompile(`^- \[([xX ])\] (.+)$`)
@@ -60,6 +63,85 @@ func splitCSV(s string) []string {
 		}
 	}
 	return result
+}
+
+// parseSteps extracts the text of checkbox items from a Steps section.
+// Both checked (`- [x]`) and unchecked (`- [ ]`) items are included; only
+// their text is returned (the checked state is not tracked for steps).
+func parseSteps(text string) []string {
+	var result []string
+	for _, line := range strings.Split(text, "\n") {
+		m := checkboxRe.FindStringSubmatch(strings.TrimRight(line, " \t"))
+		if m == nil {
+			continue
+		}
+		result = append(result, strings.TrimSpace(m[2]))
+	}
+	return result
+}
+
+// parseACWithSubsections parses an Acceptance Criteria section that may contain
+// ### Positive Scenarios and ### Negative Scenarios subsections. When no
+// subsections are present (v0.1 flat format), all items go into PositiveScenarios.
+// AcceptanceCriteria is always the union of positive and negative for backward
+// compatibility with callers that only read that field.
+func parseACWithSubsections(text string) (all, positive, negative []Checkbox) {
+	// Check for ### subsection headings.
+	hasSubsections := false
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "### ") {
+			hasSubsections = true
+			break
+		}
+	}
+
+	if !hasSubsections {
+		// Flat list: all items are positive scenarios.
+		positive = parseCheckboxes(text)
+		return positive, positive, nil
+	}
+
+	// Split on ### headings within the AC block.
+	type subSection struct {
+		name string
+		text string
+	}
+	var subs []subSection
+	var curName string
+	var curLines []string
+
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "### ") {
+			// Flush previous subsection.
+			subs = append(subs, subSection{
+				name: curName,
+				text: strings.TrimSpace(strings.Join(curLines, "\n")),
+			})
+			curName = strings.TrimSpace(strings.TrimPrefix(line, "### "))
+			curLines = nil
+		} else {
+			curLines = append(curLines, line)
+		}
+	}
+	// Flush final subsection.
+	subs = append(subs, subSection{
+		name: curName,
+		text: strings.TrimSpace(strings.Join(curLines, "\n")),
+	})
+
+	for _, sub := range subs {
+		switch strings.ToLower(sub.name) {
+		case "positive scenarios":
+			positive = append(positive, parseCheckboxes(sub.text)...)
+		case "negative scenarios":
+			negative = append(negative, parseCheckboxes(sub.text)...)
+		}
+	}
+
+	// Union for backward compat.
+	all = append(all, positive...)
+	all = append(all, negative...)
+	return all, positive, negative
 }
 
 // contextKeyRe matches lines like `- paths: value1, value2` in a Context section.
@@ -155,8 +237,10 @@ func ParseSections(body string) *Sections {
 			if extra != "" {
 				descParts = append(descParts, extra)
 			}
+		case "steps":
+			s.Steps = parseSteps(sec.text)
 		case "acceptance criteria":
-			s.AcceptanceCriteria = parseCheckboxes(sec.text)
+			s.AcceptanceCriteria, s.PositiveScenarios, s.NegativeScenarios = parseACWithSubsections(sec.text)
 		default:
 			// Unrecognized section: treat its text as description.
 			if sec.text != "" {

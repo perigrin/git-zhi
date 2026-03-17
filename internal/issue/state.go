@@ -15,8 +15,12 @@ type transition struct {
 
 // transitions maps action strings to their valid transitions.
 // pause and resume keep the state as in-progress; they only affect measurement sessions.
+// reopen moves a done issue back into the reopened holding state before work resumes.
 var transitions = map[string][]transition{
-	"start":  {{required: StatePending, next: StateInProgress}},
+	"start": {
+		{required: StatePending, next: StateInProgress},
+		{required: StateReopened, next: StateInProgress},
+	},
 	"pause":  {{required: StateInProgress, next: StateInProgress}},
 	"resume": {{required: StateInProgress, next: StateInProgress}},
 	"done":   {{required: StateInProgress, next: StateDone}},
@@ -24,6 +28,7 @@ var transitions = map[string][]transition{
 		{required: StatePending, next: StateCancelled},
 		{required: StateInProgress, next: StateCancelled},
 	},
+	"reopen": {{required: StateDone, next: StateReopened}},
 }
 
 // ValidateTransition checks whether the given action is valid for the current
