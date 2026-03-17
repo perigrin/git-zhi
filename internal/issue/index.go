@@ -24,11 +24,20 @@ func labelIndexRefPrefix(label string) string {
 // For each issue-label pair, a lightweight marker ref is written at
 // refs/zhi/<label>/<issue-uuid> containing the full issue ref path.
 // Running BuildLabelIndexes twice with the same input is idempotent.
+// Returns an error if any label name is invalid (contains "/" or equals "_").
 func BuildLabelIndexes(store *storage.Store, issues []*Issue) error {
 	// Collect the complete set of labels used by this issue list.
 	labelsInUse := make(map[string]struct{})
 	for _, iss := range issues {
 		for _, label := range iss.Labels {
+			// Reject labels that would collide with the core refs/zhi/_/ namespace
+			// or produce malformed ref paths.
+			if label == "_" {
+				return fmt.Errorf("invalid label name %q: label '_' would collide with the core refs/zhi/_/ namespace", label)
+			}
+			if strings.Contains(label, "/") {
+				return fmt.Errorf("invalid label name %q: label names must not contain '/'", label)
+			}
 			labelsInUse[label] = struct{}{}
 		}
 	}

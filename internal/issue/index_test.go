@@ -3,6 +3,7 @@
 package issue_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -212,6 +213,36 @@ func TestLoadLabelIndex_EmptyLabel(t *testing.T) {
 	}
 	if len(ids) != 0 {
 		t.Fatalf("expected empty slice, got %d entries", len(ids))
+	}
+}
+
+// TestBuildLabelIndexes_RejectsUnderscoreLabel verifies that the reserved
+// label "_" is rejected to prevent collision with the refs/zhi/_/ namespace.
+func TestBuildLabelIndexes_RejectsUnderscoreLabel(t *testing.T) {
+	store := initIndexTestStore(t)
+
+	iss := makeIssueWithLabels(t, store, "Reserved label issue", []string{"_"})
+	err := issue.BuildLabelIndexes(store, []*issue.Issue{iss})
+	if err == nil {
+		t.Fatal("expected error for label '_', got nil")
+	}
+	if !strings.Contains(err.Error(), "_") {
+		t.Errorf("expected error to mention the invalid label, got: %v", err)
+	}
+}
+
+// TestBuildLabelIndexes_RejectsSlashInLabel verifies that labels containing
+// "/" are rejected to prevent malformed ref paths.
+func TestBuildLabelIndexes_RejectsSlashInLabel(t *testing.T) {
+	store := initIndexTestStore(t)
+
+	iss := makeIssueWithLabels(t, store, "Slash label issue", []string{"team/subteam"})
+	err := issue.BuildLabelIndexes(store, []*issue.Issue{iss})
+	if err == nil {
+		t.Fatal("expected error for label containing '/', got nil")
+	}
+	if !strings.Contains(err.Error(), "/") {
+		t.Errorf("expected error to mention the invalid label, got: %v", err)
 	}
 }
 
