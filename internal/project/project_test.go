@@ -426,6 +426,55 @@ func TestComputeProjectStatus_ResourceBuffer(t *testing.T) {
 	}
 }
 
+func TestComputeProjectStatus_ResourceBuffer_LastRepo(t *testing.T) {
+	dirA, appA := makeTestRepo(t)
+	dirB, appB := makeTestRepo(t)
+
+	now := time.Now()
+
+	msA := &milestone.Milestone{Name: "v1.0", Created: now}
+	writeMilestone(t, appA, msA)
+	writeIssue(t, appA, &issue.Issue{
+		Title: "A pending", State: issue.StatePending, Milestone: "v1.0",
+		Created: now, Updated: now,
+	})
+
+	msB := &milestone.Milestone{Name: "v2.0", Created: now}
+	writeMilestone(t, appB, msB)
+	// Alice is in-progress in repo B, which is her LAST assigned repo.
+	writeIssue(t, appB, &issue.Issue{
+		Title: "B in-progress", State: issue.StateInProgress, Milestone: "v2.0",
+		Assigned: "alice", Created: now, Updated: now,
+	})
+
+	def := &project.ProjectDef{
+		Name: "Last Repo Test",
+		Repos: []project.RepoDef{
+			{Path: dirA, Milestone: "v1.0"},
+			{Path: dirB, Milestone: "v2.0"},
+		},
+		Workers: []project.WorkerDef{
+			{Name: "alice", Repos: []string{dirA, dirB}},
+		},
+	}
+	status, err := project.ComputeProjectStatus(def)
+	if err != nil {
+		t.Fatalf("ComputeProjectStatus: %v", err)
+	}
+
+	if len(status.ResourceBuffers) != 1 {
+		t.Fatalf("expected 1 resource buffer, got %d", len(status.ResourceBuffers))
+	}
+	rb := status.ResourceBuffers[0]
+	if rb.Worker != "alice" {
+		t.Errorf("expected Worker=%q, got %q", "alice", rb.Worker)
+	}
+	// Alice is busy in her last repo (dirB) — no handoff pending, so "on track".
+	if rb.Status != "on track" {
+		t.Errorf("expected Status=%q for worker busy in last repo, got %q", "on track", rb.Status)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // NextForActor tests
 // ---------------------------------------------------------------------------

@@ -373,7 +373,14 @@ func computeResourceBuffers(def *ProjectDef, states []*repoState) []ResourceBuff
 			}
 		}
 
-		if busyRepo != "" && len(wd.Repos) > 1 {
+		// A worker is "at risk" only when they are busy in a repo that is not
+		// their last assigned repo. If they are busy in their last repo there
+		// is no pending handoff and the resource buffer is not under pressure.
+		lastRepo := ""
+		if len(wd.Repos) > 0 {
+			lastRepo = wd.Repos[len(wd.Repos)-1]
+		}
+		if busyRepo != "" && len(wd.Repos) > 1 && busyRepo != lastRepo {
 			buffers = append(buffers, ResourceBuffer{
 				Worker: wd.Name,
 				Status: "at risk",
