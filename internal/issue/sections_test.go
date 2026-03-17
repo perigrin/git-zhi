@@ -308,3 +308,78 @@ func TestParseSteps_MissingSection(t *testing.T) {
 		t.Errorf("expected 0 steps when Steps section is absent, got %d", len(s.Steps))
 	}
 }
+
+func TestParseACSubsections_PositiveAndNegative(t *testing.T) {
+	body := `## Acceptance Criteria
+
+### Positive Scenarios
+- [ ] positional params work (` + "`go test -run TestSignature_Positional -v`" + `)
+- [ ] error messages include line numbers (` + "`go test -run TestSignature_Errors -v`" + `)
+
+### Negative Scenarios
+- [ ] rejects duplicate param names (` + "`go test -run TestSignature_DuplicateParam -v`" + `)
+- [ ] handles EOF mid-signature without panic (` + "`go test -run TestSignature_EOF -v`" + `)`
+
+	s := issue.ParseSections(body)
+
+	// PositiveScenarios should have the 2 positive items
+	if len(s.PositiveScenarios) != 2 {
+		t.Fatalf("expected 2 PositiveScenarios, got %d", len(s.PositiveScenarios))
+	}
+	if s.PositiveScenarios[0].Text != "positional params work (`go test -run TestSignature_Positional -v`)" {
+		t.Errorf("PositiveScenarios[0].Text = %q", s.PositiveScenarios[0].Text)
+	}
+	if s.PositiveScenarios[1].Text != "error messages include line numbers (`go test -run TestSignature_Errors -v`)" {
+		t.Errorf("PositiveScenarios[1].Text = %q", s.PositiveScenarios[1].Text)
+	}
+
+	// NegativeScenarios should have the 2 negative items
+	if len(s.NegativeScenarios) != 2 {
+		t.Fatalf("expected 2 NegativeScenarios, got %d", len(s.NegativeScenarios))
+	}
+	if s.NegativeScenarios[0].Text != "rejects duplicate param names (`go test -run TestSignature_DuplicateParam -v`)" {
+		t.Errorf("NegativeScenarios[0].Text = %q", s.NegativeScenarios[0].Text)
+	}
+	if s.NegativeScenarios[1].Text != "handles EOF mid-signature without panic (`go test -run TestSignature_EOF -v`)" {
+		t.Errorf("NegativeScenarios[1].Text = %q", s.NegativeScenarios[1].Text)
+	}
+
+	// AcceptanceCriteria union must include all 4 items
+	if len(s.AcceptanceCriteria) != 4 {
+		t.Fatalf("expected 4 AcceptanceCriteria (union), got %d", len(s.AcceptanceCriteria))
+	}
+}
+
+func TestParseACSubsections_FlatListGoesToPositive(t *testing.T) {
+	// v0.1 format: flat AC list with no subsections
+	body := `## Acceptance Criteria
+
+- [x] positional params work
+- [ ] variadic params work`
+
+	s := issue.ParseSections(body)
+
+	// All items should land in PositiveScenarios
+	if len(s.PositiveScenarios) != 2 {
+		t.Fatalf("expected 2 PositiveScenarios for flat AC list, got %d", len(s.PositiveScenarios))
+	}
+	if s.PositiveScenarios[0].Text != "positional params work" {
+		t.Errorf("PositiveScenarios[0].Text = %q", s.PositiveScenarios[0].Text)
+	}
+	if !s.PositiveScenarios[0].Checked {
+		t.Errorf("PositiveScenarios[0].Checked should be true")
+	}
+	if s.PositiveScenarios[1].Text != "variadic params work" {
+		t.Errorf("PositiveScenarios[1].Text = %q", s.PositiveScenarios[1].Text)
+	}
+
+	// NegativeScenarios should be empty
+	if len(s.NegativeScenarios) != 0 {
+		t.Errorf("expected 0 NegativeScenarios for flat AC list, got %d", len(s.NegativeScenarios))
+	}
+
+	// AcceptanceCriteria backward-compat field must still be populated
+	if len(s.AcceptanceCriteria) != 2 {
+		t.Fatalf("expected 2 AcceptanceCriteria for flat AC list, got %d", len(s.AcceptanceCriteria))
+	}
+}

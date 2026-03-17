@@ -190,6 +190,63 @@ func TestIssueShow_JsonOutput(t *testing.T) {
 	}
 }
 
+func TestIssueShow_JsonOutput_ACSubsections(t *testing.T) {
+	app, run := setupShowTest(t)
+
+	body := `## Acceptance Criteria
+
+### Positive Scenarios
+- [ ] positional params work
+- [x] error messages include line numbers
+
+### Negative Scenarios
+- [ ] rejects duplicate param names
+- [ ] handles EOF mid-signature without panic
+`
+	id := createTestIssue(t, app, "AC subsections test", issue.StatePending, body)
+
+	prefix := id.String()[:8]
+	stdout, err := run("issue", "show", "--format", "json", prefix)
+	if err != nil {
+		t.Fatalf("issue show --format json failed: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\noutput: %s", err, stdout.String())
+	}
+
+	// positive_scenarios must be present with 2 items
+	pos, ok := result["positive_scenarios"]
+	if !ok {
+		t.Fatalf("expected 'positive_scenarios' key in JSON, got keys: %v", keys(result))
+	}
+	posList, ok := pos.([]interface{})
+	if !ok || len(posList) != 2 {
+		t.Fatalf("expected 2 positive_scenarios, got: %v", pos)
+	}
+
+	// negative_scenarios must be present with 2 items
+	neg, ok := result["negative_scenarios"]
+	if !ok {
+		t.Fatalf("expected 'negative_scenarios' key in JSON, got keys: %v", keys(result))
+	}
+	negList, ok := neg.([]interface{})
+	if !ok || len(negList) != 2 {
+		t.Fatalf("expected 2 negative_scenarios, got: %v", neg)
+	}
+
+	// acceptance_criteria backward-compat field must contain all 4 items
+	ac, ok := result["acceptance_criteria"]
+	if !ok {
+		t.Fatalf("expected 'acceptance_criteria' key in JSON, got keys: %v", keys(result))
+	}
+	acList, ok := ac.([]interface{})
+	if !ok || len(acList) != 4 {
+		t.Fatalf("expected 4 acceptance_criteria (union), got: %v", ac)
+	}
+}
+
 func TestIssueShow_NotFound(t *testing.T) {
 	_, run := setupShowTest(t)
 

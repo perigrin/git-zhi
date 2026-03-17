@@ -30,6 +30,8 @@ type IssueJSON struct {
 	Prerequisites      []issue.Checkbox        `json:"prerequisites,omitempty"`
 	Context            *issue.StructuredContext `json:"context,omitempty"`
 	AcceptanceCriteria []issue.Checkbox        `json:"acceptance_criteria,omitempty"`
+	PositiveScenarios  []issue.Checkbox        `json:"positive_scenarios,omitempty"`
+	NegativeScenarios  []issue.Checkbox        `json:"negative_scenarios,omitempty"`
 	Description        string                  `json:"description,omitempty"`
 	Body               string                  `json:"body,omitempty"`
 }
@@ -129,6 +131,8 @@ func showJSON(cmd *cobra.Command, iss *issue.Issue) error {
 		Prerequisites:      sections.Prerequisites,
 		Context:            sections.Context,
 		AcceptanceCriteria: sections.AcceptanceCriteria,
+		PositiveScenarios:  sections.PositiveScenarios,
+		NegativeScenarios:  sections.NegativeScenarios,
 		Description:        sections.Description,
 		Body:               iss.Body,
 	}
