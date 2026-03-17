@@ -1,14 +1,64 @@
 // ABOUTME: Tests for the milestone edit command: setting due date, clearing
-// ABOUTME: due date with "none", and renaming a milestone.
+// ABOUTME: due date with "none", renaming a milestone, and running --resolve.
 package cli_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/gofrs/uuid/v5"
+
+	"github.com/perigrin/git-zhi/internal/cli"
 	"github.com/perigrin/git-zhi/internal/issue"
 	"github.com/perigrin/git-zhi/internal/milestone"
 )
+
+// createMilestoneWithResolution writes a milestone with a resolution command set.
+func createMilestoneWithResolution(t *testing.T, app *cli.App, name, resolution string) {
+	t.Helper()
+	ms := &milestone.Milestone{
+		Name:       name,
+		Created:    time.Now(),
+		Resolution: resolution,
+	}
+	data, err := milestone.MarshalMilestone(ms)
+	if err != nil {
+		t.Fatalf("MarshalMilestone: %v", err)
+	}
+	refPath := milestone.RefPrefix + name
+	if err := app.Store.WriteEntity(refPath, "milestone.yaml", data, "Create milestone: "+name); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+}
+
+// createTestIssueInMilestoneWithState writes an issue to the store and returns its UUID.
+func createTestIssueInMilestoneWithState(t *testing.T, app *cli.App, title string, state issue.State, ms string) uuid.UUID {
+	t.Helper()
+	id, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("uuid.NewV7: %v", err)
+	}
+	now := time.Now()
+	iss := &issue.Issue{
+		ID:        id,
+		Title:     title,
+		State:     state,
+		Milestone: ms,
+		Created:   now,
+		Updated:   now,
+	}
+	data, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("issue.Marshal: %v", err)
+	}
+	refPath := fmt.Sprintf("refs/zhi/_/issues/%s", id.String())
+	if err := app.Store.WriteEntity(refPath, "issue.md", data, "Add test issue: "+title); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+	return id
+}
 
 func TestMilestoneEdit_Due(t *testing.T) {
 	app, run := setupMilestoneTest(t)
@@ -178,5 +228,53 @@ func TestMilestoneEdit_OutputFormat(t *testing.T) {
 	// Should show "<field> → <new value>" pattern.
 	if !strings.Contains(output, "→") {
 		t.Errorf("expected arrow '→' in output, got: %s", output)
+	}
+}
+
+// TestMilestoneResolve_Pass verifies that --resolve executes the resolution
+// command and reports success when the command exits zero.
+func TestMilestoneResolve_Pass(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	// Create a milestone whose resolution command always succeeds.
+	createMilestoneWithResolution(t, app, "release", "echo resolution-ok")
+
+	stdout, err := run("milestone", "edit", "release", "--resolve")
+	if err != nil {
+		t.Fatalf("milestone edit --resolve failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "resolution-ok") {
+		t.Errorf("expected resolution command stdout in output, got: %q", output)
+	}
+}
+
+// TestMilestoneResolve_Fail verifies that --resolve reports failure and returns
+// a non-zero exit when the resolution command exits non-zero.
+func TestMilestoneResolve_Fail(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	// Create a milestone whose resolution command always fails.
+	createMilestoneWithResolution(t, app, "failing", "exit 1")
+
+	_, err := run("milestone", "edit", "failing", "--resolve")
+	if err == nil {
+		t.Fatal("expected error from milestone edit --resolve with failing command, got nil")
+	}
+}
+
+// TestMilestoneResolve_NoResolution verifies that --resolve on a milestone
+// without a resolution field prints an error and does not execute anything.
+func TestMilestoneResolve_NoResolution(t *testing.T) {
+	_, run := setupMilestoneTest(t)
+
+	// v0.1 has no resolution field (created by EnsureInitialized).
+	_, err := run("milestone", "edit", "v0.1", "--resolve")
+	if err == nil {
+		t.Fatal("expected error when milestone has no resolution command, got nil")
+	}
+	if !strings.Contains(err.Error(), "no resolution command") {
+		t.Errorf("expected 'no resolution command' in error, got: %v", err)
 	}
 }

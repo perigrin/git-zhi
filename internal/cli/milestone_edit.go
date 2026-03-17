@@ -1,9 +1,11 @@
-// ABOUTME: Implementation of the milestone edit command: set or clear due date
-// ABOUTME: and rename milestones, updating all issues on rename.
+// ABOUTME: Implementation of the milestone edit command: set or clear due date,
+// ABOUTME: rename milestones, tag/untag, and run the milestone's resolution command.
 package cli
 
 import (
 	"fmt"
+	"io"
+	"os/exec"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,7 +15,7 @@ import (
 )
 
 // knownMilestoneEditFlags lists all flags that constitute a valid edit operation.
-var knownMilestoneEditFlags = []string{"due", "name", "tag", "untag"}
+var knownMilestoneEditFlags = []string{"due", "name", "tag", "untag", "resolve"}
 
 // runMilestoneEdit loads a milestone, applies --due, --name, --tag, and/or
 // --untag changes. On rename, the old ref is deleted and all issues'
@@ -39,7 +41,7 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if !anyFlagSet {
-		return fmt.Errorf("no changes specified: use --due, --name, --tag, or --untag")
+		return fmt.Errorf("no changes specified: use --due, --name, --tag, --untag, or --resolve")
 	}
 
 	ms, err := milestone.LoadMilestone(app.Store, name)
@@ -48,6 +50,12 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	w := cmd.OutOrStdout()
+
+	// Apply --resolve: execute the milestone's resolution command and report results.
+	// This is a standalone operation; it does not persist any changes to the milestone.
+	if cmd.Flags().Changed("resolve") {
+		return runMilestoneResolve(app, ms, w)
+	}
 
 	// Apply --due change.
 	if cmd.Flags().Changed("due") {
@@ -132,6 +140,33 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	return nil
+}
+
+// runMilestoneResolve executes the milestone's resolution command via `sh -c`
+// in the repository working directory. Stdout and stderr from the command are
+// written to w. Returns an error wrapping the command's exit status when the
+// command exits non-zero, or an error if no resolution command is configured.
+func runMilestoneResolve(app *App, ms *milestone.Milestone, w io.Writer) error {
+	if ms.Resolution == "" {
+		return fmt.Errorf("no resolution command configured for milestone %s", ms.Name)
+	}
+
+	// Determine the repository working directory for subprocess execution.
+	wt, err := app.Repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("get repo worktree: %w", err)
+	}
+	repoRoot := wt.Filesystem.Root()
+
+	cmd := exec.Command("sh", "-c", ms.Resolution)
+	cmd.Dir = repoRoot
+	cmd.Stdout = w
+	cmd.Stderr = w
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("resolution command failed: %w", err)
+	}
 	return nil
 }
 
