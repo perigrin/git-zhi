@@ -364,6 +364,83 @@ func TestCompute_TimeInChain_PartialCoverage(t *testing.T) {
 	}
 }
 
+func TestForecastAccuracy_Normal(t *testing.T) {
+	// predicted == actual → ratio 1.0 (perfect accuracy).
+	ratio := telemetry.ComputeForecastAccuracy(4.0, 4.0)
+	if ratio != 1.0 {
+		t.Errorf("expected ratio=1.0 for equal predicted/actual, got %f", ratio)
+	}
+}
+
+func TestForecastAccuracy_OverEstimate(t *testing.T) {
+	// predicted > actual → ratio > 1.0 (we predicted longer than it actually took).
+	ratio := telemetry.ComputeForecastAccuracy(6.0, 3.0)
+	if ratio != 2.0 {
+		t.Errorf("expected ratio=2.0 for 6.0/3.0, got %f", ratio)
+	}
+}
+
+func TestForecastAccuracy_UnderEstimate(t *testing.T) {
+	// predicted < actual → ratio < 1.0 (we underestimated).
+	ratio := telemetry.ComputeForecastAccuracy(2.0, 4.0)
+	if ratio != 0.5 {
+		t.Errorf("expected ratio=0.5 for 2.0/4.0, got %f", ratio)
+	}
+}
+
+func TestForecastAccuracy_ZeroActual(t *testing.T) {
+	// actual == 0 → return 0 to avoid division by zero.
+	ratio := telemetry.ComputeForecastAccuracy(4.0, 0.0)
+	if ratio != 0.0 {
+		t.Errorf("expected ratio=0.0 when actual=0, got %f", ratio)
+	}
+}
+
+func TestCompute_ForecastAccuracy_FromMilestone(t *testing.T) {
+	// Compute should populate ForecastAccuracy from the most recent ForecastEntry.
+	recorded1, _ := time.Parse(time.RFC3339, "2026-03-01T00:00:00Z")
+	recorded2, _ := time.Parse(time.RFC3339, "2026-03-10T00:00:00Z")
+	ms := makeMilestone("v0.2")
+	ms.ForecastHistory = []milestone.ForecastEntry{
+		{PredictedWeeks: 4.0, ActualWeeks: 4.0, Workers: 1, RecordedAt: recorded1},
+		{PredictedWeeks: 3.0, ActualWeeks: 6.0, Workers: 1, RecordedAt: recorded2},
+	}
+
+	now := time.Now()
+	gen := uuid.NewGen()
+	id, _ := gen.NewV7()
+	issues := []*issue.Issue{
+		{ID: id, Title: "Done", State: issue.StateDone, Milestone: "v0.2",
+			Sessions: []issue.Session{{Commits: 2}}, Created: now, Updated: now},
+	}
+
+	stats := telemetry.Compute(issues, ms)
+
+	// Most recent entry: predicted=3.0, actual=6.0 → ratio=0.5.
+	if stats.ForecastAccuracy != 0.5 {
+		t.Errorf("expected ForecastAccuracy=0.5 from most recent entry, got %f", stats.ForecastAccuracy)
+	}
+}
+
+func TestCompute_ForecastAccuracy_NoHistory(t *testing.T) {
+	// Milestones with no forecast history should produce ForecastAccuracy=0.
+	ms := makeMilestone("v0.2")
+
+	now := time.Now()
+	gen := uuid.NewGen()
+	id, _ := gen.NewV7()
+	issues := []*issue.Issue{
+		{ID: id, Title: "Done", State: issue.StateDone, Milestone: "v0.2",
+			Sessions: []issue.Session{{Commits: 2}}, Created: now, Updated: now},
+	}
+
+	stats := telemetry.Compute(issues, ms)
+
+	if stats.ForecastAccuracy != 0.0 {
+		t.Errorf("expected ForecastAccuracy=0.0 with no history, got %f", stats.ForecastAccuracy)
+	}
+}
+
 func TestCompute_TimeInChain_NoTimestamps(t *testing.T) {
 	ms := makeMilestone("v0.1")
 	gen := uuid.NewGen()

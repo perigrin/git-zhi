@@ -30,8 +30,25 @@ type Stats struct {
 	TimeInChain float64 `yaml:"time_in_chain" json:"time_in_chain"`
 	// ShadowWork is the complement of TimeInChain: the fraction of calendar time
 	// outside active measurement windows. Zero when TimeInChain is zero.
-	ShadowWork  float64 `yaml:"shadow_work" json:"shadow_work"`
-	FeverStatus Status  `yaml:"fever_status" json:"fever_status"`
+	ShadowWork float64 `yaml:"shadow_work" json:"shadow_work"`
+	// ForecastAccuracy is the ratio predicted/actual from the most recent
+	// ForecastEntry on the milestone. Values close to 1.0 indicate accurate
+	// forecasts; >1.0 means overestimated (predicted longer than actual); <1.0
+	// means underestimated. Zero when no ForecastHistory is present.
+	ForecastAccuracy float64 `yaml:"forecast_accuracy" json:"forecast_accuracy"`
+	FeverStatus      Status  `yaml:"fever_status" json:"fever_status"`
+}
+
+// ComputeForecastAccuracy returns the ratio predicted/actual.
+// Values close to 1.0 indicate accurate forecasts. Values > 1.0 mean the
+// forecast overestimated (predicted longer than actual). Values < 1.0 mean
+// the forecast underestimated. Returns 0 when actual is 0 to avoid division
+// by zero.
+func ComputeForecastAccuracy(predicted, actual float64) float64 {
+	if actual == 0 {
+		return 0
+	}
+	return predicted / actual
 }
 
 // Compute derives telemetry indicators from the issues belonging to the given
@@ -165,6 +182,13 @@ func Compute(issues []*issue.Issue, ms *milestone.Milestone) *Stats {
 		s.FeverStatus = StatusYellow
 	} else {
 		s.FeverStatus = StatusRed
+	}
+
+	// ForecastAccuracy: derived from the most recent ForecastEntry on the
+	// milestone (if any). Zero when no history is recorded.
+	if len(ms.ForecastHistory) > 0 {
+		last := ms.ForecastHistory[len(ms.ForecastHistory)-1]
+		s.ForecastAccuracy = ComputeForecastAccuracy(last.PredictedWeeks, last.ActualWeeks)
 	}
 
 	return s

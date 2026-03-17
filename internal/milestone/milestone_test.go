@@ -179,6 +179,108 @@ func TestMarshalMilestone_RoundTrip_WithBody(t *testing.T) {
 	}
 }
 
+func TestForecastHistory(t *testing.T) {
+	// Verify that Parse() correctly handles forecast_history entries.
+	raw := []byte(`name: "v0.2"
+state: open
+created: "2026-03-14T10:00:00Z"
+forecast_history:
+  - predicted_weeks: 4.0
+    actual_weeks: 3.5
+    workers: 1
+    recorded_at: "2026-03-01T00:00:00Z"
+  - predicted_weeks: 2.0
+    actual_weeks: 0.0
+    workers: 2
+    recorded_at: "2026-03-10T00:00:00Z"
+---
+
+## Context
+
+Some context.
+`)
+	ms, err := milestone.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if len(ms.ForecastHistory) != 2 {
+		t.Fatalf("expected 2 ForecastHistory entries, got %d", len(ms.ForecastHistory))
+	}
+
+	first := ms.ForecastHistory[0]
+	if first.PredictedWeeks != 4.0 {
+		t.Errorf("expected PredictedWeeks=4.0, got %f", first.PredictedWeeks)
+	}
+	if first.ActualWeeks != 3.5 {
+		t.Errorf("expected ActualWeeks=3.5, got %f", first.ActualWeeks)
+	}
+	if first.Workers != 1 {
+		t.Errorf("expected Workers=1, got %d", first.Workers)
+	}
+	expectedRecordedAt, _ := time.Parse(time.RFC3339, "2026-03-01T00:00:00Z")
+	if !first.RecordedAt.Equal(expectedRecordedAt) {
+		t.Errorf("expected RecordedAt=%v, got %v", expectedRecordedAt, first.RecordedAt)
+	}
+
+	second := ms.ForecastHistory[1]
+	if second.PredictedWeeks != 2.0 {
+		t.Errorf("expected PredictedWeeks=2.0, got %f", second.PredictedWeeks)
+	}
+	if second.Workers != 2 {
+		t.Errorf("expected Workers=2, got %d", second.Workers)
+	}
+}
+
+func TestForecastHistory_DefaultEmpty(t *testing.T) {
+	// A milestone without forecast_history must produce an empty (non-nil) slice.
+	raw := []byte("name: v0.2\ncreated: \"2026-03-14T10:00:00Z\"\n")
+	ms, err := milestone.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if ms.ForecastHistory == nil {
+		t.Fatal("expected ForecastHistory to be non-nil (empty slice), got nil")
+	}
+	if len(ms.ForecastHistory) != 0 {
+		t.Fatalf("expected empty ForecastHistory, got %d entries", len(ms.ForecastHistory))
+	}
+}
+
+func TestForecastHistory_MarshalRoundTrip(t *testing.T) {
+	// Verify ForecastHistory survives a marshal/parse round-trip.
+	recorded, _ := time.Parse(time.RFC3339, "2026-03-01T00:00:00Z")
+	created, _ := time.Parse(time.RFC3339, "2026-03-14T10:00:00Z")
+	ms := &milestone.Milestone{
+		Name:    "v0.2",
+		State:   "open",
+		Created: created,
+		ForecastHistory: []milestone.ForecastEntry{
+			{PredictedWeeks: 6.0, ActualWeeks: 5.0, Workers: 1, RecordedAt: recorded},
+		},
+	}
+	data, err := milestone.MarshalMilestone(ms)
+	if err != nil {
+		t.Fatalf("MarshalMilestone failed: %v", err)
+	}
+	ms2, err := milestone.Parse(data)
+	if err != nil {
+		t.Fatalf("re-Parse failed: %v", err)
+	}
+	if len(ms2.ForecastHistory) != 1 {
+		t.Fatalf("expected 1 ForecastHistory entry after roundtrip, got %d", len(ms2.ForecastHistory))
+	}
+	entry := ms2.ForecastHistory[0]
+	if entry.PredictedWeeks != 6.0 {
+		t.Errorf("expected PredictedWeeks=6.0, got %f", entry.PredictedWeeks)
+	}
+	if entry.ActualWeeks != 5.0 {
+		t.Errorf("expected ActualWeeks=5.0, got %f", entry.ActualWeeks)
+	}
+	if entry.Workers != 1 {
+		t.Errorf("expected Workers=1, got %d", entry.Workers)
+	}
+}
+
 func TestParseMilestone_CompletedTimestamp(t *testing.T) {
 	// A milestone with a completed timestamp must parse it correctly.
 	raw := []byte(`name: "v0.1"

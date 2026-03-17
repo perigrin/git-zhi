@@ -11,6 +11,15 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
+// ForecastEntry records a single point-in-time forecast alongside its outcome.
+// Used to track forecast accuracy over the life of a milestone.
+type ForecastEntry struct {
+	PredictedWeeks float64   `yaml:"predicted_weeks" json:"predicted_weeks"`
+	ActualWeeks    float64   `yaml:"actual_weeks" json:"actual_weeks"`
+	Workers        int       `yaml:"workers" json:"workers"`
+	RecordedAt     time.Time `yaml:"recorded_at" json:"recorded_at"`
+}
+
 // Milestone represents a delivery grouping of issues with an optional due date.
 type Milestone struct {
 	Name        string     `yaml:"name" json:"name"`
@@ -27,6 +36,11 @@ type Milestone struct {
 	// Body is the raw markdown content below the YAML frontmatter separator.
 	// Not stored in YAML; handled separately during Parse and Marshal.
 	Body string `yaml:"-" json:"body,omitempty"`
+	// ForecastHistory is the ordered log of forecast-vs-actual entries for this
+	// milestone. Each entry captures a predicted duration, the eventual actual
+	// duration (0 while still in flight), the worker count, and when the entry
+	// was recorded. Defaults to an empty slice for backward compatibility.
+	ForecastHistory []ForecastEntry `yaml:"forecast_history,omitempty" json:"forecast_history,omitempty"`
 }
 
 // Parse reads a milestone from either frontmatter+body format (v0.2) or pure
@@ -74,6 +88,12 @@ func Parse(raw []byte) (*Milestone, error) {
 	// that predate the state field.
 	if ms.State == "" {
 		ms.State = "open"
+	}
+
+	// Default ForecastHistory to an empty slice so callers can range over it
+	// without a nil check.
+	if ms.ForecastHistory == nil {
+		ms.ForecastHistory = []ForecastEntry{}
 	}
 
 	return &ms, nil
