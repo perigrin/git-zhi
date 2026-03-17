@@ -20,14 +20,19 @@ func NewListCommand() *cobra.Command {
 	return cmd
 }
 
-// NewConfigCommand creates the top-level 'config' command.
+// NewConfigCommand creates the top-level 'config' command group.
+// With no subcommand and no args it displays the current config;
+// with key+value args it sets a config key. 'config reindex' rebuilds
+// label indexes.
 func NewConfigCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "config [key] [value]",
 		Short: "Manage git-zhi settings",
 		Args:  cobra.MaximumNArgs(2),
 		RunE:  runChainConfig,
 	}
+	cmd.AddCommand(newConfigReindexCommand())
+	return cmd
 }
 
 // NewNextCommand creates the top-level 'next' command.
