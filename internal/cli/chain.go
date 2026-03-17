@@ -14,6 +14,7 @@ func NewListCommand() *cobra.Command {
 	cmd.Flags().Bool("all", false, "include done and cancelled issues")
 	cmd.Flags().String("milestone", "", "filter by milestone")
 	cmd.Flags().Bool("critical", false, "show critical chain only")
+	cmd.Flags().Bool("ready", false, "show ready set with path overlap analysis")
 	cmd.Flags().Bool("graph", false, "ASCII DAG visualization (not yet implemented)")
 	return cmd
 }
@@ -30,9 +31,11 @@ func NewConfigCommand() *cobra.Command {
 
 // NewNextCommand creates the top-level 'next' command.
 func NewNextCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "next",
 		Short: "Show the next issue to work on (alias for 'issue show HEAD')",
 		RunE:  runChainNext,
 	}
+	cmd.Flags().String("actor", "", "per-worker identity for multi-agent resolution (e.g. agent:claude-code-1)")
+	return cmd
 }

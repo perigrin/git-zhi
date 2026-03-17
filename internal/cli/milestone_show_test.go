@@ -184,6 +184,86 @@ func TestMilestoneShow_NotFound(t *testing.T) {
 	}
 }
 
+// TestMilestoneShow_WorkersForecast verifies that --workers N adds a Forecast
+// section to the human-readable milestone show output.
+func TestMilestoneShow_WorkersForecast(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	// Create done issues to establish telemetry (speed > 0).
+	doneStart := time.Now().Add(-14 * 24 * time.Hour) // 2 weeks ago
+	doneEnd := time.Now().Add(-7 * 24 * time.Hour)    // 1 week ago
+	createTestIssueWithSessionsAndMilestone(t, app, "Done 1", issue.StateDone, "v0.1", []issue.Session{
+		{StartSHA: "aaa", EndSHA: "bbb", Commits: 2, StartedAt: &doneStart, EndedAt: &doneEnd},
+	})
+	createTestIssueWithSessionsAndMilestone(t, app, "Done 2", issue.StateDone, "v0.1", []issue.Session{
+		{StartSHA: "ccc", EndSHA: "ddd", Commits: 3, StartedAt: &doneStart, EndedAt: &doneEnd},
+	})
+
+	// Create pending issues to make critical chain non-empty.
+	createTestIssueWithMilestone(t, app, "Pending A", issue.StatePending, "v0.1", "")
+	createTestIssueWithMilestone(t, app, "Pending B", issue.StatePending, "v0.1", "")
+	createTestIssueWithMilestone(t, app, "Pending C", issue.StatePending, "v0.1", "")
+
+	stdout, err := run("milestone", "show", "v0.1", "--workers", "2")
+	if err != nil {
+		t.Fatalf("milestone show --workers 2 failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Forecast") {
+		t.Errorf("expected 'Forecast' section in output with --workers, got:\n%s", output)
+	}
+	// Should have at least one forecast line with "worker".
+	if !strings.Contains(output, "worker") {
+		t.Errorf("expected 'worker' mention in Forecast section, got:\n%s", output)
+	}
+}
+
+// TestMilestoneShow_WorkersForecastJson verifies that --workers N adds a
+// forecast object to the JSON output.
+func TestMilestoneShow_WorkersForecastJson(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	doneStart := time.Now().Add(-14 * 24 * time.Hour)
+	doneEnd := time.Now().Add(-7 * 24 * time.Hour)
+	createTestIssueWithSessionsAndMilestone(t, app, "Done for forecast", issue.StateDone, "v0.1", []issue.Session{
+		{StartSHA: "aaa", EndSHA: "bbb", Commits: 2, StartedAt: &doneStart, EndedAt: &doneEnd},
+	})
+	createTestIssueWithMilestone(t, app, "Pending forecast", issue.StatePending, "v0.1", "")
+
+	stdout, err := run("milestone", "show", "--format", "json", "v0.1", "--workers", "2")
+	if err != nil {
+		t.Fatalf("milestone show --format json --workers 2 failed: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v\noutput: %s", err, stdout.String())
+	}
+
+	if _, ok := result["forecast"]; !ok {
+		t.Fatalf("expected 'forecast' key in JSON output with --workers, got keys: %v", keys(result))
+	}
+}
+
+// TestMilestoneShow_WorkersNoForecastWithoutFlag verifies that without
+// --workers the output does not include a Forecast section.
+func TestMilestoneShow_WorkersNoForecastWithoutFlag(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	createTestIssueWithMilestone(t, app, "Some issue", issue.StatePending, "v0.1", "")
+
+	stdout, err := run("milestone", "show", "v0.1")
+	if err != nil {
+		t.Fatalf("milestone show v0.1 failed: %v", err)
+	}
+
+	output := stdout.String()
+	if strings.Contains(output, "Forecast") {
+		t.Errorf("expected NO 'Forecast' section without --workers, got:\n%s", output)
+	}
+}
+
 func TestMilestoneShow_HumanTelemetry(t *testing.T) {
 	app, run := setupMilestoneTest(t)
 

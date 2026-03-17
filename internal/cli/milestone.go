@@ -41,12 +41,14 @@ func newMilestoneListCommand() *cobra.Command {
 }
 
 func newMilestoneShowCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "show [name]",
 		Short: "Show milestone detail with issues and progress",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runMilestoneShow,
 	}
+	cmd.Flags().Int("workers", 0, "show forecast for up to N parallel workers (0 = no forecast)")
+	return cmd
 }
 
 func newMilestoneEditCommand() *cobra.Command {
