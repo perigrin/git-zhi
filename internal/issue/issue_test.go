@@ -210,3 +210,68 @@ func TestSplitBatch_EmptyInput(t *testing.T) {
 		t.Fatalf("expected 0 blocks for empty input, got %d", len(blocks))
 	}
 }
+
+func TestParseUrgency_High(t *testing.T) {
+	raw := []byte("---\ntitle: \"Urgent issue\"\nstate: pending\nurgency: high\n---\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Urgency != issue.UrgencyHigh {
+		t.Fatalf("expected urgency %q, got %q", issue.UrgencyHigh, iss.Urgency)
+	}
+}
+
+func TestParseUrgency_Low(t *testing.T) {
+	raw := []byte("---\ntitle: \"Low priority issue\"\nstate: pending\nurgency: low\n---\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Urgency != issue.UrgencyLow {
+		t.Fatalf("expected urgency %q, got %q", issue.UrgencyLow, iss.Urgency)
+	}
+}
+
+func TestParseUrgency_Normal(t *testing.T) {
+	raw := []byte("---\ntitle: \"Normal priority issue\"\nstate: pending\nurgency: normal\n---\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Urgency != issue.UrgencyNormal {
+		t.Fatalf("expected urgency %q, got %q", issue.UrgencyNormal, iss.Urgency)
+	}
+}
+
+func TestParseUrgency_Default(t *testing.T) {
+	// Issues without an urgency field must default to UrgencyNormal for
+	// backward compatibility with v0.1 issues.
+	raw := []byte("---\ntitle: \"Quick fix\"\nstate: pending\n---\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Urgency != issue.UrgencyNormal {
+		t.Fatalf("expected default urgency %q, got %q", issue.UrgencyNormal, iss.Urgency)
+	}
+}
+
+func TestMarshal_RoundTrip_Urgency(t *testing.T) {
+	raw := []byte("---\ntitle: Urgency round trip\nstate: pending\nmilestone: v0.2\nurgency: high\n---\n\nBody content.\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	iss2, err := issue.Parse(out)
+	if err != nil {
+		t.Fatalf("re-Parse failed: %v", err)
+	}
+	if iss.Urgency != iss2.Urgency {
+		t.Fatalf("urgency mismatch: %q vs %q", iss.Urgency, iss2.Urgency)
+	}
+}

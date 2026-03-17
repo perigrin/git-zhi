@@ -23,6 +23,15 @@ const (
 	StateCancelled  State = "cancelled"
 )
 
+// Urgency represents the scheduling priority of an issue within its milestone.
+type Urgency string
+
+const (
+	UrgencyHigh   Urgency = "high"
+	UrgencyNormal Urgency = "normal"
+	UrgencyLow    Urgency = "low"
+)
+
 // RefPrefix is the git ref namespace under which all issues are stored.
 const RefPrefix = "refs/zhi/_/issues/"
 
@@ -45,6 +54,7 @@ type Issue struct {
 	ID        uuid.UUID   `yaml:"-" json:"id"`
 	Title     string      `yaml:"title" json:"title"`
 	State     State       `yaml:"state" json:"state"`
+	Urgency   Urgency     `yaml:"urgency,omitempty" json:"urgency"`
 	Milestone string      `yaml:"milestone" json:"milestone"`
 	BlockedBy []uuid.UUID `yaml:"blocked_by,omitempty" json:"blocked_by,omitempty"`
 	Blocks    []uuid.UUID `yaml:"blocks,omitempty" json:"blocks,omitempty"`
@@ -68,6 +78,11 @@ func Parse(raw []byte) (*Issue, error) {
 	}
 	// frontmatter.Parse returns the body as []byte
 	iss.Body = strings.TrimSpace(string(rest))
+	// Default urgency to normal for backward compatibility with v0.1 issues
+	// that predate the urgency field.
+	if iss.Urgency == "" {
+		iss.Urgency = UrgencyNormal
+	}
 	return &iss, nil
 }
 
