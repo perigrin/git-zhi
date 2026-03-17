@@ -1120,6 +1120,10 @@ func runIssueEditBatch(cmd *cobra.Command, app *App) error {
 // fields from op.Fields, and writes the updated issue back to storage.
 // State changes use ValidateTransition and record a Transition entry.
 func applyBatchOp(app *App, op batchOp) error {
+	if op.IssueID == "" {
+		return fmt.Errorf("issue_id is required")
+	}
+
 	refPath, err := resolve.ResolveRef(app.Store, op.IssueID)
 	if err != nil {
 		return fmt.Errorf("resolve ref: %w", err)

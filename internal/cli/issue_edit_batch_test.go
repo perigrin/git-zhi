@@ -369,6 +369,31 @@ func TestIssueEditBatch_TrackerID(t *testing.T) {
 	}
 }
 
+// TestIssueEditBatch_EmptyIssueID verifies that an operation with no issue_id
+// produces a per-line error and does not silently operate on HEAD.
+func TestIssueEditBatch_EmptyIssueID(t *testing.T) {
+	app, _ := setupEditTest(t)
+
+	batchInput := `{"fields": {"urgency": "high"}}`
+
+	stdout, _, err := runWithStdin(app, batchInput, "issue", "edit", "--batch")
+	if err != nil {
+		t.Fatalf("issue edit --batch returned unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	lines := nonEmptyLines(out)
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 result line, got %d:\n%s", len(lines), out)
+	}
+	if !strings.Contains(lines[0], "error") {
+		t.Errorf("expected 'error' for empty issue_id, got: %s", lines[0])
+	}
+	if !strings.Contains(lines[0], "issue_id is required") {
+		t.Errorf("expected 'issue_id is required' in error, got: %s", lines[0])
+	}
+}
+
 // TestIssueEditBatch_InvalidUrgency verifies that an unknown urgency value
 // produces a per-line error and does not update the issue.
 func TestIssueEditBatch_InvalidUrgency(t *testing.T) {
