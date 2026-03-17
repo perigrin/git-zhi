@@ -1,5 +1,5 @@
 // ABOUTME: Tests for the Graph DAG: Build, AddEdge, CriticalChain, ReadySet,
-// ABOUTME: Head, TopologicalSort, Cancel, and cycle/invariant enforcement.
+// ABOUTME: Head, TopologicalSort, Cancel, cycle/invariant enforcement, and ParallelAssignment.
 package graph_test
 
 import (
@@ -333,4 +333,142 @@ func titlesOf(issues []*issue.Issue) []string {
 		titles[i] = iss.Title
 	}
 	return titles
+}
+
+// TestParallelAssignment_NonOverlapping verifies that two ready issues with
+// non-overlapping paths are placed into separate groups when workerCount=2.
+func TestParallelAssignment_NonOverlapping(t *testing.T) {
+	a := makeIssue("A", issue.StatePending)
+	b := makeIssue("B", issue.StatePending)
+
+	g, err := graph.Build([]*issue.Issue{a, b})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	ready := []uuid.UUID{a.ID, b.ID}
+
+	// A touches internal/parser, B touches internal/config — no overlap.
+	paths := map[uuid.UUID][]string{
+		a.ID: {"internal/parser/sig.go"},
+		b.ID: {"internal/config/cfg.go"},
+	}
+	pathsFn := func(id uuid.UUID) []string { return paths[id] }
+
+	groups := g.ParallelAssignment(ready, 2, pathsFn)
+
+	if len(groups) != 2 {
+		t.Fatalf("expected 2 groups for non-overlapping issues, got %d: %v", len(groups), groups)
+	}
+	for i, grp := range groups {
+		if len(grp) != 1 {
+			t.Errorf("group %d: expected 1 issue, got %d", i, len(grp))
+		}
+	}
+}
+
+// TestParallelAssignment_AllOverlapping verifies that ready issues all touching
+// the same directory collapse into a single group.
+func TestParallelAssignment_AllOverlapping(t *testing.T) {
+	a := makeIssue("A", issue.StatePending)
+	b := makeIssue("B", issue.StatePending)
+
+	g, err := graph.Build([]*issue.Issue{a, b})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	ready := []uuid.UUID{a.ID, b.ID}
+
+	// Both touch internal/parser — overlapping.
+	paths := map[uuid.UUID][]string{
+		a.ID: {"internal/parser/sig.go"},
+		b.ID: {"internal/parser/err.go"},
+	}
+	pathsFn := func(id uuid.UUID) []string { return paths[id] }
+
+	groups := g.ParallelAssignment(ready, 2, pathsFn)
+
+	if len(groups) != 1 {
+		t.Fatalf("expected 1 group for fully overlapping issues, got %d: %v", len(groups), groups)
+	}
+}
+
+// TestParallelAssignment_WorkerCountExceedsReady verifies that when
+// workerCount > len(ready), groups are limited to the ready set size.
+func TestParallelAssignment_WorkerCountExceedsReady(t *testing.T) {
+	a := makeIssue("A", issue.StatePending)
+
+	g, err := graph.Build([]*issue.Issue{a})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	ready := []uuid.UUID{a.ID}
+	paths := map[uuid.UUID][]string{
+		a.ID: {"internal/parser/sig.go"},
+	}
+	pathsFn := func(id uuid.UUID) []string { return paths[id] }
+
+	groups := g.ParallelAssignment(ready, 10, pathsFn)
+
+	if len(groups) != 1 {
+		t.Fatalf("expected 1 group (capped by ready set size), got %d", len(groups))
+	}
+}
+
+// TestParallelAssignment_EmptyReady verifies that an empty ready set returns
+// an empty result.
+func TestParallelAssignment_EmptyReady(t *testing.T) {
+	g, err := graph.Build([]*issue.Issue{})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	pathsFn := func(id uuid.UUID) []string { return nil }
+	groups := g.ParallelAssignment(nil, 2, pathsFn)
+
+	if len(groups) != 0 {
+		t.Fatalf("expected empty result for empty ready set, got %d groups", len(groups))
+	}
+}
+
+// TestParallelAssignment_CriticalChainPriority verifies that issues on the
+// critical chain are assigned before off-chain issues.
+func TestParallelAssignment_CriticalChainPriority(t *testing.T) {
+	// Chain: done -> A -> B (so A and B are on the critical chain).
+	// Off-chain: C (pending, no dependencies).
+	done := makeIssue("Done", issue.StateDone)
+	a := makeIssue("A", issue.StatePending)
+	b := makeIssue("B", issue.StatePending)
+	c := makeIssue("C", issue.StatePending)
+	linkIssues(done, a)
+	linkIssues(a, b)
+
+	g, err := graph.Build([]*issue.Issue{done, a, b, c})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	// Both A and C are in the ready set (done is done, C has no blockers).
+	// B is NOT ready yet (blocked by A).
+	ready := []uuid.UUID{a.ID, c.ID}
+
+	// A and C touch different packages, so both can run in parallel.
+	paths := map[uuid.UUID][]string{
+		a.ID: {"internal/parser/sig.go"},
+		c.ID: {"internal/config/cfg.go"},
+	}
+	pathsFn := func(id uuid.UUID) []string { return paths[id] }
+
+	groups := g.ParallelAssignment(ready, 2, pathsFn)
+
+	if len(groups) != 2 {
+		t.Fatalf("expected 2 groups, got %d", len(groups))
+	}
+
+	// The first group must contain A (on the critical chain), not C.
+	if groups[0][0] != a.ID {
+		t.Errorf("expected first group to contain A (critical chain issue), got %v", groups[0][0])
+	}
 }

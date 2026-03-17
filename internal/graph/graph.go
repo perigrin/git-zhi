@@ -416,6 +416,72 @@ func (g *Graph) Cancel(id uuid.UUID) error {
 	return nil
 }
 
+// ParallelAssignment partitions a ready set into worker groups for concurrent
+// execution. Issues on the critical chain are prioritised over off-chain issues.
+// Within each tier, issues are sorted by UUID for determinism.
+//
+// The greedy assignment loop accumulates a single "assigned paths" set across
+// all groups. For each candidate issue (in priority order):
+//   - If its paths do NOT overlap with any already-assigned paths, it is given
+//     its own worker group and its paths are added to the accumulated set.
+//   - If its paths DO overlap with already-assigned paths, it is deferred and
+//     will be sequenced after the current batch.
+//
+// Assignment stops once workerCount groups are filled or the ready set is
+// exhausted. Each inner slice in the result holds the issue(s) for one worker;
+// issues in different groups are safe for concurrent execution.
+func (g *Graph) ParallelAssignment(ready []uuid.UUID, workerCount int, pathsFn func(uuid.UUID) []string) [][]uuid.UUID {
+	if len(ready) == 0 {
+		return nil
+	}
+
+	// Determine which issues are on the critical chain.
+	chain := g.CriticalChain()
+	onChain := make(map[uuid.UUID]bool, len(chain))
+	for _, iss := range chain {
+		onChain[iss.ID] = true
+	}
+
+	// Sort ready set: critical chain issues first, then off-chain; UUID within
+	// each tier for determinism.
+	sorted := make([]uuid.UUID, len(ready))
+	copy(sorted, ready)
+	sort.Slice(sorted, func(i, j int) bool {
+		iOnChain := onChain[sorted[i]]
+		jOnChain := onChain[sorted[j]]
+		if iOnChain != jOnChain {
+			return iOnChain // on-chain sorts before off-chain
+		}
+		return sorted[i].String() < sorted[j].String()
+	})
+
+	// assignedPaths is the union of paths across all worker groups assigned so
+	// far. A candidate may only be assigned if it does not overlap with this set
+	// (ensuring all assigned issues are safe for parallel execution).
+	var assignedPaths []string
+	var groups [][]uuid.UUID
+
+	for _, id := range sorted {
+		if len(groups) >= workerCount {
+			break
+		}
+
+		candidate := pathsFn(id)
+
+		// If the candidate overlaps with any already-assigned issue's paths,
+		// defer it to a subsequent batch.
+		if PathsOverlap(assignedPaths, candidate) {
+			continue
+		}
+
+		// No overlap: give this issue its own worker group and record its paths.
+		groups = append(groups, []uuid.UUID{id})
+		assignedPaths = append(assignedPaths, candidate...)
+	}
+
+	return groups
+}
+
 // activeIssues returns all issues that are not done or cancelled.
 func (g *Graph) activeIssues() []*issue.Issue {
 	var active []*issue.Issue
