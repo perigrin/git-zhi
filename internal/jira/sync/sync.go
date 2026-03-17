@@ -316,10 +316,11 @@ func Push(jiraClient *jclient.Client, issues []*issue.Issue, stateMapping StateM
 // ---------------------------------------------------------------------------
 
 // batchEditLine is the JSON shape consumed by `git zhi issue edit --batch`.
+// Fields is a map from field name to value, matching the batchOp struct in
+// internal/cli/issue_edit.go.
 type batchEditLine struct {
-	IssueID string `json:"issue_id"`
-	Field   string `json:"field"`
-	Value   string `json:"value"`
+	IssueID string            `json:"issue_id"`
+	Fields  map[string]string `json:"fields"`
 }
 
 // FormatBatchEdits converts a slice of PullUpdates to a newline-delimited
@@ -333,12 +334,11 @@ func FormatBatchEdits(updates []PullUpdate) []byte {
 	for _, u := range updates {
 		line := batchEditLine{
 			IssueID: u.IssueID,
-			Field:   u.Field,
-			Value:   u.NewValue,
+			Fields:  map[string]string{u.Field: u.NewValue},
 		}
 		data, err := json.Marshal(line)
 		if err != nil {
-			// json.Marshal of a plain struct with string fields cannot fail.
+			// json.Marshal of a plain struct cannot fail for string-valued fields.
 			continue
 		}
 		sb.Write(data)

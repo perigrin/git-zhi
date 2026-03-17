@@ -209,17 +209,25 @@ func TestFormatBatchEditsProducesJSONLines(t *testing.T) {
 		}
 	}
 
-	// First line must reference issue aaa with field state.
+	// First line must reference issue aaa with a nested fields map containing state.
 	var first map[string]interface{}
 	_ = json.Unmarshal([]byte(lines[0]), &first)
 	if first["issue_id"] != "aaa" {
 		t.Errorf("line 0 issue_id = %v, want aaa", first["issue_id"])
 	}
-	if first["field"] != "state" {
-		t.Errorf("line 0 field = %v, want state", first["field"])
+	fields, ok := first["fields"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("line 0 fields is not a map: %T %v", first["fields"], first["fields"])
 	}
-	if first["value"] != "in-progress" {
-		t.Errorf("line 0 value = %v, want in-progress", first["value"])
+	if fields["state"] != "in-progress" {
+		t.Errorf("line 0 fields[state] = %v, want in-progress", fields["state"])
+	}
+	// Flat field/value keys must not appear at the top level.
+	if _, has := first["field"]; has {
+		t.Error("line 0 must not have top-level 'field' key")
+	}
+	if _, has := first["value"]; has {
+		t.Error("line 0 must not have top-level 'value' key")
 	}
 }
 
