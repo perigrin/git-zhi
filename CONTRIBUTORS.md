@@ -6,6 +6,9 @@ Requires **Go 1.24+** and **git**.
 
 ```bash
 go build -o git-zhi ./cmd/git-zhi/
+go build -o git-zhi-verify ./cmd/git-zhi-verify/
+go build -o git-zhi-sanbao ./cmd/git-zhi-sanbao/
+go build -o git-zhi-docs ./cmd/git-zhi-docs/
 go install github.com/perigrin/git-zhi@latest
 ```
 
@@ -28,6 +31,9 @@ mocks. This catches issues that in-memory testing misses.
 
 ```
 cmd/git-zhi/           entry point
+cmd/git-zhi-verify/    verify plugin entry point
+cmd/git-zhi-sanbao/    sanbao observatory plugin entry point
+cmd/git-zhi-docs/      documentation health plugin entry point
 internal/
   cli/                 Cobra commands, App struct, test helpers
   storage/             git ref CRUD (blob/tree/commit/ref operations)
@@ -38,6 +44,22 @@ internal/
   config/              Chain configuration
   resolve/             Ref argument resolution (HEAD, tag, UUID prefix, title)
   uuids/               Shared UUID slice utilities
+  actor/               Worker identity (human/agent type, parsing)
+  verify/              AC command extraction, execution, prioritization, CLI
+  sanbao/              Observatory plugin (report, cmd)
+    dora/              DORA metrics (lead time, cycle time, rework rate)
+    space/             SPACE metrics (agent autonomy, review cycles)
+    calms/             CALMS indicators (verification coverage, WIP compliance)
+    sentiment/         VADER commit sentiment analysis
+    difficulty/        Composite issue difficulty scoring
+    complexity/        Language-agnostic code complexity (churn, coupling)
+    lsp/               LSP JSON-RPC client for language-specific metrics
+    report/            Report aggregation
+  docs/                Documentation scaffolding, validation, health checks, CLI
+  lineage/             Blame-to-issue mapping, observed coupling graph
+  download/            Binary download utilities
+  version/             Version information
+  updater/             Auto-update manager
 ```
 
 ### Storage Model
@@ -50,11 +72,13 @@ they only add facts (two-phase set pattern for dependencies).
 ### Core Domain Concepts
 
 - **Chain**: The dependency DAG of issues. Default chain is `_`.
-- **Issue**: A node in the DAG. UUIDv7 identity. States: pending, in-progress, done, cancelled.
+- **Issue**: A node in the DAG. UUIDv7 identity. States: pending, in-progress, done, cancelled, reopened. State transitions record actor identity and timestamp.
 - **Milestone**: A delivery grouping with optional due date and buffer.
 - **Critical Chain**: Longest sequential path — determines what blocks delivery.
 - **Buffer**: Absorbs variance. Starts at 50% of issue count, refines via telemetry.
 - **HEAD**: Current in-progress issue, or next on critical chain.
+- **observed_paths**: File paths touched during a session; recorded on done transition via `git diff --name-only`. Used by verify and the parallelizer for path-overlap detection.
+- **urgency**: Per-issue scheduling priority (high/normal/low) within a milestone.
 
 ### Graph Invariants (enforced on every write)
 
@@ -104,6 +128,20 @@ All commands support `--format json` for machine-readable output.
 **Issue:** `add`, `list`, `show`, `edit`
 **Milestone:** `add`, `list`, `show`, `edit`
 
+Notable flags:
+- `list --ready` — show the ready set with path-overlap analysis
+- `next --actor <id>` — resolve HEAD for a specific worker identity
+- `milestone show --workers N` — include parallelization forecast up to N workers
+- `milestone edit --resolve` — run the milestone's resolution command
+- `milestone edit --state complete` — run quality gates and mark milestone completed
+
+Plugin commands (invoked as `git zhi <name>`):
+- `verify` — extract and run acceptance criteria from issue descriptions
+- `sanbao report` — emit observatory report (DORA/SPACE/CALMS metrics, sentiment, difficulty, complexity)
+- `docs init` — scaffold documentation structure
+- `docs check` — validate documentation completeness
+- `docs health` — report documentation health status
+
 ### Issue Identity
 
 UUIDv7 — time-ordered, globally unique. Displayed truncated (8 chars).
@@ -116,6 +154,6 @@ Any executable named `git-zhi-<name>` on `$PATH` is invocable as `git zhi <name>
 ## Implementation Phases
 
 - **v0.1** — Core: storage, graph, all 10 commands, telemetry, sync, lazy init (done)
-- **v0.2** — Agentic: milestone resolution commands, validation, autonomous agent loop
-- **v0.3** — Multi-chain, garbage collection
-- **v0.4** — Multi-player, external tracker sync, UI
+- **v0.2** — Scaling: quality gates, parallelization forecast, lineage, verify/sanbao/docs plugins, Crochet intelligence layer (done)
+- **v0.3** — Enterprise: historian, sync plugins, cross-repo projects, reporting
+- **v0.4** — Future: web UI, real-time sync
