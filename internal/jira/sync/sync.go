@@ -285,6 +285,17 @@ func Push(jiraClient *jclient.Client, issues []*issue.Issue, stateMapping StateM
 			continue
 		}
 
+		// Check the snapshot to skip pushing when the state has not changed
+		// since the last sync, preventing redundant Jira API calls.
+		snapshot, err := LoadSnapshot(snapshotDir, iss.ID.String())
+		if err != nil {
+			return nil, fmt.Errorf("load snapshot for %s: %w", iss.ID, err)
+		}
+		if snapshot["state"] == string(iss.State) {
+			// State already synced; nothing to push.
+			continue
+		}
+
 		// Fetch available transitions and find the one matching targetStatus.
 		transitions, err := jiraClient.GetTransitions(key)
 		if err != nil {
@@ -305,6 +316,18 @@ func Push(jiraClient *jclient.Client, issues []*issue.Issue, stateMapping StateM
 
 		if err := jiraClient.DoTransition(key, transitionID); err != nil {
 			return nil, fmt.Errorf("do transition on %s: %w", key, err)
+		}
+
+		// Anchor the new state in the snapshot so subsequent pulls do not
+		// echo the pushed state back as an inbound change.
+		newSnapshot := map[string]string{
+			"state":    string(iss.State),
+			"urgency":  string(iss.Urgency),
+			"assigned": iss.Assigned,
+			"labels":   strings.Join(iss.Labels, ","),
+		}
+		if err := SaveSnapshot(snapshotDir, iss.ID.String(), newSnapshot); err != nil {
+			return nil, fmt.Errorf("save snapshot for %s: %w", iss.ID, err)
 		}
 
 		result.Pushed = append(result.Pushed, PushUpdate{

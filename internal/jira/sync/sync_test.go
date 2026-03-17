@@ -527,6 +527,78 @@ func TestPushSkipsIssuesWithoutTrackerID(t *testing.T) {
 	}
 }
 
+// TestPushSavesSnapshot verifies that a successful Push writes a snapshot so
+// subsequent pulls do not echo the pushed state back as an inbound change.
+func TestPushSavesSnapshot(t *testing.T) {
+	dir := t.TempDir()
+
+	issueID := "01900000-0000-7000-0000-000000000011"
+	trackerKey := "LOPS-700"
+
+	iss := makeIssue(t, issueID, "done", "jira:"+trackerKey)
+
+	srv := buildSyncServer(t, map[string]map[string]interface{}{
+		trackerKey: jiraIssueFixture(trackerKey, "In Progress", "Medium", "", []string{}),
+	}, nil)
+	defer srv.Close()
+
+	c := jclient.NewClient(srv.URL, "user@example.com", "token")
+	mapping := sync.StateMapping{"done": "Done", "in-progress": "In Progress"}
+
+	_, err := sync.Push(c, []*issue.Issue{iss}, mapping, dir)
+	if err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+
+	// Snapshot must now record state=done so Pull won't echo it back.
+	snap, err := sync.LoadSnapshot(dir, issueID)
+	if err != nil {
+		t.Fatalf("LoadSnapshot after Push: %v", err)
+	}
+	if snap["state"] != "done" {
+		t.Errorf("snapshot state = %q, want %q", snap["state"], "done")
+	}
+}
+
+// TestPushSkipsAlreadySyncedState verifies that Push skips an issue whose state
+// matches the snapshot, preventing redundant Jira API calls.
+func TestPushSkipsAlreadySyncedState(t *testing.T) {
+	dir := t.TempDir()
+
+	issueID := "01900000-0000-7000-0000-000000000012"
+	trackerKey := "LOPS-800"
+
+	iss := makeIssue(t, issueID, "done", "jira:"+trackerKey)
+
+	// Write a snapshot that already records state=done.
+	_ = sync.SaveSnapshot(dir, issueID, map[string]string{
+		"state":    "done",
+		"urgency":  "normal",
+		"labels":   "",
+		"assigned": "",
+	})
+
+	cap := &capturedTransitionID{}
+	srv := buildSyncServer(t, map[string]map[string]interface{}{
+		trackerKey: jiraIssueFixture(trackerKey, "Done", "Medium", "", []string{}),
+	}, cap)
+	defer srv.Close()
+
+	c := jclient.NewClient(srv.URL, "user@example.com", "token")
+	mapping := sync.StateMapping{"done": "Done"}
+
+	result, err := sync.Push(c, []*issue.Issue{iss}, mapping, dir)
+	if err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if len(result.Pushed) != 0 {
+		t.Errorf("expected no pushes when state already synced, got %v", result.Pushed)
+	}
+	if cap.ID != "" {
+		t.Errorf("expected no DoTransition call when state matches snapshot, got transition id=%q", cap.ID)
+	}
+}
+
 // TestPushSkipsUnmappedState verifies that a zhi state with no mapping in
 // StateMapping is skipped without error.
 func TestPushSkipsUnmappedState(t *testing.T) {
