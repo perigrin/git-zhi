@@ -21,6 +21,7 @@ const (
 	StateInProgress State = "in-progress"
 	StateDone       State = "done"
 	StateCancelled  State = "cancelled"
+	StateReopened   State = "reopened"
 )
 
 // Urgency represents the scheduling priority of an issue within its milestone.
