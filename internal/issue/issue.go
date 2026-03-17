@@ -77,6 +77,9 @@ type Issue struct {
 	// git-zhi-verify to prioritize re-verification and by the parallelizer
 	// to detect path overlap between concurrent workers.
 	ObservedPaths []string `yaml:"observed_paths,omitempty" json:"observed_paths,omitempty"`
+	// Labels is a set of free-form tag strings for categorizing and filtering
+	// issues (e.g. "LOPS", "microservices"). Introduced in v0.3.
+	Labels []string `yaml:"labels,omitempty" json:"labels,omitempty"`
 	// Body is the raw markdown below the YAML frontmatter separator.
 	// Handled separately from YAML marshaling. Included in JSON output
 	// so --format json consumers get the full issue content.
@@ -108,6 +111,11 @@ func Parse(raw []byte) (*Issue, error) {
 	// that predate this field. Callers can always append safely.
 	if iss.ObservedPaths == nil {
 		iss.ObservedPaths = []string{}
+	}
+	// Ensure Labels is never nil for backward compatibility with v0.1/v0.2
+	// issues that predate this field. Callers can always append safely.
+	if iss.Labels == nil {
+		iss.Labels = []string{}
 	}
 	return &iss, nil
 }

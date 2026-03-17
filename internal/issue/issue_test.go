@@ -3,6 +3,7 @@
 package issue_test
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -440,5 +441,92 @@ func TestParseObservedPaths_BackwardCompat(t *testing.T) {
 	}
 	if len(iss.ObservedPaths) != 0 {
 		t.Fatalf("expected 0 observed_paths for issue without the field, got %d", len(iss.ObservedPaths))
+	}
+}
+
+func TestParseLabels(t *testing.T) {
+	raw := []byte(`---
+title: "Issue with labels"
+state: pending
+labels:
+  - "LOPS"
+  - "microservices"
+---
+`)
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if len(iss.Labels) != 2 {
+		t.Fatalf("expected 2 labels, got %d", len(iss.Labels))
+	}
+	if iss.Labels[0] != "LOPS" {
+		t.Fatalf("expected first label %q, got %q", "LOPS", iss.Labels[0])
+	}
+	if iss.Labels[1] != "microservices" {
+		t.Fatalf("expected second label %q, got %q", "microservices", iss.Labels[1])
+	}
+}
+
+func TestMarshal_RoundTrip_Labels(t *testing.T) {
+	iss := &issue.Issue{
+		Title:   "Labels round trip",
+		State:   issue.StatePending,
+		Urgency: issue.UrgencyNormal,
+		Labels:  []string{"LOPS", "microservices"},
+		Created: time.Now().Truncate(time.Second),
+		Updated: time.Now().Truncate(time.Second),
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	iss2, err := issue.Parse(out)
+	if err != nil {
+		t.Fatalf("re-Parse failed: %v", err)
+	}
+	if len(iss2.Labels) != 2 {
+		t.Fatalf("expected 2 labels after round-trip, got %d", len(iss2.Labels))
+	}
+	if iss2.Labels[0] != "LOPS" {
+		t.Fatalf("expected first label %q, got %q", "LOPS", iss2.Labels[0])
+	}
+	if iss2.Labels[1] != "microservices" {
+		t.Fatalf("expected second label %q, got %q", "microservices", iss2.Labels[1])
+	}
+}
+
+func TestParseLabels_BackwardCompat(t *testing.T) {
+	// Issues without a labels field must produce an empty (non-nil) slice for
+	// backward compatibility with v0.1/v0.2 issues that predate this field.
+	raw := []byte("---\ntitle: \"Old issue\"\nstate: done\n---\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Labels == nil {
+		t.Fatal("expected non-nil Labels slice for backward compat, got nil")
+	}
+	if len(iss.Labels) != 0 {
+		t.Fatalf("expected 0 labels for issue without the field, got %d", len(iss.Labels))
+	}
+}
+
+func TestMarshal_Labels_OmitWhenEmpty(t *testing.T) {
+	// Empty labels must not appear in the serialized YAML (omitempty).
+	iss := &issue.Issue{
+		Title:   "No labels issue",
+		State:   issue.StatePending,
+		Urgency: issue.UrgencyNormal,
+		Labels:  []string{},
+		Created: time.Now().Truncate(time.Second),
+		Updated: time.Now().Truncate(time.Second),
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	if bytes.Contains(out, []byte("labels:")) {
+		t.Fatalf("expected labels field to be omitted when empty, but found it in:\n%s", out)
 	}
 }

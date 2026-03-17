@@ -41,6 +41,7 @@ type IssueJSON struct {
 	Sessions           []issue.Session         `json:"sessions,omitempty"`
 	Transitions        []issue.Transition      `json:"transitions,omitempty"`
 	ObservedPaths      []string                `json:"observed_paths,omitempty"`
+	Labels             []string                `json:"labels,omitempty"`
 	Prerequisites      []issue.Checkbox        `json:"prerequisites,omitempty"`
 	Context            *issue.StructuredContext `json:"context,omitempty"`
 	Steps              []string                `json:"steps,omitempty"`
@@ -181,6 +182,7 @@ func showJSON(cmd *cobra.Command, iss *issue.Issue) error {
 		Sessions:           iss.Sessions,
 		Transitions:        iss.Transitions,
 		ObservedPaths:      iss.ObservedPaths,
+		Labels:             iss.Labels,
 		Prerequisites:      sections.Prerequisites,
 		Context:            sections.Context,
 		Steps:              sections.Steps,
