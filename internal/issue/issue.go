@@ -70,8 +70,13 @@ type Issue struct {
 	Blocks    []uuid.UUID `yaml:"blocks,omitempty" json:"blocks,omitempty"`
 	Created   time.Time   `yaml:"created" json:"created"`
 	Updated   time.Time   `yaml:"updated" json:"updated"`
-	Sessions    []Session    `yaml:"sessions,omitempty" json:"sessions,omitempty"`
-	Transitions []Transition `yaml:"transitions,omitempty" json:"transitions,omitempty"`
+	Sessions      []Session    `yaml:"sessions,omitempty" json:"sessions,omitempty"`
+	Transitions   []Transition `yaml:"transitions,omitempty" json:"transitions,omitempty"`
+	// ObservedPaths records the file paths touched during sessions for this
+	// issue. Populated by --state done from git diff --name-only. Used by
+	// git-zhi-verify to prioritize re-verification and by the parallelizer
+	// to detect path overlap between concurrent workers.
+	ObservedPaths []string `yaml:"observed_paths,omitempty" json:"observed_paths,omitempty"`
 	// Body is the raw markdown below the YAML frontmatter separator.
 	// Handled separately from YAML marshaling. Included in JSON output
 	// so --format json consumers get the full issue content.
@@ -98,6 +103,11 @@ func Parse(raw []byte) (*Issue, error) {
 	// issues that predate this field. Callers can always append safely.
 	if iss.Transitions == nil {
 		iss.Transitions = []Transition{}
+	}
+	// Ensure ObservedPaths is never nil for backward compatibility with issues
+	// that predate this field. Callers can always append safely.
+	if iss.ObservedPaths == nil {
+		iss.ObservedPaths = []string{}
 	}
 	return &iss, nil
 }

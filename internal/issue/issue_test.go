@@ -371,3 +371,74 @@ func TestParseTransitions_BackwardCompat(t *testing.T) {
 		t.Fatalf("expected 0 transitions for issue without transitions field, got %d", len(iss.Transitions))
 	}
 }
+
+func TestParseObservedPaths(t *testing.T) {
+	raw := []byte(`---
+title: "Issue with observed paths"
+state: done
+observed_paths:
+  - "internal/issue/issue.go"
+  - "internal/issue/issue_test.go"
+---
+`)
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if len(iss.ObservedPaths) != 2 {
+		t.Fatalf("expected 2 observed_paths, got %d", len(iss.ObservedPaths))
+	}
+	if iss.ObservedPaths[0] != "internal/issue/issue.go" {
+		t.Fatalf("expected first path %q, got %q", "internal/issue/issue.go", iss.ObservedPaths[0])
+	}
+	if iss.ObservedPaths[1] != "internal/issue/issue_test.go" {
+		t.Fatalf("expected second path %q, got %q", "internal/issue/issue_test.go", iss.ObservedPaths[1])
+	}
+}
+
+func TestMarshal_RoundTrip_ObservedPaths(t *testing.T) {
+	iss := &issue.Issue{
+		Title:   "Observed paths round trip",
+		State:   issue.StateDone,
+		Urgency: issue.UrgencyNormal,
+		ObservedPaths: []string{
+			"internal/issue/issue.go",
+			"internal/cli/issue_edit.go",
+		},
+		Created: time.Now().Truncate(time.Second),
+		Updated: time.Now().Truncate(time.Second),
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	iss2, err := issue.Parse(out)
+	if err != nil {
+		t.Fatalf("re-Parse failed: %v", err)
+	}
+	if len(iss2.ObservedPaths) != 2 {
+		t.Fatalf("expected 2 observed_paths after round-trip, got %d", len(iss2.ObservedPaths))
+	}
+	if iss2.ObservedPaths[0] != "internal/issue/issue.go" {
+		t.Fatalf("expected first path %q, got %q", "internal/issue/issue.go", iss2.ObservedPaths[0])
+	}
+	if iss2.ObservedPaths[1] != "internal/cli/issue_edit.go" {
+		t.Fatalf("expected second path %q, got %q", "internal/cli/issue_edit.go", iss2.ObservedPaths[1])
+	}
+}
+
+func TestParseObservedPaths_BackwardCompat(t *testing.T) {
+	// Issues without an observed_paths field must produce an empty (non-nil)
+	// slice for backward compatibility with v0.1 issues that predate this field.
+	raw := []byte("---\ntitle: \"Old issue\"\nstate: done\n---\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.ObservedPaths == nil {
+		t.Fatal("expected non-nil ObservedPaths slice for backward compat, got nil")
+	}
+	if len(iss.ObservedPaths) != 0 {
+		t.Fatalf("expected 0 observed_paths for issue without the field, got %d", len(iss.ObservedPaths))
+	}
+}
