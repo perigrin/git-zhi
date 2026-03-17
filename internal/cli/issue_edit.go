@@ -12,6 +12,7 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
+	"github.com/perigrin/git-zhi/internal/actor"
 	"github.com/perigrin/git-zhi/internal/graph"
 	"github.com/perigrin/git-zhi/internal/issue"
 	"github.com/perigrin/git-zhi/internal/resolve"
@@ -172,6 +173,16 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 				}
 			}
 		}
+
+		// Record a Transition for every state change. Derive the actor from
+		// the Store's git author config so lineage tracking knows who acted.
+		authorName, authorEmail := app.Store.AuthorInfo()
+		a := actor.DeriveActor(authorName, authorEmail)
+		iss.Transitions = append(iss.Transitions, issue.Transition{
+			State:     string(newState),
+			Actor:     a.String(),
+			Timestamp: now,
+		})
 
 		iss.State = newState
 		iss.Updated = time.Now()

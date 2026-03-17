@@ -287,6 +287,12 @@ func (s *Store) DiffNameOnly(fromSHA, toSHA string) ([]string, error) {
 	return paths, nil
 }
 
+// AuthorInfo returns the git author name and email configured for this Store.
+// These values come from the repository's git config at store creation time.
+func (s *Store) AuthorInfo() (name, email string) {
+	return s.authorName, s.authorEmail
+}
+
 // CountCommits counts the number of commits between startSHA (exclusive) and
 // endSHA (inclusive) by walking the commit log backward from endSHA.
 // Returns 0 if startSHA == endSHA.
