@@ -15,6 +15,7 @@ import (
 	"github.com/perigrin/git-zhi/internal/actor"
 	"github.com/perigrin/git-zhi/internal/graph"
 	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 	"github.com/perigrin/git-zhi/internal/resolve"
 	"github.com/perigrin/git-zhi/internal/uuids"
 )
@@ -230,10 +231,16 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 
 	uuidStr := strings.TrimPrefix(refPath, issue.RefPrefix)
 
-	// --milestone: update the milestone field.
+	// --milestone: update the milestone field. Reject assignment to completed milestones.
 	if cmd.Flags().Changed("milestone") {
-		ms, _ := cmd.Flags().GetString("milestone")
-		iss.Milestone = ms
+		msName, _ := cmd.Flags().GetString("milestone")
+		if msName != "" {
+			ms, msErr := milestone.LoadMilestone(app.Store, msName)
+			if msErr == nil && ms.State == "completed" {
+				return fmt.Errorf("cannot assign issue to completed milestone %q", msName)
+			}
+		}
+		iss.Milestone = msName
 	}
 
 	// --block <target>: this issue blocks target.

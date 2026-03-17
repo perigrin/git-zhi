@@ -1,5 +1,5 @@
 // ABOUTME: Tests for the milestone edit command: setting due date, clearing
-// ABOUTME: due date with "none", renaming a milestone, and running --resolve.
+// ABOUTME: due date with "none", renaming a milestone, running --resolve, and --state complete gate.
 package cli_test
 
 import (
@@ -276,5 +276,118 @@ func TestMilestoneResolve_NoResolution(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no resolution command") {
 		t.Errorf("expected 'no resolution command' in error, got: %v", err)
+	}
+}
+
+// TestMilestoneComplete_AllIssuesDone verifies that --state complete succeeds
+// when all issues in the milestone are done or cancelled, and that the
+// milestone state is updated to "completed" with a non-nil Completed timestamp.
+func TestMilestoneComplete_AllIssuesDone(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	// Create a milestone with a passing resolution command.
+	createMilestoneWithResolution(t, app, "release", "echo ok")
+
+	// Add issues that are all done or cancelled.
+	createTestIssueInMilestoneWithState(t, app, "Feature A", issue.StateDone, "release")
+	createTestIssueInMilestoneWithState(t, app, "Feature B", issue.StateCancelled, "release")
+
+	_, err := run("milestone", "edit", "release", "--state", "complete")
+	if err != nil {
+		t.Fatalf("milestone edit --state complete failed: %v", err)
+	}
+
+	ms, err := milestone.LoadMilestone(app.Store, "release")
+	if err != nil {
+		t.Fatalf("LoadMilestone after complete: %v", err)
+	}
+	if ms.State != "completed" {
+		t.Errorf("expected State 'completed', got %q", ms.State)
+	}
+	if ms.Completed == nil {
+		t.Error("expected Completed timestamp to be set")
+	}
+}
+
+// TestMilestoneComplete_BlockedByPendingIssues verifies that --state complete
+// refuses when one or more issues in the milestone are not done or cancelled,
+// and the error lists the blocking issues.
+func TestMilestoneComplete_BlockedByPendingIssues(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	createMilestoneWithResolution(t, app, "release", "echo ok")
+	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+	createTestIssueInMilestoneWithState(t, app, "Pending blocker", issue.StatePending, "release")
+
+	_, err := run("milestone", "edit", "release", "--state", "complete")
+	if err == nil {
+		t.Fatal("expected error with pending issues blocking completion, got nil")
+	}
+	if !strings.Contains(err.Error(), "Pending blocker") {
+		t.Errorf("expected blocking issue title in error, got: %v", err)
+	}
+}
+
+// TestMilestoneComplete_ResolutionFails verifies that --state complete refuses
+// when the milestone's resolution command exits non-zero.
+func TestMilestoneComplete_ResolutionFails(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	createMilestoneWithResolution(t, app, "release", "exit 1")
+	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+
+	_, err := run("milestone", "edit", "release", "--state", "complete")
+	if err == nil {
+		t.Fatal("expected error when resolution command fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "resolution command failed") {
+		t.Errorf("expected 'resolution command failed' in error, got: %v", err)
+	}
+}
+
+// TestMilestoneComplete_VerifySkippedWithWarning verifies that --state complete
+// skips the verify gate (with a warning) when git-zhi-verify is not on PATH,
+// and still succeeds when all other gates pass.
+func TestMilestoneComplete_VerifySkippedWithWarning(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	createMilestoneWithResolution(t, app, "release", "echo ok")
+	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+
+	// git-zhi-verify is not on PATH in test environment; warn and skip.
+	stdout, err := run("milestone", "edit", "release", "--state", "complete")
+	if err != nil {
+		t.Fatalf("milestone edit --state complete failed unexpectedly: %v", err)
+	}
+
+	// The warning about skipping the verify gate should appear in output.
+	output := stdout.String()
+	if !strings.Contains(output, "git-zhi-verify") {
+		t.Errorf("expected warning about git-zhi-verify not found in output: %q", output)
+	}
+}
+
+// TestIssueEdit_MilestoneLocked verifies that assigning an issue to a
+// completed milestone returns an error.
+func TestIssueEdit_MilestoneLocked(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	// Create and complete the release milestone.
+	createMilestoneWithResolution(t, app, "release", "echo ok")
+	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+	if _, err := run("milestone", "edit", "release", "--state", "complete"); err != nil {
+		t.Fatalf("complete milestone: %v", err)
+	}
+
+	// Create a new pending issue not in the milestone.
+	newID := createTestIssueInMilestoneWithState(t, app, "New work", issue.StatePending, "")
+
+	// Attempt to assign it to the completed milestone.
+	_, err := run("issue", "edit", newID.String(), "--milestone", "release")
+	if err == nil {
+		t.Fatal("expected error assigning issue to completed milestone, got nil")
+	}
+	if !strings.Contains(err.Error(), "completed") {
+		t.Errorf("expected 'completed' in error, got: %v", err)
 	}
 }

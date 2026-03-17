@@ -61,5 +61,6 @@ func newMilestoneEditCommand() *cobra.Command {
 	cmd.Flags().String("tag", "", "create a named tag pointing to this milestone")
 	cmd.Flags().String("untag", "", "delete a named tag")
 	cmd.Flags().Bool("resolve", false, "execute the milestone's resolution command")
+	cmd.Flags().String("state", "", "transition milestone state (only 'complete' is supported)")
 	return cmd
 }
