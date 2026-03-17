@@ -369,6 +369,41 @@ func TestIssueEditBatch_TrackerID(t *testing.T) {
 	}
 }
 
+// TestIssueEditBatch_Title verifies that a "title" field updates the issue
+// title and does not return an "unsupported field" error.
+func TestIssueEditBatch_Title(t *testing.T) {
+	app, _ := setupEditTest(t)
+
+	id := createEditTestIssue(t, app, "Original Title")
+
+	batchInput := fmt.Sprintf(
+		`{"issue_id": "%s", "fields": {"title": "Renamed Title"}}`,
+		id[:8],
+	)
+
+	stdout, _, err := runWithStdin(app, batchInput, "issue", "edit", "--batch")
+	if err != nil {
+		t.Fatalf("issue edit --batch failed: %v", err)
+	}
+	lines := nonEmptyLines(stdout.String())
+	if len(lines) != 1 || !strings.Contains(lines[0], "ok") {
+		t.Fatalf("expected 1 'ok' line, got:\n%s", stdout.String())
+	}
+
+	ref := issue.RefPrefix + id
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if iss.Title != "Renamed Title" {
+		t.Errorf("expected title=%q, got %q", "Renamed Title", iss.Title)
+	}
+}
+
 // nonEmptyLines splits a string into lines, dropping blank ones.
 func nonEmptyLines(s string) []string {
 	var out []string

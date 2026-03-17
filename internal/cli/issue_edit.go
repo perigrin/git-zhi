@@ -1141,6 +1141,14 @@ func applyBatchOp(app *App, op batchOp) error {
 	// Apply each supported field.
 	for fieldName, rawVal := range op.Fields {
 		switch fieldName {
+		case "title":
+			var v string
+			if err := json.Unmarshal(rawVal, &v); err != nil {
+				return fmt.Errorf("field %q: %w", fieldName, err)
+			}
+			iss.Title = v
+			dirty = true
+
 		case "assigned":
 			var v string
 			if err := json.Unmarshal(rawVal, &v); err != nil {
