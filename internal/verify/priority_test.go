@@ -1,5 +1,5 @@
-// ABOUTME: Tests for PrioritizeIssues — verifies tier-1 (observed path overlap) and
-// ABOUTME: tier-2 (topological order) sorting of done issues for verification ordering.
+// ABOUTME: Tests for PrioritizeIssues — verifies tier-1 (observed path overlap),
+// ABOUTME: tier-2 (lineage connections), and tier-3 (topological order) sorting.
 package verify
 
 import (
@@ -57,7 +57,7 @@ func TestPriorityOrder_OverlapFirst(t *testing.T) {
 	recentChanges := []string{"internal/foo/foo.go", "cmd/main.go"}
 	topoOrder := []uuid.UUID{mustUUID(idA), mustUUID(idB)}
 
-	result := PrioritizeIssues([]*issue.Issue{issA, issB}, recentChanges, topoOrder)
+	result := PrioritizeIssues([]*issue.Issue{issA, issB}, recentChanges, topoOrder, nil)
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 issues, got %d", len(result))
@@ -81,7 +81,7 @@ func TestPriorityOrder_NoOverlapUsesTopoOrder(t *testing.T) {
 	// Topo order is C, A, B — reversed from UUID order
 	topoOrder := []uuid.UUID{mustUUID(idC), mustUUID(idA), mustUUID(idB)}
 
-	result := PrioritizeIssues([]*issue.Issue{issA, issB, issC}, recentChanges, topoOrder)
+	result := PrioritizeIssues([]*issue.Issue{issA, issB, issC}, recentChanges, topoOrder, nil)
 
 	if len(result) != 3 {
 		t.Fatalf("expected 3 issues, got %d", len(result))
@@ -110,7 +110,7 @@ func TestPriorityOrder_MixedTiers(t *testing.T) {
 	// Topo order: D, C, B, A — but B and A are tier-1 so only D, C matter for tier-2
 	topoOrder := []uuid.UUID{mustUUID(idD), mustUUID(idC), mustUUID(idB), mustUUID(idA)}
 
-	result := PrioritizeIssues([]*issue.Issue{issA, issB, issC, issD}, recentChanges, topoOrder)
+	result := PrioritizeIssues([]*issue.Issue{issA, issB, issC, issD}, recentChanges, topoOrder, nil)
 
 	if len(result) != 4 {
 		t.Fatalf("expected 4 issues, got %d", len(result))
@@ -151,7 +151,7 @@ func TestPriorityOrder_MixedTiers(t *testing.T) {
 // without panicking.
 func TestPriorityOrder_EmptyInputs(t *testing.T) {
 	// Empty issues
-	result := PrioritizeIssues(nil, []string{"foo.go"}, nil)
+	result := PrioritizeIssues(nil, []string{"foo.go"}, nil, nil)
 	if result == nil {
 		result = []*issue.Issue{}
 	}
@@ -159,9 +159,9 @@ func TestPriorityOrder_EmptyInputs(t *testing.T) {
 		t.Errorf("expected empty result for nil issues, got %d", len(result))
 	}
 
-	// Empty recent changes — all tier-2
+	// Empty recent changes — all tier-3
 	issA := makeIssue(idA, "issue A", []string{"foo.go"})
-	result = PrioritizeIssues([]*issue.Issue{issA}, nil, []uuid.UUID{mustUUID(idA)})
+	result = PrioritizeIssues([]*issue.Issue{issA}, nil, []uuid.UUID{mustUUID(idA)}, nil)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 issue, got %d", len(result))
 	}
@@ -180,7 +180,7 @@ func TestPriorityOrder_IssueNotInTopoOrder(t *testing.T) {
 	// Only A is in topo order; B is absent
 	topoOrder := []uuid.UUID{mustUUID(idA)}
 
-	result := PrioritizeIssues([]*issue.Issue{issA, issB}, recentChanges, topoOrder)
+	result := PrioritizeIssues([]*issue.Issue{issA, issB}, recentChanges, topoOrder, nil)
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 issues, got %d", len(result))
@@ -191,5 +191,132 @@ func TestPriorityOrder_IssueNotInTopoOrder(t *testing.T) {
 	}
 	if result[1].ID != mustUUID(idB) {
 		t.Errorf("expected B second (not in topoOrder), got %s", result[1].Title)
+	}
+}
+
+// TestPriorityWithLineage verifies that issues with lineage connections to
+// recently completed issues are placed in tier 2, between tier-1 (path
+// overlap) issues and tier-3 (remaining topo-order) issues.
+func TestPriorityWithLineage(t *testing.T) {
+	// issA: overlaps recent changes → tier 1
+	issA := makeIssue(idA, "issue A", []string{"internal/parser/parse.go"})
+	// issB: lineage connection but no path overlap → tier 2
+	issB := makeIssue(idB, "issue B", []string{"internal/config/cfg.go"})
+	// issC: no overlap, no lineage → tier 3
+	issC := makeIssue(idC, "issue C", []string{"internal/graph/graph.go"})
+	// issD: no overlap, no lineage → tier 3
+	issD := makeIssue(idD, "issue D", []string{"internal/storage/store.go"})
+
+	recentChanges := []string{"internal/parser/parse.go"}
+	topoOrder := []uuid.UUID{mustUUID(idA), mustUUID(idB), mustUUID(idC), mustUUID(idD)}
+
+	// B has a lineage connection; C and D do not.
+	lineageConnections := map[uuid.UUID]bool{
+		mustUUID(idB): true,
+	}
+
+	result := PrioritizeIssues(
+		[]*issue.Issue{issA, issB, issC, issD},
+		recentChanges,
+		topoOrder,
+		lineageConnections,
+	)
+
+	if len(result) != 4 {
+		t.Fatalf("expected 4 issues, got %d", len(result))
+	}
+
+	// Tier 1: A (path overlap)
+	if result[0].ID != mustUUID(idA) {
+		t.Errorf("expected A first (tier-1 path overlap), got %s (%s)", result[0].ID, result[0].Title)
+	}
+
+	// Tier 2: B (lineage connection)
+	if result[1].ID != mustUUID(idB) {
+		t.Errorf("expected B second (tier-2 lineage), got %s (%s)", result[1].ID, result[1].Title)
+	}
+
+	// Tier 3: C and D in topo order
+	if result[2].ID != mustUUID(idC) {
+		t.Errorf("expected C third (tier-3 topo pos 2), got %s (%s)", result[2].ID, result[2].Title)
+	}
+	if result[3].ID != mustUUID(idD) {
+		t.Errorf("expected D fourth (tier-3 topo pos 3), got %s (%s)", result[3].ID, result[3].Title)
+	}
+}
+
+// TestPriorityWithLineage_NilFallback verifies that passing nil for
+// lineageConnections produces the same two-tier behavior as before: tier-1
+// (path overlap) followed by tier-2 (topo order, now called tier 3 when
+// lineage is active).
+func TestPriorityWithLineage_NilFallback(t *testing.T) {
+	issA := makeIssue(idA, "issue A", []string{"internal/foo/foo.go"})
+	issB := makeIssue(idB, "issue B", []string{"internal/bar/bar.go"})
+	issC := makeIssue(idC, "issue C", []string{"internal/baz/baz.go"})
+
+	recentChanges := []string{"internal/foo/foo.go"}
+	topoOrder := []uuid.UUID{mustUUID(idA), mustUUID(idB), mustUUID(idC)}
+
+	// nil lineageConnections: fallback to two-tier behavior.
+	result := PrioritizeIssues([]*issue.Issue{issA, issB, issC}, recentChanges, topoOrder, nil)
+
+	if len(result) != 3 {
+		t.Fatalf("expected 3 issues, got %d", len(result))
+	}
+	// Tier 1: A (path overlap)
+	if result[0].ID != mustUUID(idA) {
+		t.Errorf("expected A first (tier-1 path overlap), got %s", result[0].Title)
+	}
+	// Former tier-2 (now tier-3 when lineage active, but fallback keeps order):
+	// B (topo pos 1) before C (topo pos 2)
+	if result[1].ID != mustUUID(idB) {
+		t.Errorf("expected B second (topo pos 1), got %s", result[1].Title)
+	}
+	if result[2].ID != mustUUID(idC) {
+		t.Errorf("expected C third (topo pos 2), got %s", result[2].Title)
+	}
+}
+
+// TestPriorityWithLineage_OverlapTakesPrecedence verifies that an issue in
+// both lineageConnections and with overlapping paths is placed in tier 1,
+// not tier 2.
+func TestPriorityWithLineage_OverlapTakesPrecedence(t *testing.T) {
+	// issA: overlaps AND has lineage → should go to tier 1
+	issA := makeIssue(idA, "issue A", []string{"internal/parser/parse.go"})
+	// issB: lineage only → tier 2
+	issB := makeIssue(idB, "issue B", []string{"internal/config/cfg.go"})
+	// issC: neither → tier 3
+	issC := makeIssue(idC, "issue C", []string{"internal/graph/graph.go"})
+
+	recentChanges := []string{"internal/parser/parse.go"}
+	topoOrder := []uuid.UUID{mustUUID(idA), mustUUID(idB), mustUUID(idC)}
+
+	// Both A and B have lineage connections; only A also has path overlap.
+	lineageConnections := map[uuid.UUID]bool{
+		mustUUID(idA): true,
+		mustUUID(idB): true,
+	}
+
+	result := PrioritizeIssues(
+		[]*issue.Issue{issA, issB, issC},
+		recentChanges,
+		topoOrder,
+		lineageConnections,
+	)
+
+	if len(result) != 3 {
+		t.Fatalf("expected 3 issues, got %d", len(result))
+	}
+	// A goes to tier 1 (path overlap takes precedence over lineage)
+	if result[0].ID != mustUUID(idA) {
+		t.Errorf("expected A first (tier-1 overlap takes precedence), got %s", result[0].Title)
+	}
+	// B goes to tier 2 (lineage only)
+	if result[1].ID != mustUUID(idB) {
+		t.Errorf("expected B second (tier-2 lineage), got %s", result[1].Title)
+	}
+	// C goes to tier 3
+	if result[2].ID != mustUUID(idC) {
+		t.Errorf("expected C third (tier-3), got %s", result[2].Title)
 	}
 }

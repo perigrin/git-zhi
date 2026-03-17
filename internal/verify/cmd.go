@@ -98,8 +98,10 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 			// a stable proxy for creation order.
 			topoOrder := topoOrderByUUID(doneIssues)
 
-			// Prioritize issues: tier-1 (path overlap) then tier-2 (topo order).
-			prioritized := PrioritizeIssues(doneIssues, recentChanges, topoOrder)
+			// Prioritize issues: tier-1 (path overlap), tier-2 (lineage, nil = not
+			// yet integrated), tier-3 (topo order). Phase 5 integration will pass a
+			// computed lineage set here; for now nil disables tier-2.
+			prioritized := PrioritizeIssues(doneIssues, recentChanges, topoOrder, nil)
 
 			// Execute each issue's commands in priority order, collecting results.
 			var jsonResults []JSONResultEntry
