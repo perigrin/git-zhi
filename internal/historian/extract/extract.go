@@ -9,7 +9,6 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
 // DiffFingerprint summarises the shape of a commit's diff for similarity
@@ -159,6 +158,11 @@ func countHunks(patch *object.Patch) int {
 // since are included), and returns them in chronological order (oldest first).
 // If the repository has no commits (empty HEAD), an empty slice is returned
 // without error.
+//
+// The full log is always walked rather than using early termination on
+// timestamp comparison. Merge commits from feature branches have older author
+// timestamps but appear late in the walk; early termination based on author
+// timestamp would silently miss them.
 func ExtractCommits(repo *git.Repository, since *time.Time) ([]CommitData, error) {
 	head, err := repo.Head()
 	if err != nil {
@@ -175,10 +179,10 @@ func ExtractCommits(repo *git.Repository, since *time.Time) ([]CommitData, error
 	var commits []CommitData
 	err = iter.ForEach(func(c *object.Commit) error {
 		ts := c.Author.When
+		// Filter by since after collection so merge commits with older author
+		// timestamps are not skipped when they appear late in the walk order.
 		if since != nil && ts.Before(*since) {
-			// This commit is too old; because log walks newest-first, and git
-			// history is generally monotonically increasing, we stop here.
-			return storer.ErrStop
+			return nil
 		}
 		cd := CommitData{
 			SHA:         c.Hash.String(),
@@ -192,7 +196,7 @@ func ExtractCommits(repo *git.Repository, since *time.Time) ([]CommitData, error
 		commits = append(commits, cd)
 		return nil
 	})
-	if err != nil && err != storer.ErrStop {
+	if err != nil {
 		return nil, err
 	}
 

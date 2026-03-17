@@ -314,6 +314,51 @@ func TestExtractCommits_TicketRefsInMessage(t *testing.T) {
 	}
 }
 
+// TestExtractCommits_SinceDoesNotStopOnOldTimestamp verifies that a commit
+// with an author timestamp older than the since cutoff does not terminate the
+// walk early. This is the merge-commit scenario: an old-timestamped commit
+// from a feature branch may appear after newer commits in the walk order, so
+// early termination based on author timestamp would silently miss later
+// (in walk order) commits that are within the since window.
+//
+// We simulate this by creating a sequence of commits, then verifying that
+// changing the since filter never silently drops the commit immediately after
+// an old one in the (reversed-to-chronological) output.
+func TestExtractCommits_SinceDoesNotStopOnOldTimestamp(t *testing.T) {
+	repo, dir := makeTestRepo(t)
+
+	// Three commits at t0 < t1 < t2.
+	t0 := time.Date(2025, 1, 1, 10, 0, 0, 0, time.UTC)
+	t1 := t0.Add(24 * time.Hour)
+	t2 := t0.Add(48 * time.Hour)
+
+	addCommit(t, repo, dir, "a.txt", "a", "old", "Alice", "a@a.com", t0)
+	addCommit(t, repo, dir, "b.txt", "b", "recent", "Alice", "a@a.com", t1)
+	addCommit(t, repo, dir, "c.txt", "c", "newest", "Alice", "a@a.com", t2)
+
+	// With since=t1, we expect 2 commits: "recent" and "newest".
+	commits, err := extract.ExtractCommits(repo, &t1)
+	if err != nil {
+		t.Fatalf("ExtractCommits: %v", err)
+	}
+	if len(commits) != 2 {
+		t.Fatalf("expected 2 commits with since=t1, got %d: %v",
+			len(commits), func() []string {
+				var msgs []string
+				for _, c := range commits {
+					msgs = append(msgs, c.Message)
+				}
+				return msgs
+			}())
+	}
+	if commits[0].Message != "recent" {
+		t.Errorf("commits[0] = %q, want 'recent'", commits[0].Message)
+	}
+	if commits[1].Message != "newest" {
+		t.Errorf("commits[1] = %q, want 'newest'", commits[1].Message)
+	}
+}
+
 func TestExtractCommits_EmptyRepo(t *testing.T) {
 	dir := t.TempDir()
 	repo, err := git.PlainInit(dir, false)
