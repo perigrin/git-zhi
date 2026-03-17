@@ -37,11 +37,17 @@ func runChainNext(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no issues found")
 	}
 
-	// Apply --label filter to the candidate set before graph/HEAD resolution.
-	candidates := allIssues
+	// Build the graph from ALL issues so that blocking relationships across
+	// label boundaries are respected.
+	g := graph.New(allIssues)
+
+	// When --label is set, compute the full ready set from the complete graph
+	// and then filter to labeled issues only. This ensures that an unlabeled
+	// blocker keeps a labeled issue out of the ready set.
 	if labelFilter != "" {
+		ready := g.ReadySet()
 		var labeled []*issue.Issue
-		for _, iss := range allIssues {
+		for _, iss := range ready {
 			for _, l := range iss.Labels {
 				if l == labelFilter {
 					labeled = append(labeled, iss)
@@ -49,14 +55,13 @@ func runChainNext(cmd *cobra.Command, args []string) error {
 				}
 			}
 		}
-		candidates = labeled
+		if len(labeled) == 0 {
+			return fmt.Errorf("no issues found")
+		}
+		// Pass the full UUID of the first labeled ready issue.
+		return runIssueShow(cmd, []string{labeled[0].ID.String()})
 	}
 
-	if len(candidates) == 0 {
-		return fmt.Errorf("no issues found")
-	}
-
-	g := graph.New(candidates)
 	head, err := g.Head(actor)
 	if err != nil {
 		return fmt.Errorf("resolve HEAD for actor %q: %w", actor, err)
