@@ -302,11 +302,16 @@ func TestJiraSyncPull_emitsBatchJSON(t *testing.T) {
 		if _, ok := obj["issue_id"]; !ok {
 			t.Errorf("batch line missing 'issue_id': %q", line)
 		}
-		if _, ok := obj["field"]; !ok {
-			t.Errorf("batch line missing 'field': %q", line)
+		// Batch lines must use the nested fields map (not flat field/value keys).
+		fields, ok := obj["fields"].(map[string]interface{})
+		if !ok || len(fields) == 0 {
+			t.Errorf("batch line missing non-empty 'fields' map: %q", line)
 		}
-		if _, ok := obj["value"]; !ok {
-			t.Errorf("batch line missing 'value': %q", line)
+		if _, has := obj["field"]; has {
+			t.Errorf("batch line must not have top-level 'field' key: %q", line)
+		}
+		if _, has := obj["value"]; has {
+			t.Errorf("batch line must not have top-level 'value' key: %q", line)
 		}
 	}
 }
@@ -522,12 +527,14 @@ func TestJiraEnrich_updatesTitleFromJira(t *testing.T) {
 			t.Errorf("line not valid JSON: %q", line)
 			continue
 		}
-		if obj["field"] == "title" && obj["value"] == "New Title From Jira" {
+		// Batch lines use the nested fields map format.
+		fields, _ := obj["fields"].(map[string]interface{})
+		if fields["title"] == "New Title From Jira" {
 			foundTitle = true
 		}
 	}
 	if !foundTitle {
-		t.Errorf("expected a batch edit with field=title and value='New Title From Jira'; got:\n%s", stdout)
+		t.Errorf("expected a batch edit with fields.title='New Title From Jira'; got:\n%s", stdout)
 	}
 }
 

@@ -94,9 +94,26 @@ func resolveCredentials(cmd *cobra.Command, jiraURLOverride string) (*jclient.Cl
 		}
 	}
 
-	// --jira-url flag overrides everything for the URL.
+	// --jira-url overrides the URL for testing or one-off use. When it is set
+	// we skip credentials.Load (and its HTTPS enforcement) and resolve token
+	// and email from env/config directly, because the override is an explicit
+	// developer choice that may target a non-HTTPS test server.
 	if jiraURLOverride != "" {
-		cfgURL = jiraURLOverride
+		token := credentials.ResolveField("ZHI_JIRA_TOKEN", cfgToken)
+		email := credentials.ResolveField("ZHI_JIRA_EMAIL", cfgEmail)
+		if token == "" {
+			return nil, fmt.Errorf(
+				"Jira token not configured: set ZHI_JIRA_TOKEN env var or run " +
+					"'git config zhi.sync.jira.token <token>'",
+			)
+		}
+		if email == "" {
+			return nil, fmt.Errorf(
+				"Jira email not configured: set ZHI_JIRA_EMAIL env var or run " +
+					"'git config zhi.sync.jira.email <email>'",
+			)
+		}
+		return jclient.NewClient(jiraURLOverride, email, token), nil
 	}
 
 	creds, err := credentials.Load(cfgToken, cfgEmail, cfgURL)

@@ -3,6 +3,7 @@
 package credentials_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/perigrin/git-zhi/internal/jira/credentials"
@@ -97,6 +98,22 @@ func TestLoadCredentials_missingURL(t *testing.T) {
 	_, err := credentials.Load("tok", "user@example.com", "")
 	if err == nil {
 		t.Fatal("Load with missing URL: expected error, got nil")
+	}
+}
+
+// TestLoadCredentials_rejectsHTTP verifies that an http:// URL is rejected to
+// prevent credentials from being sent in cleartext.
+func TestLoadCredentials_rejectsHTTP(t *testing.T) {
+	t.Setenv("ZHI_JIRA_TOKEN", "")
+	t.Setenv("ZHI_JIRA_EMAIL", "")
+	t.Setenv("ZHI_JIRA_URL", "")
+
+	_, err := credentials.Load("tok", "user@example.com", "http://example.atlassian.net")
+	if err == nil {
+		t.Fatal("Load with http:// URL: expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "HTTPS") {
+		t.Errorf("expected HTTPS mention in error, got: %v", err)
 	}
 }
 

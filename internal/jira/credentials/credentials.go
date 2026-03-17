@@ -5,6 +5,7 @@ package credentials
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Credentials holds the resolved Jira authentication details.
@@ -44,6 +45,12 @@ func Load(cfgToken, cfgEmail, cfgURL string) (*Credentials, error) {
 				"'git config zhi.sync.jira.url <url>'",
 		)
 	}
+	if !strings.HasPrefix(url, "https://") {
+		return nil, fmt.Errorf(
+			"Jira URL must use HTTPS (got %q): credentials would be sent in cleartext over HTTP",
+			url,
+		)
+	}
 
 	return &Credentials{Token: token, Email: email, URL: url}, nil
 }
@@ -55,4 +62,12 @@ func resolve(envKey, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// ResolveField returns the value of the named env var if non-empty, otherwise
+// returns the fallback. Callers that need to resolve a single credential field
+// without the full Load validation (e.g. when using --jira-url override) use
+// this helper directly.
+func ResolveField(envKey, fallback string) string {
+	return resolve(envKey, fallback)
 }
