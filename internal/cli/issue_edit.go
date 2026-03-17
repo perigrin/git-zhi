@@ -26,6 +26,7 @@ import (
 // and does not independently trigger an edit.
 var knownEditFlags = []string{
 	"state", "block", "unblock", "milestone", "tag", "untag",
+	"label", "unlabel",
 	"before", "after", "split", "merge", "purge",
 }
 
@@ -80,7 +81,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --state: handled separately because it needs RepoHEAD and outputs a
 	// formatted result. refInput was already set above.
 	if cmd.Flags().Changed("state") {
-		for _, name := range []string{"block", "unblock", "milestone", "tag", "untag", "before", "after"} {
+		for _, name := range []string{"block", "unblock", "milestone", "tag", "untag", "label", "unlabel", "before", "after"} {
 			if cmd.Flags().Changed(name) {
 				return fmt.Errorf("--%s cannot be combined with --state; run them as separate commands", name)
 			}
@@ -298,13 +299,42 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// --label <name>: append label to the issue's Labels slice (deduplicated).
+	if cmd.Flags().Changed("label") {
+		labelName, _ := cmd.Flags().GetString("label")
+		found := false
+		for _, l := range iss.Labels {
+			if l == labelName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			iss.Labels = append(iss.Labels, labelName)
+		}
+	}
+
+	// --unlabel <name>: remove label from the issue's Labels slice.
+	if cmd.Flags().Changed("unlabel") {
+		labelName, _ := cmd.Flags().GetString("unlabel")
+		filtered := iss.Labels[:0]
+		for _, l := range iss.Labels {
+			if l != labelName {
+				filtered = append(filtered, l)
+			}
+		}
+		iss.Labels = filtered
+	}
+
 	// Write the (potentially modified) primary issue back only if one of the
 	// flags that modifies it directly was set.
 	issueDirty := cmd.Flags().Changed("milestone") ||
 		cmd.Flags().Changed("block") ||
 		cmd.Flags().Changed("unblock") ||
 		cmd.Flags().Changed("before") ||
-		cmd.Flags().Changed("after")
+		cmd.Flags().Changed("after") ||
+		cmd.Flags().Changed("label") ||
+		cmd.Flags().Changed("unlabel")
 
 	if issueDirty {
 		iss.Updated = time.Now()

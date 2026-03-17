@@ -48,6 +48,7 @@ func newMilestoneShowCommand() *cobra.Command {
 		RunE:  runMilestoneShow,
 	}
 	cmd.Flags().Int("workers", 0, "show forecast for up to N parallel workers (0 = no forecast)")
+	cmd.Flags().String("label", "", "scope issue list and telemetry to issues with this label")
 	return cmd
 }
 

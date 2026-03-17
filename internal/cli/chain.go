@@ -13,6 +13,7 @@ func NewListCommand() *cobra.Command {
 	}
 	cmd.Flags().Bool("all", false, "include done and cancelled issues")
 	cmd.Flags().String("milestone", "", "filter by milestone")
+	cmd.Flags().String("label", "", "filter by label")
 	cmd.Flags().Bool("critical", false, "show critical chain only")
 	cmd.Flags().Bool("ready", false, "show ready set with path overlap analysis")
 	cmd.Flags().Bool("graph", false, "ASCII DAG visualization (not yet implemented)")
@@ -37,5 +38,6 @@ func NewNextCommand() *cobra.Command {
 		RunE:  runChainNext,
 	}
 	cmd.Flags().String("actor", "", "per-worker identity for multi-agent resolution (e.g. agent:claude-code-1)")
+	cmd.Flags().String("label", "", "filter ready set to issues with this label")
 	return cmd
 }

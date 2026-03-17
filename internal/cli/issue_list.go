@@ -33,6 +33,7 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 	includeAll, _ := cmd.Flags().GetBool("all")
 	milestoneFilter, _ := cmd.Flags().GetString("milestone")
 	stateFilter, _ := cmd.Flags().GetString("state")
+	labelFilter, _ := cmd.Flags().GetString("label")
 
 	// Validate --state flag against known states.
 	validStates := []string{
@@ -101,6 +102,20 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 		// Apply --milestone filter.
 		if milestoneFilter != "" && iss.Milestone != milestoneFilter {
 			continue
+		}
+
+		// Apply --label filter.
+		if labelFilter != "" {
+			found := false
+			for _, l := range iss.Labels {
+				if l == labelFilter {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
 		}
 
 		issues = append(issues, iss)

@@ -183,14 +183,31 @@ func runMilestoneShow(cmd *cobra.Command, args []string) error {
 		ms = loaded
 	}
 
+	// Read --label flag to optionally scope the issue list and telemetry.
+	labelFilter, _ := cmd.Flags().GetString("label")
+
 	var msIssues []*issue.Issue
 	doneCount := 0
 	for _, iss := range allIssues {
-		if iss.Milestone == ms.Name {
-			msIssues = append(msIssues, iss)
-			if iss.State == issue.StateDone || iss.State == issue.StateCancelled {
-				doneCount++
+		if iss.Milestone != ms.Name {
+			continue
+		}
+		// Apply --label filter when set.
+		if labelFilter != "" {
+			found := false
+			for _, l := range iss.Labels {
+				if l == labelFilter {
+					found = true
+					break
+				}
 			}
+			if !found {
+				continue
+			}
+		}
+		msIssues = append(msIssues, iss)
+		if iss.State == issue.StateDone || iss.State == issue.StateCancelled {
+			doneCount++
 		}
 	}
 

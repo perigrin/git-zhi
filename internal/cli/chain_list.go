@@ -72,6 +72,7 @@ func runChainList(cmd *cobra.Command, args []string) error {
 
 	includeAll, _ := cmd.Flags().GetBool("all")
 	milestoneFilter, _ := cmd.Flags().GetString("milestone")
+	labelFilter, _ := cmd.Flags().GetString("label")
 	showCritical, _ := cmd.Flags().GetBool("critical")
 	showReady, _ := cmd.Flags().GetBool("ready")
 
@@ -88,6 +89,18 @@ func runChainList(cmd *cobra.Command, args []string) error {
 		}
 		if milestoneFilter != "" && iss.Milestone != milestoneFilter {
 			continue
+		}
+		if labelFilter != "" {
+			found := false
+			for _, l := range iss.Labels {
+				if l == labelFilter {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
 		}
 		filtered = append(filtered, iss)
 	}
