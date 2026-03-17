@@ -7,21 +7,20 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/goccy/go-yaml"
-
 	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 // RefPrefix is the git ref namespace under which all milestones are stored.
 const RefPrefix = "refs/zhi/_/milestones/"
 
-// UnmarshalMilestone deserializes a Milestone from YAML bytes.
+// UnmarshalMilestone deserializes a Milestone from either frontmatter+body
+// format (v0.2) or pure YAML (v0.1). Delegates to Parse for format detection.
 func UnmarshalMilestone(data []byte) (*Milestone, error) {
-	var ms Milestone
-	if err := yaml.Unmarshal(data, &ms); err != nil {
+	ms, err := Parse(data)
+	if err != nil {
 		return nil, fmt.Errorf("unmarshal milestone: %w", err)
 	}
-	return &ms, nil
+	return ms, nil
 }
 
 // LoadMilestone reads the milestone named by name from storage.
