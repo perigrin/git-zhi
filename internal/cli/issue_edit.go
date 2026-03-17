@@ -547,6 +547,9 @@ func printEditResult(cmd *cobra.Command, action, uuidStr string, iss *issue.Issu
 
 	case "cancel":
 		fmt.Fprintf(cmd.OutOrStdout(), "Cancelled %s: %s\n", shortID, iss.Title)
+
+	case "reopen":
+		fmt.Fprintf(cmd.OutOrStdout(), "Reopened %s: %s\n", shortID, iss.Title)
 	}
 
 	return nil

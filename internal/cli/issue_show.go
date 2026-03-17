@@ -22,14 +22,18 @@ type IssueJSON struct {
 	ID                 uuid.UUID               `json:"id"`
 	Title              string                  `json:"title"`
 	State              issue.State             `json:"state"`
+	Urgency            issue.Urgency           `json:"urgency,omitempty"`
 	Milestone          string                  `json:"milestone"`
 	BlockedBy          []uuid.UUID             `json:"blocked_by,omitempty"`
 	Blocks             []uuid.UUID             `json:"blocks,omitempty"`
 	Created            time.Time               `json:"created"`
 	Updated            time.Time               `json:"updated"`
 	Sessions           []issue.Session         `json:"sessions,omitempty"`
+	Transitions        []issue.Transition      `json:"transitions,omitempty"`
+	ObservedPaths      []string                `json:"observed_paths,omitempty"`
 	Prerequisites      []issue.Checkbox        `json:"prerequisites,omitempty"`
 	Context            *issue.StructuredContext `json:"context,omitempty"`
+	Steps              []string                `json:"steps,omitempty"`
 	AcceptanceCriteria []issue.Checkbox        `json:"acceptance_criteria,omitempty"`
 	PositiveScenarios  []issue.Checkbox        `json:"positive_scenarios,omitempty"`
 	NegativeScenarios  []issue.Checkbox        `json:"negative_scenarios,omitempty"`
@@ -141,14 +145,18 @@ func showJSON(cmd *cobra.Command, iss *issue.Issue) error {
 		ID:                 iss.ID,
 		Title:              iss.Title,
 		State:              iss.State,
+		Urgency:            iss.Urgency,
 		Milestone:          iss.Milestone,
 		BlockedBy:          iss.BlockedBy,
 		Blocks:             iss.Blocks,
 		Created:            iss.Created,
 		Updated:            iss.Updated,
 		Sessions:           iss.Sessions,
+		Transitions:        iss.Transitions,
+		ObservedPaths:      iss.ObservedPaths,
 		Prerequisites:      sections.Prerequisites,
 		Context:            sections.Context,
+		Steps:              sections.Steps,
 		AcceptanceCriteria: sections.AcceptanceCriteria,
 		PositiveScenarios:  sections.PositiveScenarios,
 		NegativeScenarios:  sections.NegativeScenarios,
