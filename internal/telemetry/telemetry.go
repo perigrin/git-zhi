@@ -37,6 +37,19 @@ type Stats struct {
 	// means underestimated. Zero when no ForecastHistory is present.
 	ForecastAccuracy float64 `yaml:"forecast_accuracy" json:"forecast_accuracy"`
 	FeverStatus      Status  `yaml:"fever_status" json:"fever_status"`
+	// ReadySetWidth is the average number of simultaneously executable issues
+	// at the time of measurement. Populated by the caller from graph state;
+	// not computed inside Compute(). Zero when unset.
+	ReadySetWidth float64 `yaml:"ready_set_width" json:"ready_set_width"`
+	// PathOverlapCount is the number of parallel-eligible issue pairs that
+	// share file-level paths, limiting safe concurrency. Populated by the
+	// caller from graph state; not computed inside Compute(). Zero when unset.
+	PathOverlapCount int `yaml:"path_overlap_count" json:"path_overlap_count"`
+	// ParallelEff is the actual vs theoretical completion time ratio
+	// (theoreticalWeeks / actualWeeks). Values close to 1.0 indicate good
+	// parallelization. Populated by the caller via ComputeParallelEfficiency;
+	// not computed inside Compute(). Zero when unset.
+	ParallelEff float64 `yaml:"parallel_eff" json:"parallel_eff"`
 }
 
 // ComputeForecastAccuracy returns the ratio predicted/actual.
@@ -49,6 +62,18 @@ func ComputeForecastAccuracy(predicted, actual float64) float64 {
 		return 0
 	}
 	return predicted / actual
+}
+
+// ComputeParallelEfficiency returns the ratio theoreticalWeeks/actualWeeks.
+// Values close to 1.0 indicate that parallelization is working well (actual
+// completion time matches the theoretical minimum). Values below 1.0 indicate
+// that actual work took longer than the theoretical parallel minimum. Returns 0
+// when actualWeeks is 0 to avoid division by zero.
+func ComputeParallelEfficiency(actualWeeks, theoreticalWeeks float64) float64 {
+	if actualWeeks == 0 {
+		return 0
+	}
+	return theoreticalWeeks / actualWeeks
 }
 
 // Compute derives telemetry indicators from the issues belonging to the given

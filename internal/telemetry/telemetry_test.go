@@ -469,3 +469,70 @@ func TestCompute_TimeInChain_NoTimestamps(t *testing.T) {
 		t.Errorf("expected ShadowWork=0 when TimeInChain=0, got %f", stats.ShadowWork)
 	}
 }
+
+func TestParallelEfficiency_Normal(t *testing.T) {
+	// theoretical == actual → ratio 1.0 (perfect parallelization).
+	ratio := telemetry.ComputeParallelEfficiency(4.0, 4.0)
+	if ratio != 1.0 {
+		t.Errorf("expected ratio=1.0 for equal actual/theoretical, got %f", ratio)
+	}
+}
+
+func TestParallelEfficiency_GoodParallelism(t *testing.T) {
+	// theoretical=2.0, actual=4.0 → ratio 0.5 (took twice as long as theory).
+	ratio := telemetry.ComputeParallelEfficiency(4.0, 2.0)
+	if ratio != 0.5 {
+		t.Errorf("expected ratio=0.5 for theoretical=2.0/actual=4.0, got %f", ratio)
+	}
+}
+
+func TestParallelEfficiency_ZeroActual(t *testing.T) {
+	// actualWeeks == 0 → return 0 to avoid division by zero.
+	ratio := telemetry.ComputeParallelEfficiency(0.0, 2.0)
+	if ratio != 0.0 {
+		t.Errorf("expected ratio=0.0 when actualWeeks=0, got %f", ratio)
+	}
+}
+
+func TestStats_ParallelFields_ZeroValue(t *testing.T) {
+	// Stats zero value must include the three parallel fields at zero.
+	s := telemetry.Stats{}
+	if s.ReadySetWidth != 0 {
+		t.Errorf("expected ReadySetWidth zero value = 0, got %f", s.ReadySetWidth)
+	}
+	if s.PathOverlapCount != 0 {
+		t.Errorf("expected PathOverlapCount zero value = 0, got %d", s.PathOverlapCount)
+	}
+	if s.ParallelEff != 0 {
+		t.Errorf("expected ParallelEff zero value = 0, got %f", s.ParallelEff)
+	}
+}
+
+func TestStats_ParallelFields_SetByCallsite(t *testing.T) {
+	// The caller populates ReadySetWidth, PathOverlapCount, and ParallelEff
+	// after calling Compute(); verify the fields are settable and survive a
+	// round-trip through the struct.
+	ms := makeMilestone("v0.1")
+	now := time.Now()
+	gen := uuid.NewGen()
+	id, _ := gen.NewV7()
+	issues := []*issue.Issue{
+		{ID: id, Title: "Done", State: issue.StateDone, Milestone: "v0.1",
+			Sessions: []issue.Session{{Commits: 2}}, Created: now, Updated: now},
+	}
+
+	stats := telemetry.Compute(issues, ms)
+	stats.ReadySetWidth = 3.5
+	stats.PathOverlapCount = 2
+	stats.ParallelEff = telemetry.ComputeParallelEfficiency(4.0, 2.0)
+
+	if stats.ReadySetWidth != 3.5 {
+		t.Errorf("expected ReadySetWidth=3.5, got %f", stats.ReadySetWidth)
+	}
+	if stats.PathOverlapCount != 2 {
+		t.Errorf("expected PathOverlapCount=2, got %d", stats.PathOverlapCount)
+	}
+	if stats.ParallelEff != 0.5 {
+		t.Errorf("expected ParallelEff=0.5, got %f", stats.ParallelEff)
+	}
+}
