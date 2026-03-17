@@ -1,5 +1,5 @@
 // ABOUTME: ParseSections extracts structured sections from an issue's markdown body.
-// ABOUTME: Recognizes Prerequisites, Context, and Acceptance Criteria headings; remaining text becomes Description.
+// ABOUTME: Recognizes Prerequisites, Steps, Context, and Acceptance Criteria headings; remaining text becomes Description.
 package issue
 
 import (
@@ -23,10 +23,11 @@ type StructuredContext struct {
 
 // Sections holds all parsed sections from an issue body.
 type Sections struct {
-	Prerequisites      []Checkbox         `json:"prerequisites,omitempty"`
-	Context            *StructuredContext  `json:"context,omitempty"`
-	AcceptanceCriteria []Checkbox         `json:"acceptance_criteria,omitempty"`
-	Description        string             `json:"description,omitempty"`
+	Prerequisites      []Checkbox        `json:"prerequisites,omitempty"`
+	Context            *StructuredContext `json:"context,omitempty"`
+	Steps              []string          `json:"steps,omitempty"`
+	AcceptanceCriteria []Checkbox        `json:"acceptance_criteria,omitempty"`
+	Description        string            `json:"description,omitempty"`
 }
 
 var checkboxRe = regexp.MustCompile(`^- \[([xX ])\] (.+)$`)
@@ -58,6 +59,21 @@ func splitCSV(s string) []string {
 		if v := strings.TrimSpace(p); v != "" {
 			result = append(result, v)
 		}
+	}
+	return result
+}
+
+// parseSteps extracts the text of checkbox items from a Steps section.
+// Both checked (`- [x]`) and unchecked (`- [ ]`) items are included; only
+// their text is returned (the checked state is not tracked for steps).
+func parseSteps(text string) []string {
+	var result []string
+	for _, line := range strings.Split(text, "\n") {
+		m := checkboxRe.FindStringSubmatch(strings.TrimRight(line, " \t"))
+		if m == nil {
+			continue
+		}
+		result = append(result, strings.TrimSpace(m[2]))
 	}
 	return result
 }
@@ -155,6 +171,8 @@ func ParseSections(body string) *Sections {
 			if extra != "" {
 				descParts = append(descParts, extra)
 			}
+		case "steps":
+			s.Steps = parseSteps(sec.text)
 		case "acceptance criteria":
 			s.AcceptanceCriteria = parseCheckboxes(sec.text)
 		default:

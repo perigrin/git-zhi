@@ -219,3 +219,92 @@ func TestParseSections_NoSections(t *testing.T) {
 		t.Error("expected non-empty description from plain text body")
 	}
 }
+
+func TestParseSteps_Basic(t *testing.T) {
+	body := `## Steps
+
+- [ ] Write test for positional param parsing
+- [ ] Verify test fails
+- [x] Implement ParseSignature with positional support
+- [ ] Verify test passes
+- [ ] Commit`
+
+	s := issue.ParseSections(body)
+
+	if len(s.Steps) != 5 {
+		t.Fatalf("expected 5 steps, got %d", len(s.Steps))
+	}
+	if s.Steps[0] != "Write test for positional param parsing" {
+		t.Errorf("expected Steps[0]=%q, got %q", "Write test for positional param parsing", s.Steps[0])
+	}
+	if s.Steps[1] != "Verify test fails" {
+		t.Errorf("expected Steps[1]=%q, got %q", "Verify test fails", s.Steps[1])
+	}
+	if s.Steps[2] != "Implement ParseSignature with positional support" {
+		t.Errorf("expected Steps[2]=%q, got %q", "Implement ParseSignature with positional support", s.Steps[2])
+	}
+	if s.Steps[3] != "Verify test passes" {
+		t.Errorf("expected Steps[3]=%q, got %q", "Verify test passes", s.Steps[3])
+	}
+	if s.Steps[4] != "Commit" {
+		t.Errorf("expected Steps[4]=%q, got %q", "Commit", s.Steps[4])
+	}
+}
+
+func TestParseSteps_OrderingBetweenContextAndAC(t *testing.T) {
+	body := `## Context
+
+- paths: internal/parser
+
+## Steps
+
+- [ ] Write failing test
+- [x] Implement feature
+
+## Acceptance Criteria
+
+- [x] feature works`
+
+	s := issue.ParseSections(body)
+
+	// All three sections parsed correctly alongside each other.
+	if s.Context == nil {
+		t.Fatal("expected non-nil Context")
+	}
+	if len(s.Context.Paths) != 1 {
+		t.Errorf("expected 1 context path, got %d", len(s.Context.Paths))
+	}
+
+	if len(s.Steps) != 2 {
+		t.Fatalf("expected 2 steps, got %d", len(s.Steps))
+	}
+	if s.Steps[0] != "Write failing test" {
+		t.Errorf("expected Steps[0]=%q, got %q", "Write failing test", s.Steps[0])
+	}
+	if s.Steps[1] != "Implement feature" {
+		t.Errorf("expected Steps[1]=%q, got %q", "Implement feature", s.Steps[1])
+	}
+
+	if len(s.AcceptanceCriteria) != 1 {
+		t.Fatalf("expected 1 AC, got %d", len(s.AcceptanceCriteria))
+	}
+	if !s.AcceptanceCriteria[0].Checked {
+		t.Errorf("expected AcceptanceCriteria[0].Checked = true")
+	}
+}
+
+func TestParseSteps_MissingSection(t *testing.T) {
+	body := `## Prerequisites
+
+- [x] something done
+
+## Acceptance Criteria
+
+- [ ] works`
+
+	s := issue.ParseSections(body)
+
+	if len(s.Steps) != 0 {
+		t.Errorf("expected 0 steps when Steps section is absent, got %d", len(s.Steps))
+	}
+}
