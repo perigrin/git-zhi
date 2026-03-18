@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os/exec"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
@@ -25,22 +24,21 @@ type Result struct {
 	TimedOut bool
 }
 
-// Execute runs cmd via "sh -c <cmd>" in the given repoRoot directory, enforcing
+// Execute runs cmd via a shell in the given repoRoot directory, enforcing
 // a maximum wall-clock duration of timeout. It always returns a populated Result:
 //   - On success: ExitCode 0, Stdout/Stderr captured.
 //   - On non-zero exit: ExitCode from exec.ExitError, Stdout/Stderr captured.
-//   - On timeout: entire process group killed, TimedOut true, ExitCode -1.
+//   - On timeout: process killed, TimedOut true, ExitCode -1.
 //
-// The command is run in its own process group (Setpgid: true) so that
-// timeout handling can kill all spawned children, not just the direct child.
+// On Unix, the command runs in its own process group so timeout handling
+// can kill all spawned children, not just the direct child.
 func Execute(cmd string, repoRoot string, timeout time.Duration) Result {
 	var stdout, stderr bytes.Buffer
-	c := exec.Command("sh", "-c", cmd)
+	c := newShellCommand(cmd)
 	c.Dir = repoRoot
 	c.Stdout = &stdout
 	c.Stderr = &stderr
-	// Run the command in its own process group so we can kill the whole tree.
-	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setProcGroup(c)
 
 	if err := c.Start(); err != nil {
 		return Result{
@@ -50,15 +48,12 @@ func Execute(cmd string, repoRoot string, timeout time.Duration) Result {
 		}
 	}
 
-	// Set up a timer to kill the process group when the timeout expires.
+	// Set up a timer to kill the process when the timeout expires.
 	// timedOut is accessed from two goroutines so we use atomic to avoid a race.
 	var timedOut atomic.Bool
 	timer := time.AfterFunc(timeout, func() {
 		timedOut.Store(true)
-		// Kill the entire process group (negative PID = group ID).
-		if c.Process != nil {
-			_ = syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
-		}
+		killProcessGroup(c)
 	})
 
 	err := c.Wait()
