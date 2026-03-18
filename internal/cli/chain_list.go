@@ -81,8 +81,10 @@ func runChainList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load issues: %w", err)
 	}
 
-	// Apply filters.
-	var filtered []*issue.Issue
+	// Apply state and milestone filters for graph building. The label filter
+	// is applied AFTER graph construction so that blocking relationships
+	// through unlabeled issues are respected (same pattern as chain_next.go).
+	var graphIssues []*issue.Issue
 	for _, iss := range allIssues {
 		if !includeAll && iss.State != issue.StatePending && iss.State != issue.StateInProgress {
 			continue
@@ -90,27 +92,30 @@ func runChainList(cmd *cobra.Command, args []string) error {
 		if milestoneFilter != "" && iss.Milestone != milestoneFilter {
 			continue
 		}
-		if labelFilter != "" {
-			found := false
+		graphIssues = append(graphIssues, iss)
+	}
+
+	g, _ := graph.Build(graphIssues)
+
+	// Apply label filter to the display set only, after graph construction.
+	var filtered []*issue.Issue
+	if labelFilter != "" {
+		for _, iss := range graphIssues {
 			for _, l := range iss.Labels {
 				if l == labelFilter {
-					found = true
+					filtered = append(filtered, iss)
 					break
 				}
 			}
-			if !found {
-				continue
-			}
 		}
-		filtered = append(filtered, iss)
+	} else {
+		filtered = graphIssues
 	}
-
-	g, _ := graph.Build(filtered)
 
 	format, _ := cmd.Root().PersistentFlags().GetString("format")
 
 	if showReady {
-		return runChainListReady(cmd, g, filtered, format)
+		return runChainListReady(cmd, g, filtered, format, labelFilter)
 	}
 
 	if showCritical {
@@ -158,6 +163,22 @@ func runChainList(cmd *cobra.Command, args []string) error {
 	}
 
 	sorted := g.TopologicalSort()
+
+	// When a label filter is active, restrict the display to only the labeled
+	// issues while preserving the topological order from the full graph.
+	if labelFilter != "" {
+		filteredSet := make(map[uuid.UUID]bool, len(filtered))
+		for _, iss := range filtered {
+			filteredSet[iss.ID] = true
+		}
+		var labelSorted []*issue.Issue
+		for _, iss := range sorted {
+			if filteredSet[iss.ID] {
+				labelSorted = append(labelSorted, iss)
+			}
+		}
+		sorted = labelSorted
+	}
 
 	if format == "json" {
 		out := chainListJSON{Issues: sorted}
@@ -253,8 +274,23 @@ func chainListGroupedHuman(cmd *cobra.Command, app *App, issues []*issue.Issue, 
 
 // runChainListReady handles the --ready flag: computes the ready set, performs
 // path overlap analysis, and renders output in human or JSON format.
-func runChainListReady(cmd *cobra.Command, g *graph.Graph, filtered []*issue.Issue, format string) error {
+func runChainListReady(cmd *cobra.Command, g *graph.Graph, filtered []*issue.Issue, format string, labelFilter string) error {
 	ready := g.ReadySet()
+
+	// When a label filter is active, restrict the ready set to labeled issues.
+	if labelFilter != "" {
+		filteredSet := make(map[uuid.UUID]bool, len(filtered))
+		for _, iss := range filtered {
+			filteredSet[iss.ID] = true
+		}
+		var labelReady []*issue.Issue
+		for _, iss := range ready {
+			if filteredSet[iss.ID] {
+				labelReady = append(labelReady, iss)
+			}
+		}
+		ready = labelReady
+	}
 
 	// Gather paths for each ready issue.
 	readyWithPaths := make([]issueWithPaths, 0, len(ready))

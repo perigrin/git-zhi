@@ -275,6 +275,42 @@ func TestMilestoneShow_FilterLabel(t *testing.T) {
 	}
 }
 
+// TestChainList_LabelFilterRespectsGraphIntegrity verifies that 'list --label'
+// builds the dependency graph from ALL issues (not just labeled ones) so that a
+// labeled issue blocked by an unlabeled issue is correctly shown as blocked
+// rather than appearing unblocked.
+func TestChainList_LabelFilterRespectsGraphIntegrity(t *testing.T) {
+	app, run := setupListTest(t)
+
+	// blocker: unlabeled, pending — blocks the labeled issue.
+	blockerID := createTestIssueLabeled(t, app, "Unlabeled Blocker", issue.StatePending, nil, nil)
+
+	// blocked: labeled "team-a", depends on the unlabeled blocker.
+	// Also set Blocks on the blocker for referential integrity.
+	blockedID := createTestIssueLabeled(t, app, "Labeled Blocked", issue.StatePending, []string{"team-a"}, []uuid.UUID{blockerID})
+
+	// Wire up the Blocks edge on the blocker so the graph is consistent.
+	ref := "refs/zhi/_/issues/" + blockerID.String()
+	data, _ := app.Store.ReadEntity(ref, "issue.md")
+	blocker, _ := issue.Parse(data)
+	blocker.Blocks = []uuid.UUID{blockedID}
+	out, _ := issue.Marshal(blocker)
+	_ = app.Store.WriteEntity(ref, "issue.md", out, "set blocks edge")
+
+	// 'list --label team-a --ready' should show NO ready issues because
+	// "Labeled Blocked" is blocked by the unlabeled issue.
+	stdout, err := run("list", "--label", "team-a", "--ready")
+	if err != nil {
+		t.Fatalf("list --label team-a --ready failed: %v", err)
+	}
+
+	output := stdout.String()
+	// The labeled issue should NOT appear as ready since it's blocked.
+	if strings.Contains(output, "Labeled Blocked") {
+		t.Errorf("labeled issue should be blocked by unlabeled blocker but appeared as ready:\n%s", output)
+	}
+}
+
 // createTestIssueWithLabelsAndMilestone writes an issue with labels and a
 // specific milestone to the store.
 func createTestIssueWithLabelsAndMilestone(t *testing.T, app *cli.App, title string, state issue.State, ms string, labels []string) uuid.UUID {
