@@ -391,3 +391,39 @@ func TestRenderDAG_NoEdgesForUnblockedIssues(t *testing.T) {
 		t.Errorf("expected no edges for unblocked issues, got:\n%s", got)
 	}
 }
+
+func TestRenderDAG_EscapesQuotesInTitles(t *testing.T) {
+	issues := []IssueInput{
+		{
+			ID:    "019444a100000000000000000001",
+			Title: `Fix "quoting" bug`,
+			State: "pending",
+		},
+	}
+	got := RenderDAG(issues)
+	// A literal double-quote inside a Mermaid label would break the syntax.
+	// The output must use the Mermaid escape #quot; instead.
+	if strings.Contains(got, `"Fix`) || strings.Contains(got, `bug"`) {
+		t.Errorf("title contains unescaped quotes; Mermaid syntax will break:\n%s", got)
+	}
+	if !strings.Contains(got, "#quot;") {
+		t.Errorf("expected #quot; escape for double quotes, got:\n%s", got)
+	}
+}
+
+func TestRenderGantt_EscapesSpecialCharsInTitles(t *testing.T) {
+	issues := []IssueInput{
+		{
+			ID:      "019444a100000000000000000001",
+			Title:   `Fix: handle "edge" cases`,
+			State:   "pending",
+			Created: parseDate("2026-03-01"),
+			Updated: parseDate("2026-03-02"),
+		},
+	}
+	got := RenderGantt(issues, "")
+	// Gantt titles must not contain raw colons or quotes that break Mermaid.
+	if strings.Contains(got, `"edge"`) {
+		t.Errorf("title contains unescaped quotes in Gantt output:\n%s", got)
+	}
+}

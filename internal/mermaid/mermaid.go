@@ -48,6 +48,15 @@ func statusIcon(state string) string {
 	}
 }
 
+// escapeMermaid sanitizes a string for safe embedding in Mermaid labels and
+// task descriptions. Replaces characters that would break Mermaid syntax.
+func escapeMermaid(s string) string {
+	s = strings.ReplaceAll(s, "\"", "#quot;")
+	s = strings.ReplaceAll(s, "<", "#lt;")
+	s = strings.ReplaceAll(s, ">", "#gt;")
+	return s
+}
+
 // nodeID returns the first 8 characters of an issue ID for use as a Mermaid
 // node identifier.
 func nodeID(id string) string {
@@ -111,7 +120,7 @@ func RenderGantt(issues []IssueInput, title string) string {
 			start := iss.Created.Format("2006-01-02")
 			end := iss.Updated.Format("2006-01-02")
 			marker := stateMarker(iss.State)
-			fmt.Fprintf(&b, "    %s         :%s%s, %s\n", iss.Title, marker, start, end)
+			fmt.Fprintf(&b, "    %s         :%s%s, %s\n", escapeMermaid(iss.Title), marker, start, end)
 		}
 	}
 
@@ -142,7 +151,7 @@ func RenderDAG(issues []IssueInput) string {
 	for _, iss := range sorted {
 		nid := nodeID(iss.ID)
 		icon := statusIcon(iss.State)
-		fmt.Fprintf(&b, "    %s[\"%s %s %s\"]\n", nid, nid, iss.Title, icon)
+		fmt.Fprintf(&b, "    %s[\"%s %s %s\"]\n", nid, nid, escapeMermaid(iss.Title), icon)
 	}
 
 	// Emit edges from blocked_by relationships. For each blocked issue, emit
