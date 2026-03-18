@@ -11,17 +11,15 @@ git-zhi is a git-native task graph that manages development work as a dependency
 ## Build & Test
 
 ```bash
-go build -o git-zhi ./cmd/git-zhi/
-go build -o git-zhi-verify ./cmd/git-zhi-verify/
-go build -o git-zhi-sanbao ./cmd/git-zhi-sanbao/
-go build -o git-zhi-docs ./cmd/git-zhi-docs/
-go build -o git-zhi-historian ./cmd/git-zhi-historian/
-go build -o git-zhi-jira ./cmd/git-zhi-jira/
-go build -o git-zhi-project ./cmd/git-zhi-project/
-go build -o git-zhi-mermaid ./cmd/git-zhi-mermaid/
+go build -o git-zhi ./cmd/git-zhi/    # single unified binary
+git zhi setup                           # create companion symlinks
 go test ./...
 go test -race ./...
 ```
+
+The unified binary uses busybox-style argv[0] dispatch. Companion commands
+(historian, jira, mermaid, etc.) are symlinks to the same binary. Run
+`git zhi setup` after building to create them.
 
 ## Claude-Specific Guidance
 

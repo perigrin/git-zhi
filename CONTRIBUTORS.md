@@ -5,16 +5,14 @@
 Requires **Go 1.24+** and **git**.
 
 ```bash
-go build -o git-zhi ./cmd/git-zhi/
-go build -o git-zhi-verify ./cmd/git-zhi-verify/
-go build -o git-zhi-sanbao ./cmd/git-zhi-sanbao/
-go build -o git-zhi-docs ./cmd/git-zhi-docs/
-go build -o git-zhi-historian ./cmd/git-zhi-historian/
-go build -o git-zhi-jira ./cmd/git-zhi-jira/
-go build -o git-zhi-project ./cmd/git-zhi-project/
-go build -o git-zhi-mermaid ./cmd/git-zhi-mermaid/
+go build -o git-zhi ./cmd/git-zhi/    # single unified binary
+git zhi setup                           # create companion symlinks
 go install github.com/perigrin/git-zhi@latest
 ```
+
+All commands ship as one binary. Companion commands (historian, jira, mermaid,
+project, verify, sanbao, docs) are symlinks created by `git zhi setup`. The
+binary checks `os.Args[0]` to determine which command tree to run.
 
 ## Testing
 
@@ -34,15 +32,9 @@ mocks. This catches issues that in-memory testing misses.
 ### Package Structure
 
 ```
-cmd/git-zhi/           entry point
-cmd/git-zhi-verify/    verify plugin entry point
-cmd/git-zhi-sanbao/    sanbao observatory plugin entry point
-cmd/git-zhi-docs/      documentation health plugin entry point
-cmd/git-zhi-historian/ historian core extension entry point
-cmd/git-zhi-jira/      Jira sync plugin entry point
-cmd/git-zhi-project/   cross-repo project aggregation entry point
-cmd/git-zhi-mermaid/   Mermaid visualization entry point
+cmd/git-zhi/           unified entry point (busybox dispatch)
 internal/
+  dispatch/            argv[0] name resolution, companion symlink setup
   cli/                 Cobra commands, App struct, test helpers
   storage/             git ref CRUD (blob/tree/commit/ref operations)
   issue/               Issue domain model, parse/marshal, sections, loader, label indexes
