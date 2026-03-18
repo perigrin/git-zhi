@@ -77,13 +77,13 @@ Or build from source:
 git clone https://github.com/perigrin/git-zhi.git
 cd git-zhi
 go build -o git-zhi ./cmd/git-zhi/
-go build -o git-zhi-verify ./cmd/git-zhi-verify/
-go build -o git-zhi-sanbao ./cmd/git-zhi-sanbao/
-go build -o git-zhi-docs ./cmd/git-zhi-docs/
+git zhi setup    # create companion symlinks for plugin discovery
 ```
 
 Place `git-zhi` on your `$PATH`. Git discovers it automatically — `git zhi`
-just works.
+just works. All companion commands (historian, jira, verify, sanbao, docs,
+mermaid, project) ship inside the same binary. `git zhi setup` creates
+symlinks so git discovers them as subcommands.
 
 ## Commands
 
@@ -161,6 +161,40 @@ git zhi docs check                       # validate structure and links
 git zhi docs health                      # churn-relative staleness detection
 ```
 
+**Historian**
+
+```bash
+git zhi historian                                # reconstruct issues from git log
+git zhi historian --title-match "LOPS-*" --label LOPS  # filter by ticket prefix
+git zhi historian --dry-run                      # preview without writing
+git zhi historian --incremental                  # only new commits since last run
+git zhi historian triage                         # interactive cluster review
+git zhi historian status                         # coverage report
+```
+
+**Jira Sync**
+
+```bash
+git zhi jira LOPS-142                            # fetch ticket, emit YAML
+git zhi jira sync pull | git zhi issue edit --batch  # inbound sync
+git zhi jira sync push                           # outbound sync
+git zhi jira resolve <key> --keep-zhi            # resolve conflicts
+```
+
+**Cross-Repo Projects**
+
+```bash
+git zhi project show project.yaml                # CCPM status across repos
+git zhi project next --actor dev-a project.yaml  # cross-repo scheduling
+```
+
+**Mermaid Visualization**
+
+```bash
+git zhi list --format json | git zhi mermaid gantt  # Gantt chart
+git zhi list --format json | git zhi mermaid dag    # dependency DAG
+```
+
 ## How It Works
 
 State is stored as per-entity git refs under `refs/zhi/`. Each issue gets its
@@ -197,10 +231,17 @@ Nobody enters estimates. The tool watches what happens and projects forward.
 ## Extending
 
 Any executable named `git-zhi-<name>` on `$PATH` is invocable as
-`git zhi <name>`. Write plugins in any language. Three bundled plugins
-(`git-zhi-verify`, `git-zhi-sanbao`, `git-zhi-docs`) demonstrate the
-pattern and cover quality gates, engineering metrics, and documentation
-health out of the box.
+`git zhi <name>`. Write plugins in any language. Seven bundled companions
+ship inside the unified binary and are exposed via symlinks created by
+`git zhi setup`:
+
+- `git-zhi-verify` — acceptance criteria extraction and execution
+- `git-zhi-sanbao` — DORA/SPACE/CALMS metrics, sentiment, complexity
+- `git-zhi-docs` — documentation scaffolding and health checks
+- `git-zhi-historian` — retrospective issue reconstruction from git history
+- `git-zhi-jira` — Jira Cloud bidirectional sync
+- `git-zhi-project` — cross-repo project aggregation with CCPM buffers
+- `git-zhi-mermaid` — Gantt and DAG chart generation
 
 ## Design
 

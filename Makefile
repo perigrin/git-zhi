@@ -1,9 +1,12 @@
-.PHONY: all build test clean cross-compile
+.PHONY: all build setup test clean cross-compile
 
-all: build
+all: build setup
 
 build:
 	go build -o git-zhi ./cmd/git-zhi/
+
+setup: build
+	./git-zhi setup
 
 test:
 	go test ./... -count=1
