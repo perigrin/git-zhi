@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -97,7 +99,7 @@ func checkStatus(resp *http.Response, issueKey string) error {
 
 // GetIssue fetches a single issue by its key (e.g., "LOPS-142").
 func (c *Client) GetIssue(key string) (*Issue, error) {
-	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, key)
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, url.PathEscape(key))
 	resp, err := c.doRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -166,7 +168,7 @@ func (c *Client) SearchIssues(jql string, maxResults int) ([]Issue, error) {
 
 // GetTransitions returns the workflow transitions available for the given issue key.
 func (c *Client) GetTransitions(key string) ([]TransitionOption, error) {
-	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.BaseURL, key)
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.BaseURL, url.PathEscape(key))
 	resp, err := c.doRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -199,7 +201,7 @@ func (c *Client) GetTransitions(key string) ([]TransitionOption, error) {
 
 // DoTransition triggers the named workflow transition on an issue.
 func (c *Client) DoTransition(key string, transitionID string) error {
-	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.BaseURL, key)
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.BaseURL, url.PathEscape(key))
 	payload := map[string]interface{}{
 		"transition": map[string]string{"id": transitionID},
 	}
@@ -219,7 +221,7 @@ func (c *Client) DoTransition(key string, transitionID string) error {
 // UpdateIssue sends a partial update for the given issue using the Jira
 // update-fields syntax (e.g., {"summary": {"set": "new title"}}).
 func (c *Client) UpdateIssue(key string, fields map[string]interface{}) error {
-	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, key)
+	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, url.PathEscape(key))
 	payload := map[string]interface{}{"update": fields}
 	buf, err := json.Marshal(payload)
 	if err != nil {
@@ -308,8 +310,16 @@ func (r *jiraIssueResponse) toIssue() *Issue {
 		iss.Description = extractADFText(r.Fields.Description)
 	}
 
-	iss.Created, _ = time.Parse(jiraTimeLayout, r.Fields.Created)
-	iss.Updated, _ = time.Parse(jiraTimeLayout, r.Fields.Updated)
+	if t, err := time.Parse(jiraTimeLayout, r.Fields.Created); err != nil {
+		log.Printf("warning: cannot parse Jira created timestamp %q for %s: %v", r.Fields.Created, r.Key, err)
+	} else {
+		iss.Created = t
+	}
+	if t, err := time.Parse(jiraTimeLayout, r.Fields.Updated); err != nil {
+		log.Printf("warning: cannot parse Jira updated timestamp %q for %s: %v", r.Fields.Updated, r.Key, err)
+	} else {
+		iss.Updated = t
+	}
 
 	return iss
 }

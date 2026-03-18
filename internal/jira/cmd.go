@@ -99,6 +99,9 @@ func resolveCredentials(cmd *cobra.Command, jiraURLOverride string) (*jclient.Cl
 	// and email from env/config directly, because the override is an explicit
 	// developer choice that may target a non-HTTPS test server.
 	if jiraURLOverride != "" {
+		if !strings.HasPrefix(jiraURLOverride, "https://") {
+			fmt.Fprintf(os.Stderr, "warning: --jira-url %q is not HTTPS; credentials will be sent in cleartext\n", jiraURLOverride)
+		}
 		token := credentials.ResolveField("ZHI_JIRA_TOKEN", cfgToken)
 		email := credentials.ResolveField("ZHI_JIRA_EMAIL", cfgEmail)
 		if token == "" {
