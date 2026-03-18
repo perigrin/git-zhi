@@ -43,10 +43,17 @@ var jiraTicketRE = regexp.MustCompile(`\b([A-Z][A-Z0-9]+-\d+)\b`)
 // character to avoid false positives inside URLs or hex strings.
 var githubRefRE = regexp.MustCompile(`(?:^|[^a-zA-Z0-9])(#\d+)`)
 
+// conventionalCommitRE matches the scope portion of a conventional commit
+// message (e.g. "feat(infer): ..." → "infer"). The scope acts as a
+// lightweight ticket ref for grouping related commits by subsystem.
+var conventionalCommitRE = regexp.MustCompile(`^(?:feat|fix|docs|test|refactor|chore|style|perf|ci|build|revert)\(([a-zA-Z0-9_-]+)\):`)
+
+
 // ExtractTicketRefs parses commit message and returns a sorted, deduplicated
 // slice of ticket references. Recognised patterns:
 //   - Jira-style: one or more uppercase letters + hyphen + digits (e.g. LOPS-142)
 //   - GitHub-style: # followed by digits (e.g. #42)
+//   - Conventional commit scope: type(scope): ... (e.g. feat(infer): → "infer")
 func ExtractTicketRefs(message string) []string {
 	seen := make(map[string]struct{})
 
@@ -54,6 +61,9 @@ func ExtractTicketRefs(message string) []string {
 		seen[match[1]] = struct{}{}
 	}
 	for _, match := range githubRefRE.FindAllStringSubmatch(message, -1) {
+		seen[match[1]] = struct{}{}
+	}
+	if match := conventionalCommitRE.FindStringSubmatch(message); match != nil {
 		seen[match[1]] = struct{}{}
 	}
 

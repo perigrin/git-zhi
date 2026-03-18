@@ -195,6 +195,40 @@ func TestExtractTicketRefs_Sorted(t *testing.T) {
 	}
 }
 
+func TestExtractTicketRefs_ConventionalCommitScope(t *testing.T) {
+	tests := []struct {
+		msg  string
+		want []string
+	}{
+		{"feat(infer): add type narrowing", []string{"infer"}},
+		{"fix(types): prevent widening", []string{"types"}},
+		{"test(e2e): verify diagnostics", []string{"e2e"}},
+		{"refactor(infer): unexport Scope.Parent", []string{"infer"}},
+		{"docs(infer): add flow narrowing design", []string{"infer"}},
+		// Scope + Jira ref should produce both.
+		{"feat(infer): assignment narrowing (#383)", []string{"#383", "infer"}},
+		// No scope — should not match.
+		{"feat: add entry point", nil},
+		// Mixed conventional commit + Jira ticket.
+		{"fix(auth): resolve LOPS-142 token leak", []string{"LOPS-142", "auth"}},
+	}
+	for _, tt := range tests {
+		refs := extract.ExtractTicketRefs(tt.msg)
+		if len(refs) == 0 && len(tt.want) == 0 {
+			continue
+		}
+		if len(refs) != len(tt.want) {
+			t.Errorf("ExtractTicketRefs(%q) = %v, want %v", tt.msg, refs, tt.want)
+			continue
+		}
+		for i := range refs {
+			if refs[i] != tt.want[i] {
+				t.Errorf("ExtractTicketRefs(%q)[%d] = %q, want %q", tt.msg, i, refs[i], tt.want[i])
+			}
+		}
+	}
+}
+
 func TestComputeFingerprint_SingleFileCommit(t *testing.T) {
 	repo, dir := makeTestRepo(t)
 
