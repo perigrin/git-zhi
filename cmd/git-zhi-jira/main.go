@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -39,7 +40,7 @@ func main() {
 	}
 
 	app := &cli.App{Store: store, Repo: repo}
-	cmd.SetContext(cli.WithApp(cmd.Context(), app))
+	cmd.SetContext(cli.WithApp(context.Background(), app))
 
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "git-zhi-jira: %s\n", err)
