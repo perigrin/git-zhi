@@ -75,6 +75,9 @@ Use --format json for machine-readable output.`,
 	cmd.Flags().StringVar(&format, "format", "", "output format (json)")
 	cmd.Flags().StringVar(&domain, "domain", "", "filter to a single domain: dora, space, calms, sentiment, complexity")
 
+	// Register subcommands.
+	cmd.AddCommand(NewConfidenceCommand())
+
 	return cmd
 }
 

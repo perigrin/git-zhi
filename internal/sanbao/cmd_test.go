@@ -249,3 +249,71 @@ func TestSanbaoCLI_UnknownMilestone(t *testing.T) {
 		t.Fatal("expected error for nonexistent milestone")
 	}
 }
+
+// TestSanbaoConfidence_MixedSources verifies the confidence subcommand
+// classifies issues by source and confidence tier.
+func TestSanbaoConfidence_MixedSources(t *testing.T) {
+	app, run := setupSanbaoTest(t)
+
+	writeSanbaoMilestone(t, app.Store, &milestone.Milestone{Name: "v1"})
+
+	// Planned issue (source="" → planned).
+	planned := newSanbaoDoneIssue(t, "v1")
+	writeSanbaoIssue(t, app.Store, planned)
+
+	// Tracker-match retrospective.
+	trackerMatch := newSanbaoDoneIssue(t, "v1")
+	trackerMatch.Source = "tracker-match"
+	trackerMatch.Confidence = 0.90
+	writeSanbaoIssue(t, app.Store, trackerMatch)
+
+	// High-confidence cluster.
+	highConf := newSanbaoDoneIssue(t, "v1")
+	highConf.Source = "cluster"
+	highConf.Confidence = 0.75
+	writeSanbaoIssue(t, app.Store, highConf)
+
+	// Low-confidence single-commit.
+	lowConf := newSanbaoDoneIssue(t, "v1")
+	lowConf.Source = "single-commit"
+	lowConf.Confidence = 0.30
+	writeSanbaoIssue(t, app.Store, lowConf)
+
+	stdout, _, err := run("confidence", "v1")
+	if err != nil {
+		t.Fatalf("sanbao confidence: %v", err)
+	}
+
+	output := stdout
+	if !strings.Contains(output, "Telemetry baseline quality") {
+		t.Errorf("expected 'Telemetry baseline quality' header, got:\n%s", output)
+	}
+	if !strings.Contains(output, "MODERATE") {
+		t.Errorf("expected MODERATE reliability, got:\n%s", output)
+	}
+}
+
+// TestSanbaoConfidence_JSON verifies JSON output.
+func TestSanbaoConfidence_JSON(t *testing.T) {
+	app, run := setupSanbaoTest(t)
+
+	writeSanbaoMilestone(t, app.Store, &milestone.Milestone{Name: "v1"})
+	planned := newSanbaoDoneIssue(t, "v1")
+	writeSanbaoIssue(t, app.Store, planned)
+
+	stdout, _, err := run("confidence", "--format", "json", "v1")
+	if err != nil {
+		t.Fatalf("sanbao confidence --format json: %v", err)
+	}
+
+	var rpt sanbao.ConfidenceReport
+	if err := json.Unmarshal([]byte(stdout), &rpt); err != nil {
+		t.Fatalf("parse JSON: %v\noutput: %s", err, stdout)
+	}
+	if rpt.PlannedCount != 1 {
+		t.Errorf("PlannedCount = %d, want 1", rpt.PlannedCount)
+	}
+	if rpt.Reliability != "HIGH" {
+		t.Errorf("Reliability = %q, want HIGH (100%% planned)", rpt.Reliability)
+	}
+}
