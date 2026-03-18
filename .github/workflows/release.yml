@@ -213,11 +213,19 @@ jobs:
           echo ""
           echo "## Installation"
           echo ""
+          echo "Quick install (recommended):"
+          echo ""
+          echo '```bash'
+          echo "curl -fsSL https://raw.githubusercontent.com/perigrin/git-zhi/pu/install.sh | sh"
+          echo '```'
+          echo ""
+          echo "Or manual install:"
+          echo ""
           echo '```bash'
           echo "tar -xzf git-zhi-${VERSION}-<platform>.tar.gz"
           echo "chmod +x git-zhi-*"
-          echo "sudo mv git-zhi-* /usr/local/bin/git-zhi"
-          echo "git zhi --help"
+          echo "mv git-zhi-* ~/.local/bin/git-zhi"
+          echo "git zhi setup    # create companion symlinks"
           echo '```'
         } > release_notes.md
 
