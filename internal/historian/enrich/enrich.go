@@ -78,6 +78,7 @@ func ClusterToIssue(c *cluster.Cluster) *issue.Issue {
 		ID:            id,
 		Title:         title,
 		State:         issue.StateDone,
+		Urgency:       issue.UrgencyNormal,
 		Created:       first.Timestamp,
 		Updated:       last.Timestamp,
 		Sessions:      []issue.Session{sess},

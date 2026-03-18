@@ -118,7 +118,13 @@ func RenderGantt(issues []IssueInput, title string) string {
 		fmt.Fprintf(&b, "    section %s\n", name)
 		for _, iss := range sec.issues {
 			start := iss.Created.Format("2006-01-02")
-			end := iss.Updated.Format("2006-01-02")
+			// Ensure a minimum 1-day duration so Mermaid renders a task bar
+			// rather than a zero-width milestone marker.
+			endTime := iss.Updated
+			if !endTime.After(iss.Created) {
+				endTime = iss.Created.AddDate(0, 0, 1)
+			}
+			end := endTime.Format("2006-01-02")
 			marker := stateMarker(iss.State)
 			fmt.Fprintf(&b, "    %s         :%s%s, %s\n", escapeMermaid(iss.Title), marker, start, end)
 		}

@@ -193,12 +193,12 @@ func TestHistorianLabelFlag(t *testing.T) {
 	}
 
 	// Label index ref should exist for at least one issue.
-	labelRefs, err := store.ListRefs("refs/zhi/LOPS/")
+	labelRefs, err := store.ListRefs("refs/zhi/_/labels/LOPS/")
 	if err != nil {
 		t.Fatalf("ListRefs for label index: %v", err)
 	}
 	if len(labelRefs) == 0 {
-		t.Error("expected label index refs under refs/zhi/LOPS/, got none")
+		t.Error("expected label index refs under refs/zhi/_/labels/LOPS/, got none")
 	}
 }
 
@@ -327,7 +327,7 @@ func TestHistorianReindex(t *testing.T) {
 	}
 
 	// Manually delete the label index to simulate corruption.
-	labelRefs, err := store.ListRefs("refs/zhi/INFRA/")
+	labelRefs, err := store.ListRefs("refs/zhi/_/labels/INFRA/")
 	if err != nil {
 		t.Fatalf("ListRefs: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestHistorianReindex(t *testing.T) {
 	}
 
 	// Label index refs should be back.
-	labelRefs, err = store.ListRefs("refs/zhi/INFRA/")
+	labelRefs, err = store.ListRefs("refs/zhi/_/labels/INFRA/")
 	if err != nil {
 		t.Fatalf("ListRefs after reindex: %v", err)
 	}

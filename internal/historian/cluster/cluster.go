@@ -192,16 +192,10 @@ func timeProximityScore(commitTS, centroidTS time.Time, gap time.Duration) float
 	return score
 }
 
-// Score computes the weighted similarity score between a commit and a cluster
-// centroid. The ticketRef argument is the cluster's primary ticket reference
-// (empty string if none).
-func Score(commit extract.CommitData, centroid Centroid, config Config) float64 {
-	return ScoreWithTicket(commit, centroid, "", config)
-}
-
-// ScoreWithTicket is the full scoring function that also accepts a cluster
-// ticket reference for the ticket_match signal. It is exported so that the
-// tests can drive individual signal contributions directly.
+// ScoreWithTicket computes the weighted similarity score between a commit and a
+// cluster centroid. The ticketRef argument is the cluster's primary ticket
+// reference (empty string if none). Exported so tests can drive individual
+// signal contributions directly.
 func ScoreWithTicket(commit extract.CommitData, centroid Centroid, ticketRef string, config Config) float64 {
 	w := config.Weights
 

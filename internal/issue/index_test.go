@@ -56,7 +56,7 @@ func makeIssueWithLabels(t *testing.T, store *storage.Store, title string, label
 }
 
 // TestBuildLabelIndexes_CreatesRefs verifies that BuildLabelIndexes creates
-// a ref under refs/zhi/<label>/ for each issue-label pair.
+// a ref under refs/zhi/_/labels/<label>/ for each issue-label pair.
 func TestBuildLabelIndexes_CreatesRefs(t *testing.T) {
 	store := initIndexTestStore(t)
 

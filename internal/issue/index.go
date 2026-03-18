@@ -12,8 +12,8 @@ import (
 )
 
 // labelIndexPrefix is the root namespace for all label index refs.
-// Each label gets a sub-namespace: refs/zhi/<label>/<issue-uuid>.
-const labelIndexPrefix = "refs/zhi/"
+// Each label gets a sub-namespace: refs/zhi/_/labels/<label>/<issue-uuid>.
+const labelIndexPrefix = "refs/zhi/_/labels/"
 
 // labelIndexRefPrefix returns the ref namespace for a specific label.
 func labelIndexRefPrefix(label string) string {
@@ -72,21 +72,16 @@ func BuildLabelIndexes(store *storage.Store, issues []*Issue) error {
 		}
 	}
 
-	// Also clear index refs for labels that existed previously but are no
-	// longer in the current issue set. Discover them by scanning the full
-	// refs/zhi/ namespace and removing anything under a label sub-path that
-	// is not an issue ref or config/milestone path.
-	allZhiRefs, err := store.ListRefs(labelIndexPrefix)
+	// Clear index refs for labels that existed previously but are no longer in
+	// the current issue set. All label index refs live under refs/zhi/_/labels/
+	// so the scan is safe and cannot affect non-index refs.
+	allLabelRefs, err := store.ListRefs(labelIndexPrefix)
 	if err != nil {
-		return fmt.Errorf("list all zhi refs: %w", err)
+		return fmt.Errorf("list all label index refs: %w", err)
 	}
-	for _, ref := range allZhiRefs {
-		// Skip known non-index ref prefixes.
-		if strings.HasPrefix(ref, "refs/zhi/_/") {
-			continue
-		}
-		// This is a label index ref. Extract the label from the ref path.
-		// Pattern: refs/zhi/<label>/<uuid>
+	for _, ref := range allLabelRefs {
+		// Extract the label from the ref path.
+		// Pattern: refs/zhi/_/labels/<label>/<uuid>
 		trimmed := strings.TrimPrefix(ref, labelIndexPrefix)
 		parts := strings.SplitN(trimmed, "/", 2)
 		if len(parts) != 2 {

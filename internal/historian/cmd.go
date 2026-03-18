@@ -69,8 +69,10 @@ Use --since to restrict extraction to commits after a given date.`,
 					if err != nil {
 						return fmt.Errorf("resolve last_processed_sha timestamp: %w", err)
 					}
-					// Add 1 nanosecond so the boundary commit itself is excluded.
-					next := ts.Add(time.Nanosecond)
+					// Add 1 second so the boundary commit and any commits sharing the
+					// same second-precision timestamp are excluded. Git commit timestamps
+					// have second granularity.
+					next := ts.Add(time.Second)
 					sinceTime = &next
 				}
 			} else if since != "" {

@@ -387,15 +387,24 @@ var stateNameToAction = map[string]string{
 // sequence of JSON objects suitable for piping to `git zhi issue edit --batch`.
 // Returns nil if updates is empty.
 //
-// Labels are emitted as JSON arrays (not comma-separated strings) to match the
-// batch consumer's []string deserialization. State values are converted from
-// state names to transition action names.
+// Multiple updates for the same issue are merged into a single JSON line so the
+// batch consumer performs one read-modify-write cycle per issue. Labels are
+// emitted as JSON arrays (not comma-separated strings) to match the batch
+// consumer's []string deserialization. State values are converted from state
+// names to transition action names.
 func FormatBatchEdits(updates []PullUpdate) []byte {
 	if len(updates) == 0 {
 		return nil
 	}
-	var sb strings.Builder
+
+	// Group updates by issue ID to produce one JSON line per issue.
+	ordered := make([]string, 0)
+	grouped := make(map[string]map[string]interface{})
 	for _, u := range updates {
+		if _, exists := grouped[u.IssueID]; !exists {
+			ordered = append(ordered, u.IssueID)
+			grouped[u.IssueID] = make(map[string]interface{})
+		}
 		var val interface{}
 		switch u.Field {
 		case "labels":
@@ -413,9 +422,14 @@ func FormatBatchEdits(updates []PullUpdate) []byte {
 		default:
 			val = u.NewValue
 		}
+		grouped[u.IssueID][u.Field] = val
+	}
+
+	var sb strings.Builder
+	for _, issueID := range ordered {
 		line := batchEditLine{
-			IssueID: u.IssueID,
-			Fields:  map[string]interface{}{u.Field: val},
+			IssueID: issueID,
+			Fields:  grouped[issueID],
 		}
 		data, err := json.Marshal(line)
 		if err != nil {
