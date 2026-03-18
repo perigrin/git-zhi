@@ -285,6 +285,9 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --tag <name>: create a tag ref pointing to this issue's ref path.
 	if cmd.Flags().Changed("tag") {
 		tagName, _ := cmd.Flags().GetString("tag")
+		if strings.Contains(tagName, "/") || strings.Contains(tagName, "..") || strings.ContainsAny(tagName, " ~^:") {
+			return fmt.Errorf("invalid tag name %q: must not contain /, .., spaces, or git ref-unsafe characters", tagName)
+		}
 		tagRef := "refs/zhi/_/tags/" + tagName
 		if app.Store.RefExists(tagRef) {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: tag %q already exists, overwriting\n", tagName)
@@ -307,6 +310,9 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --label <name>: append label to the issue's Labels slice (deduplicated).
 	if cmd.Flags().Changed("label") {
 		labelName, _ := cmd.Flags().GetString("label")
+		if err := issue.ValidateLabelName(labelName); err != nil {
+			return err
+		}
 		found := false
 		for _, l := range iss.Labels {
 			if l == labelName {
@@ -322,7 +328,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --unlabel <name>: remove label from the issue's Labels slice.
 	if cmd.Flags().Changed("unlabel") {
 		labelName, _ := cmd.Flags().GetString("unlabel")
-		filtered := iss.Labels[:0]
+		var filtered []string
 		for _, l := range iss.Labels {
 			if l != labelName {
 				filtered = append(filtered, l)

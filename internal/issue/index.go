@@ -20,23 +20,38 @@ func labelIndexRefPrefix(label string) string {
 	return labelIndexPrefix + label + "/"
 }
 
+// ValidateLabelName checks whether a label name is valid for use in label
+// indexes. Returns an error if the name would collide with the core
+// refs/zhi/_/ namespace, produce malformed ref paths, or contain characters
+// that are unsafe in git refs.
+func ValidateLabelName(label string) error {
+	if label == "" {
+		return fmt.Errorf("label name must not be empty")
+	}
+	if label == "_" {
+		return fmt.Errorf("invalid label name %q: label '_' would collide with the core refs/zhi/_/ namespace", label)
+	}
+	if strings.Contains(label, "/") {
+		return fmt.Errorf("invalid label name %q: label names must not contain '/'", label)
+	}
+	if strings.Contains(label, "..") {
+		return fmt.Errorf("invalid label name %q: label names must not contain '..'", label)
+	}
+	return nil
+}
+
 // BuildLabelIndexes clears and rebuilds label index refs for all provided issues.
 // For each issue-label pair, a lightweight marker ref is written at
 // refs/zhi/<label>/<issue-uuid> containing the full issue ref path.
 // Running BuildLabelIndexes twice with the same input is idempotent.
-// Returns an error if any label name is invalid (contains "/" or equals "_").
+// Returns an error if any label name is invalid.
 func BuildLabelIndexes(store *storage.Store, issues []*Issue) error {
 	// Collect the complete set of labels used by this issue list.
 	labelsInUse := make(map[string]struct{})
 	for _, iss := range issues {
 		for _, label := range iss.Labels {
-			// Reject labels that would collide with the core refs/zhi/_/ namespace
-			// or produce malformed ref paths.
-			if label == "_" {
-				return fmt.Errorf("invalid label name %q: label '_' would collide with the core refs/zhi/_/ namespace", label)
-			}
-			if strings.Contains(label, "/") {
-				return fmt.Errorf("invalid label name %q: label names must not contain '/'", label)
+			if err := ValidateLabelName(label); err != nil {
+				return err
 			}
 			labelsInUse[label] = struct{}{}
 		}
