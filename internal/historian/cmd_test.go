@@ -115,10 +115,11 @@ func TestHistorianFullPipeline(t *testing.T) {
 		}
 	}
 
-	// last_processed_sha should be written.
+	// last_processed_sha should NOT be written for non-incremental runs.
+	// Only --incremental runs set the watermark.
 	shaRef := "refs/zhi/_/historian/last_processed_sha"
-	if !store.RefExists(shaRef) {
-		t.Error("expected last_processed_sha ref to exist after full pipeline run")
+	if store.RefExists(shaRef) {
+		t.Error("expected last_processed_sha ref to NOT exist after non-incremental run")
 	}
 }
 

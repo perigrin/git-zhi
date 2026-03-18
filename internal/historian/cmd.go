@@ -138,13 +138,17 @@ Use --since to restrict extraction to commits after a given date.`,
 				}
 			}
 
-			// Record the current HEAD SHA as last_processed_sha.
-			headSHA, err := app.Store.RepoHEAD()
-			if err != nil {
-				return fmt.Errorf("get HEAD SHA: %w", err)
-			}
-			if err := writeLastProcessedSHA(app.Store, headSHA); err != nil {
-				return fmt.Errorf("write last_processed_sha: %w", err)
+			// Record the current HEAD SHA as last_processed_sha only when
+			// running in incremental mode. Non-incremental runs (e.g.
+			// --since filters) should not advance the watermark.
+			if incremental {
+				headSHA, err := app.Store.RepoHEAD()
+				if err != nil {
+					return fmt.Errorf("get HEAD SHA: %w", err)
+				}
+				if err := writeLastProcessedSHA(app.Store, headSHA); err != nil {
+					return fmt.Errorf("write last_processed_sha: %w", err)
+				}
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "historian: created %d issue(s) from %d commit(s)\n",
