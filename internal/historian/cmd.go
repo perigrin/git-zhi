@@ -99,8 +99,14 @@ Use --since to restrict extraction to commits after a given date.`,
 				return nil
 			}
 
+			// Load clustering config from refs (falls back to defaults).
+			cfg, err := LoadConfig(app.Store)
+			if err != nil {
+				return fmt.Errorf("load historian config: %w", err)
+			}
+
 			// Cluster commits into issue candidates.
-			clusters := cluster.ClusterCommits(commits, cluster.DefaultConfig())
+			clusters := cluster.ClusterCommits(commits, cfg)
 
 			// Enrich clusters into Issue structs.
 			issues := enrich.EnrichClusters(clusters)

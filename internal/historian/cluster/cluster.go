@@ -15,20 +15,20 @@ import (
 // Weights should sum to 1.0 but are not enforced — a partial sum is valid for
 // diagnostic purposes.
 type SignalWeights struct {
-	TicketMatch     float64 // 0.40 — same ticket ID is near-definitive
-	PathOverlap     float64 // 0.20 — same files suggest the same work
-	DiffFingerprint float64 // 0.15 — change shape catches cherry-picks
-	TimeProximity   float64 // 0.10 — close in time is a weak positive signal
-	AuthorMatch     float64 // 0.10 — same author is a weak positive signal
-	MessageTokens   float64 // 0.05 — shared words break ties only
+	TicketMatch     float64 `yaml:"ticket_match" json:"ticket_match"`
+	PathOverlap     float64 `yaml:"path_overlap" json:"path_overlap"`
+	DiffFingerprint float64 `yaml:"diff_fingerprint" json:"diff_fingerprint"`
+	TimeProximity   float64 `yaml:"time_proximity" json:"time_proximity"`
+	AuthorMatch     float64 `yaml:"author_match" json:"author_match"`
+	MessageTokens   float64 `yaml:"message_tokens" json:"message_tokens"`
 }
 
 // Config controls the clustering algorithm's thresholds and signal weights.
 type Config struct {
-	JoinThreshold      float64        // minimum score to join an existing cluster
-	CoherenceThreshold float64        // minimum score vs centroid to remain coherent
-	InactivityGap      time.Duration  // gap after which a cluster is closed
-	Weights            SignalWeights
+	JoinThreshold      float64       `yaml:"join_threshold" json:"join_threshold"`
+	CoherenceThreshold float64       `yaml:"coherence_threshold" json:"coherence_threshold"`
+	InactivityGap      time.Duration `yaml:"inactivity_gap" json:"inactivity_gap"`
+	Weights            SignalWeights `yaml:"weights" json:"weights"`
 }
 
 // DefaultConfig returns the provisional threshold and weight values from the

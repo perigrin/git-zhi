@@ -16,6 +16,7 @@ import (
 
 	"github.com/perigrin/git-zhi/internal/cli"
 	"github.com/perigrin/git-zhi/internal/historian"
+	"github.com/perigrin/git-zhi/internal/historian/cluster"
 	"github.com/perigrin/git-zhi/internal/issue"
 	"github.com/perigrin/git-zhi/internal/storage"
 )
@@ -350,5 +351,78 @@ func TestHistorianReindex(t *testing.T) {
 	}
 	if len(labelRefs) == 0 {
 		t.Error("expected label index refs to be rebuilt by reindex, got none")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Config ref tests
+// ---------------------------------------------------------------------------
+
+// TestConfigSaveAndLoad verifies round-trip of historian config through refs.
+func TestConfigSaveAndLoad(t *testing.T) {
+	_, _, store, _ := makeHistorianTestRepo(t)
+
+	// Before saving, LoadConfig should return DefaultConfig.
+	cfg, err := historian.LoadConfig(store)
+	if err != nil {
+		t.Fatalf("LoadConfig (default): %v", err)
+	}
+	def := cluster.DefaultConfig()
+	if cfg.JoinThreshold != def.JoinThreshold {
+		t.Errorf("default JoinThreshold = %v, want %v", cfg.JoinThreshold, def.JoinThreshold)
+	}
+
+	// Save a custom config.
+	custom := cluster.DefaultConfig()
+	custom.JoinThreshold = 0.50
+	custom.CoherenceThreshold = 0.30
+	if err := historian.SaveConfig(store, custom); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	// Load it back.
+	loaded, err := historian.LoadConfig(store)
+	if err != nil {
+		t.Fatalf("LoadConfig (custom): %v", err)
+	}
+	if loaded.JoinThreshold != 0.50 {
+		t.Errorf("JoinThreshold = %v, want 0.50", loaded.JoinThreshold)
+	}
+	if loaded.CoherenceThreshold != 0.30 {
+		t.Errorf("CoherenceThreshold = %v, want 0.30", loaded.CoherenceThreshold)
+	}
+	// Weights should survive round-trip.
+	if loaded.Weights.TicketMatch != def.Weights.TicketMatch {
+		t.Errorf("TicketMatch weight = %v, want %v", loaded.Weights.TicketMatch, def.Weights.TicketMatch)
+	}
+}
+
+// TestHistorianUsesConfigRef verifies that the main pipeline reads the config
+// from the ref when it exists, rather than using hardcoded defaults.
+func TestHistorianUsesConfigRef(t *testing.T) {
+	repo, dir, store, app := makeHistorianTestRepo(t)
+
+	// Create commits that are close together — they should cluster with
+	// default thresholds but NOT with an impossibly high join threshold.
+	base := time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC)
+	addCommitToRepo(t, repo, dir, "a.go", "package a", "[LOPS-1] first", "alice", "alice@x.com", base)
+	addCommitToRepo(t, repo, dir, "a.go", "package a // v2", "[LOPS-1] second", "alice", "alice@x.com", base.Add(time.Hour))
+
+	// Save a config with join threshold of 1.0 (impossibly high).
+	// This means no commits can join a cluster — each becomes its own issue.
+	cfg := cluster.DefaultConfig()
+	cfg.JoinThreshold = 1.0
+	if err := historian.SaveConfig(store, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	stdout, _, err := runHistorian(t, app)
+	if err != nil {
+		t.Fatalf("historian: %v", err)
+	}
+
+	// With threshold=1.0, each commit should become its own issue (2 issues).
+	if !strings.Contains(stdout, "created 2 issue(s)") {
+		t.Errorf("expected 2 issues with high threshold, got:\n%s", stdout)
 	}
 }
