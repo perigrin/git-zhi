@@ -295,6 +295,47 @@ func TestMilestoneShow_NoCapacityWhenNoWorkers(t *testing.T) {
 	}
 }
 
+// TestMilestoneShow_WorkerCapacity_NoDoubleCount verifies that an in-progress
+// issue that is also assigned to the same worker is NOT double-counted in both
+// InProgress and Assigned.
+func TestMilestoneShow_WorkerCapacity_NoDoubleCount(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	// Create one in-progress issue assigned to dev-a with dev-a as the
+	// transition actor. This should count as 1 in-progress, NOT also 1 assigned.
+	transitions := []issue.Transition{
+		{State: "in-progress", Actor: "agent:dev-a", Timestamp: time.Now()},
+	}
+	createTestIssueWithAssignmentTransitionsMilestone(t, app, "dev-a in-progress+assigned", issue.StateInProgress, "v0.1", "agent:dev-a", transitions)
+
+	stdout, err := run("milestone", "show", "--format", "json", "v0.1")
+	if err != nil {
+		t.Fatalf("milestone show --format json failed: %v", err)
+	}
+
+	var result struct {
+		WorkerCapacity map[string]struct {
+			InProgress int `json:"in_progress"`
+			Assigned   int `json:"assigned"`
+		} `json:"worker_capacity"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v\noutput: %s", err, stdout.String())
+	}
+
+	wc, ok := result.WorkerCapacity["agent:dev-a"]
+	if !ok {
+		t.Fatal("expected worker capacity for agent:dev-a")
+	}
+	if wc.InProgress != 1 {
+		t.Errorf("InProgress = %d, want 1", wc.InProgress)
+	}
+	// An in-progress issue should NOT also count as assigned.
+	if wc.Assigned != 0 {
+		t.Errorf("Assigned = %d, want 0 (in-progress issue should not be double-counted as assigned)", wc.Assigned)
+	}
+}
+
 // TestChainNext_Actor_PrefersAssigned verifies that next --actor prefers issues
 // assigned to the requesting actor over unassigned ready issues.
 func TestChainNext_Actor_PrefersAssigned(t *testing.T) {

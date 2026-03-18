@@ -149,7 +149,7 @@ func computeWorkerCapacity(msIssues []*issue.Issue) map[string]*workerCapacityEn
 				capacity[actor].InProgress++
 			}
 		}
-		if iss.Assigned != "" && (iss.State == issue.StatePending || iss.State == issue.StateInProgress) {
+		if iss.Assigned != "" && iss.State == issue.StatePending {
 			if capacity[iss.Assigned] == nil {
 				capacity[iss.Assigned] = &workerCapacityEntry{}
 			}
