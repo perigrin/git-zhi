@@ -60,10 +60,10 @@ func jiraIssueFixture(key, status, priority, assignee string, labels []string) m
 // transitionsFixture returns the standard three-step workflow.
 func transitionsFixture() map[string]interface{} {
 	return map[string]interface{}{
-		"transitions": []map[string]string{
-			{"id": "11", "name": "To Do"},
-			{"id": "21", "name": "In Progress"},
-			{"id": "31", "name": "Done"},
+		"transitions": []map[string]interface{}{
+			{"id": "11", "name": "Backlog", "to": map[string]string{"name": "To Do"}},
+			{"id": "21", "name": "Start Progress", "to": map[string]string{"name": "In Progress"}},
+			{"id": "31", "name": "Resolve Issue", "to": map[string]string{"name": "Done"}},
 		},
 	}
 }

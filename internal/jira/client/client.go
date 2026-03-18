@@ -36,8 +36,9 @@ type Issue struct {
 
 // TransitionOption describes an available workflow transition for a Jira issue.
 type TransitionOption struct {
-	ID   string
-	Name string
+	ID     string
+	Name   string
+	ToName string // target status name (from "to.name" in the Jira response)
 }
 
 // jiraTimeLayout is the timestamp format Jira Cloud returns for created/updated.
@@ -180,6 +181,9 @@ func (c *Client) GetTransitions(key string) ([]TransitionOption, error) {
 		Transitions []struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
+			To   struct {
+				Name string `json:"name"`
+			} `json:"to"`
 		} `json:"transitions"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
@@ -188,7 +192,7 @@ func (c *Client) GetTransitions(key string) ([]TransitionOption, error) {
 
 	opts := make([]TransitionOption, len(raw.Transitions))
 	for i, t := range raw.Transitions {
-		opts[i] = TransitionOption{ID: t.ID, Name: t.Name}
+		opts[i] = TransitionOption{ID: t.ID, Name: t.Name, ToName: t.To.Name}
 	}
 	return opts, nil
 }

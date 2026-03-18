@@ -318,7 +318,11 @@ func Push(jiraClient *jclient.Client, issues []*issue.Issue, stateMapping StateM
 
 		transitionID := ""
 		for _, t := range transitions {
-			if strings.EqualFold(t.Name, targetStatus) {
+			// Match against the target status name (t.ToName) rather than the
+			// transition action name (t.Name). Jira transition names (e.g.
+			// "Start Progress", "Resolve Issue") typically differ from status
+			// names (e.g. "In Progress", "Done") in custom workflows.
+			if strings.EqualFold(t.ToName, targetStatus) {
 				transitionID = t.ID
 				break
 			}

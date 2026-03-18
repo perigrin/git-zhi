@@ -127,13 +127,15 @@ func jiraIssueFixture(key, summary, status, priority string) map[string]interfac
 	}
 }
 
-// transitionsFixture returns a standard transitions response.
+// transitionsFixture returns a standard transitions response with target
+// status names that differ from transition action names (matching real Jira
+// workflow behavior).
 func transitionsFixture() map[string]interface{} {
 	return map[string]interface{}{
-		"transitions": []map[string]string{
-			{"id": "11", "name": "To Do"},
-			{"id": "21", "name": "In Progress"},
-			{"id": "31", "name": "Done"},
+		"transitions": []map[string]interface{}{
+			{"id": "11", "name": "Backlog", "to": map[string]string{"name": "To Do"}},
+			{"id": "21", "name": "Start Progress", "to": map[string]string{"name": "In Progress"}},
+			{"id": "31", "name": "Resolve Issue", "to": map[string]string{"name": "Done"}},
 		},
 	}
 }
