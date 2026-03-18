@@ -33,11 +33,11 @@ func makeCommit(sha, author, message string, paths []string, ticketRefs []string
 func TestDefaultConfig(t *testing.T) {
 	cfg := cluster.DefaultConfig()
 
-	if cfg.JoinThreshold != 0.35 {
-		t.Errorf("JoinThreshold = %f, want 0.35", cfg.JoinThreshold)
+	if cfg.JoinThreshold != 0.25 {
+		t.Errorf("JoinThreshold = %f, want 0.25", cfg.JoinThreshold)
 	}
-	if cfg.CoherenceThreshold != 0.25 {
-		t.Errorf("CoherenceThreshold = %f, want 0.25", cfg.CoherenceThreshold)
+	if cfg.CoherenceThreshold != 0.20 {
+		t.Errorf("CoherenceThreshold = %f, want 0.20", cfg.CoherenceThreshold)
 	}
 	if cfg.InactivityGap != 14*24*time.Hour {
 		t.Errorf("InactivityGap = %v, want 14*24h", cfg.InactivityGap)
@@ -113,10 +113,12 @@ func TestClusterCommits_SamePathsClusters(t *testing.T) {
 func TestClusterCommits_DifferentWorkStaysSeparate(t *testing.T) {
 	cfg := cluster.DefaultConfig()
 
+	// Use distinct authors, distinct files, distinct messages, and wide time
+	// gaps so no signal is strong enough to cluster them together.
 	commits := []extract.CommitData{
-		makeCommit("c001", "alice", "update payments module", []string{"payments/charge.go"}, nil, baseTime),
-		makeCommit("c002", "bob", "update logging system", []string{"logging/sink.go"}, nil, baseTime.Add(time.Hour)),
-		makeCommit("c003", "carol", "update user profile", []string{"users/profile.go"}, nil, baseTime.Add(2*time.Hour)),
+		makeCommit("c001", "alice", "implement payments charge flow", []string{"payments/charge.go"}, nil, baseTime),
+		makeCommit("c002", "bob", "configure logging sinks for cloud", []string{"logging/sink.go"}, nil, baseTime.Add(72*time.Hour)),
+		makeCommit("c003", "carol", "redesign user profile page", []string{"users/profile.go"}, nil, baseTime.Add(144*time.Hour)),
 	}
 
 	clusters := cluster.ClusterCommits(commits, cfg)

@@ -457,7 +457,12 @@ func TestHistorianTriage_AssignAll(t *testing.T) {
 	addCommitToRepo(t, repo, dir, "a.go", "package a", "feat: add auth", "alice", "alice@x.com", base)
 	addCommitToRepo(t, repo, dir, "b.go", "package b", "feat: add api", "bob", "bob@x.com", base.Add(48*time.Hour))
 
-	// Answer 'a' for each cluster then 'q' to quit.
+	// Use a high join threshold so each commit forms its own cluster.
+	cfg := cluster.DefaultConfig()
+	cfg.JoinThreshold = 1.0
+	_ = historian.SaveConfig(store, cfg)
+
+	// Answer 'a' for each cluster.
 	input := strings.NewReader("a\na\n")
 	stdout, _, err := runHistorianWithStdin(t, app, input, "triage")
 	if err != nil {

@@ -36,8 +36,8 @@ type Config struct {
 // data is available in v0.3.1.
 func DefaultConfig() Config {
 	return Config{
-		JoinThreshold:      0.35,
-		CoherenceThreshold: 0.25,
+		JoinThreshold:      0.25,
+		CoherenceThreshold: 0.20,
 		InactivityGap:      14 * 24 * time.Hour,
 		Weights: SignalWeights{
 			TicketMatch:     0.40,
