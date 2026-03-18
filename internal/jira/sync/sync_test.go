@@ -512,6 +512,53 @@ func TestPullSavesSnapshot(t *testing.T) {
 	}
 }
 
+// TestPullPreservesSnapshotForConflictingFields verifies that when a conflict
+// is detected, the snapshot is NOT overwritten for the conflicting field. This
+// ensures the conflict persists until explicitly resolved via `jira resolve`.
+func TestPullPreservesSnapshotForConflictingFields(t *testing.T) {
+	dir := t.TempDir()
+
+	issueID := "01900000-0000-7000-0000-000000000020"
+	trackerKey := "LOPS-900"
+
+	iss := makeIssue(t, issueID, "done", "jira:"+trackerKey)
+
+	// Snapshot: state was "in-progress" at last sync.
+	_ = sync.SaveSnapshot(dir, issueID, map[string]string{
+		"state":    "in-progress",
+		"urgency":  "normal",
+		"labels":   "",
+		"assigned": "",
+	})
+
+	// Zhi moved to "done", Jira moved to "To Do" → conflict on state.
+	srv := buildSyncServer(t, map[string]map[string]interface{}{
+		trackerKey: jiraIssueFixture(trackerKey, "To Do", "Medium", "", []string{}),
+	}, nil)
+	defer srv.Close()
+
+	c := jclient.NewClient(srv.URL, "user@example.com", "token")
+
+	result, err := sync.Pull(c, []*issue.Issue{iss}, dir)
+	if err != nil {
+		t.Fatalf("Pull: %v", err)
+	}
+	if len(result.Conflicts) == 0 {
+		t.Fatal("expected a conflict on state, got none")
+	}
+
+	// The snapshot for the conflicting field must still contain the OLD
+	// value ("in-progress"), not the current Jira value. This preserves
+	// the conflict for the next pull.
+	snap, err := sync.LoadSnapshot(dir, issueID)
+	if err != nil {
+		t.Fatalf("LoadSnapshot: %v", err)
+	}
+	if snap["state"] != "in-progress" {
+		t.Errorf("snapshot state = %q after conflict; want %q (original snapshot value preserved)", snap["state"], "in-progress")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Push tests
 // ---------------------------------------------------------------------------

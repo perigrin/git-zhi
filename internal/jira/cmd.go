@@ -284,9 +284,17 @@ func runSyncPull(cmd *cobra.Command, snapDirFlag, jiraURLOverride string) error 
 
 	data := jirasync.FormatBatchEdits(result.Pulled)
 	if len(data) > 0 {
-		_, err = cmd.OutOrStdout().Write(data)
-		return err
+		if _, err = cmd.OutOrStdout().Write(data); err != nil {
+			return err
+		}
 	}
+
+	// Surface conflicts to stderr so the user knows to resolve them.
+	for _, c := range result.Conflicts {
+		fmt.Fprintf(cmd.ErrOrStderr(), "conflict: %s field %s: zhi=%q tracker=%q (run 'git zhi jira resolve %s')\n",
+			c.IssueID[:8], c.Field, c.ZhiValue, c.TrackerValue, c.TrackerKey)
+	}
+
 	return nil
 }
 

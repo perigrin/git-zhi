@@ -200,6 +200,10 @@ func Pull(jiraClient *jclient.Client, issues []*issue.Issue, snapshotDir string)
 		zhiCurrent := zhiFields(iss)
 		jiraCurrent := jiraFields(jiraIssue)
 
+		// Track which fields have conflicts so we can preserve the old
+		// snapshot values for those fields instead of overwriting them.
+		conflictedFields := make(map[string]bool)
+
 		for _, field := range snapshotFields {
 			snapshotVal := snapshot[field]
 			zhiVal := zhiCurrent[field]
@@ -234,6 +238,7 @@ func Pull(jiraClient *jclient.Client, issues []*issue.Issue, snapshotDir string)
 					ZhiValue:     zhiVal,
 					TrackerValue: jiraVal,
 				})
+				conflictedFields[field] = true
 			case jiraChanged && !zhiChanged:
 				result.Pulled = append(result.Pulled, PullUpdate{
 					IssueID:  iss.ID.String(),
@@ -244,9 +249,18 @@ func Pull(jiraClient *jclient.Client, issues []*issue.Issue, snapshotDir string)
 			}
 		}
 
-		// Save the current Jira field values as the new snapshot baseline so
-		// repeated pulls do not re-detect the same changes.
-		if err := SaveSnapshot(snapshotDir, iss.ID.String(), jiraCurrent); err != nil {
+		// Build the new snapshot: use current Jira values for non-conflicting
+		// fields, but preserve the old snapshot values for conflicting fields
+		// so the conflict persists until explicitly resolved.
+		newSnapshot := make(map[string]string, len(jiraCurrent))
+		for k, v := range jiraCurrent {
+			if conflictedFields[k] {
+				newSnapshot[k] = snapshot[k]
+			} else {
+				newSnapshot[k] = v
+			}
+		}
+		if err := SaveSnapshot(snapshotDir, iss.ID.String(), newSnapshot); err != nil {
 			return nil, fmt.Errorf("save snapshot for %s: %w", iss.ID, err)
 		}
 	}
