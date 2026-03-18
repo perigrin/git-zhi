@@ -219,8 +219,10 @@ func TestFormatBatchEditsProducesJSONLines(t *testing.T) {
 	if !ok {
 		t.Fatalf("line 0 fields is not a map: %T %v", first["fields"], first["fields"])
 	}
-	if fields["state"] != "in-progress" {
-		t.Errorf("line 0 fields[state] = %v, want in-progress", fields["state"])
+	// FormatBatchEdits converts state names to transition actions, so
+	// "in-progress" becomes "start".
+	if fields["state"] != "start" {
+		t.Errorf("line 0 fields[state] = %v, want start", fields["state"])
 	}
 	// Flat field/value keys must not appear at the top level.
 	if _, has := first["field"]; has {
@@ -228,6 +230,70 @@ func TestFormatBatchEditsProducesJSONLines(t *testing.T) {
 	}
 	if _, has := first["value"]; has {
 		t.Error("line 0 must not have top-level 'value' key")
+	}
+}
+
+func TestFormatBatchEditsLabelsEmitsJSONArray(t *testing.T) {
+	updates := []sync.PullUpdate{
+		{IssueID: "aaa", Field: "labels", OldValue: "", NewValue: "backend,infra"},
+	}
+	out := sync.FormatBatchEdits(updates)
+	if len(out) == 0 {
+		t.Fatal("FormatBatchEdits returned empty output")
+	}
+
+	// The batch consumer (applyBatchOp) deserializes labels as []string.
+	// FormatBatchEdits must emit labels as a JSON array, not a comma-separated
+	// string, so the consumer can unmarshal it without error.
+	var obj struct {
+		IssueID string                     `json:"issue_id"`
+		Fields  map[string]json.RawMessage `json:"fields"`
+	}
+	line := strings.TrimSpace(string(out))
+	if err := json.Unmarshal([]byte(line), &obj); err != nil {
+		t.Fatalf("FormatBatchEdits produced invalid JSON: %v — %q", err, line)
+	}
+
+	raw, ok := obj.Fields["labels"]
+	if !ok {
+		t.Fatal("FormatBatchEdits output missing 'labels' field")
+	}
+
+	var labels []string
+	if err := json.Unmarshal(raw, &labels); err != nil {
+		t.Fatalf("labels field is not a JSON array: %v — raw: %s", err, string(raw))
+	}
+	if len(labels) != 2 || labels[0] != "backend" || labels[1] != "infra" {
+		t.Errorf("expected [backend, infra], got %v", labels)
+	}
+}
+
+func TestFormatBatchEditsStateEmitsTransitionAction(t *testing.T) {
+	// When Jira reports a status that maps to zhi state "in-progress",
+	// FormatBatchEdits must emit the transition action "start" (not the state
+	// name "in-progress"), because the batch consumer passes the value to
+	// ValidateTransition which expects action names.
+	updates := []sync.PullUpdate{
+		{IssueID: "aaa", Field: "state", OldValue: "pending", NewValue: "in-progress"},
+	}
+	out := sync.FormatBatchEdits(updates)
+	if len(out) == 0 {
+		t.Fatal("FormatBatchEdits returned empty output")
+	}
+
+	var obj struct {
+		Fields map[string]string `json:"fields"`
+	}
+	line := strings.TrimSpace(string(out))
+	if err := json.Unmarshal([]byte(line), &obj); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	stateVal := obj.Fields["state"]
+	// The value must be a valid transition action, not a state name.
+	validActions := map[string]bool{"start": true, "pause": true, "resume": true, "done": true, "cancel": true, "reopen": true}
+	if !validActions[stateVal] {
+		t.Errorf("state field value %q is not a valid transition action (got state name instead of action)", stateVal)
 	}
 }
 

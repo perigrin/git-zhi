@@ -345,29 +345,62 @@ func Push(jiraClient *jclient.Client, issues []*issue.Issue, stateMapping StateM
 // ---------------------------------------------------------------------------
 
 // batchEditLine is the JSON shape consumed by `git zhi issue edit --batch`.
-// Fields is a map from field name to value, matching the batchOp struct in
-// internal/cli/issue_edit.go.
+// Fields uses interface{} values so array fields (e.g. labels) are emitted as
+// JSON arrays rather than flattened strings.
 type batchEditLine struct {
-	IssueID string            `json:"issue_id"`
-	Fields  map[string]string `json:"fields"`
+	IssueID string                 `json:"issue_id"`
+	Fields  map[string]interface{} `json:"fields"`
+}
+
+// stateNameToAction maps a target zhi state name to the transition action that
+// reaches it. The batch consumer passes state values to ValidateTransition,
+// which expects action names (not state names). When the mapping depends on the
+// source state, the most common transition is used; the state machine will
+// reject invalid transitions.
+var stateNameToAction = map[string]string{
+	"in-progress": "start",
+	"done":        "done",
+	"cancelled":   "cancel",
+	"pending":     "reopen", // only reachable from done→reopened→pending; see note below
+	"reopened":    "reopen",
 }
 
 // FormatBatchEdits converts a slice of PullUpdates to a newline-delimited
 // sequence of JSON objects suitable for piping to `git zhi issue edit --batch`.
 // Returns nil if updates is empty.
+//
+// Labels are emitted as JSON arrays (not comma-separated strings) to match the
+// batch consumer's []string deserialization. State values are converted from
+// state names to transition action names.
 func FormatBatchEdits(updates []PullUpdate) []byte {
 	if len(updates) == 0 {
 		return nil
 	}
 	var sb strings.Builder
 	for _, u := range updates {
+		var val interface{}
+		switch u.Field {
+		case "labels":
+			if u.NewValue == "" {
+				val = []string{}
+			} else {
+				val = strings.Split(u.NewValue, ",")
+			}
+		case "state":
+			if action, ok := stateNameToAction[u.NewValue]; ok {
+				val = action
+			} else {
+				val = u.NewValue
+			}
+		default:
+			val = u.NewValue
+		}
 		line := batchEditLine{
 			IssueID: u.IssueID,
-			Fields:  map[string]string{u.Field: u.NewValue},
+			Fields:  map[string]interface{}{u.Field: val},
 		}
 		data, err := json.Marshal(line)
 		if err != nil {
-			// json.Marshal of a plain struct cannot fail for string-valued fields.
 			continue
 		}
 		sb.Write(data)
