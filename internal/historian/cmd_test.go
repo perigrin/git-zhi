@@ -5,6 +5,7 @@ package historian_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -424,5 +425,132 @@ func TestHistorianUsesConfigRef(t *testing.T) {
 	// With threshold=1.0, each commit should become its own issue (2 issues).
 	if !strings.Contains(stdout, "created 2 issue(s)") {
 		t.Errorf("expected 2 issues with high threshold, got:\n%s", stdout)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Triage tests
+// ---------------------------------------------------------------------------
+
+// runHistorianWithStdin executes the historian command with injected stdin.
+func runHistorianWithStdin(t *testing.T, app *cli.App, stdin io.Reader, args ...string) (string, string, error) {
+	t.Helper()
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := historian.NewHistorianCommand()
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetIn(stdin)
+	ctx := cli.WithApp(context.Background(), app)
+	cmd.SetContext(ctx)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return stdout.String(), stderr.String(), err
+}
+
+// TestHistorianTriage_AssignAll verifies that answering 'a' (assign) for each
+// cluster creates issues for all clusters.
+func TestHistorianTriage_AssignAll(t *testing.T) {
+	repo, dir, store, app := makeHistorianTestRepo(t)
+
+	base := time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC)
+	addCommitToRepo(t, repo, dir, "a.go", "package a", "feat: add auth", "alice", "alice@x.com", base)
+	addCommitToRepo(t, repo, dir, "b.go", "package b", "feat: add api", "bob", "bob@x.com", base.Add(48*time.Hour))
+
+	// Answer 'a' for each cluster then 'q' to quit.
+	input := strings.NewReader("a\na\n")
+	stdout, _, err := runHistorianWithStdin(t, app, input, "triage")
+	if err != nil {
+		t.Fatalf("historian triage: %v\nstdout: %s", err, stdout)
+	}
+
+	issues, err := issue.LoadAllIssues(store)
+	if err != nil {
+		t.Fatalf("LoadAllIssues: %v", err)
+	}
+	if len(issues) < 2 {
+		t.Errorf("expected at least 2 issues from 'a' responses, got %d\nstdout: %s", len(issues), stdout)
+	}
+}
+
+// TestHistorianTriage_SkipAll verifies that answering 's' (skip) for each
+// cluster creates no issues.
+func TestHistorianTriage_SkipAll(t *testing.T) {
+	repo, dir, store, app := makeHistorianTestRepo(t)
+
+	base := time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC)
+	addCommitToRepo(t, repo, dir, "a.go", "package a", "feat: add auth", "alice", "alice@x.com", base)
+
+	input := strings.NewReader("s\n")
+	stdout, _, err := runHistorianWithStdin(t, app, input, "triage")
+	if err != nil {
+		t.Fatalf("historian triage: %v\nstdout: %s", err, stdout)
+	}
+
+	issues, err := issue.LoadAllIssues(store)
+	if err != nil {
+		t.Fatalf("LoadAllIssues: %v", err)
+	}
+	if len(issues) != 0 {
+		t.Errorf("expected 0 issues after skipping all, got %d", len(issues))
+	}
+}
+
+// TestHistorianTriage_Quit verifies that 'q' stops processing early.
+func TestHistorianTriage_Quit(t *testing.T) {
+	repo, dir, store, app := makeHistorianTestRepo(t)
+
+	base := time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC)
+	addCommitToRepo(t, repo, dir, "a.go", "package a", "first", "alice", "alice@x.com", base)
+	addCommitToRepo(t, repo, dir, "b.go", "package b", "second", "bob", "bob@x.com", base.Add(48*time.Hour))
+
+	// Assign first, then quit — should create only 1 issue.
+	input := strings.NewReader("a\nq\n")
+	stdout, _, err := runHistorianWithStdin(t, app, input, "triage")
+	if err != nil {
+		t.Fatalf("historian triage: %v\nstdout: %s", err, stdout)
+	}
+
+	issues, err := issue.LoadAllIssues(store)
+	if err != nil {
+		t.Fatalf("LoadAllIssues: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Errorf("expected 1 issue (assigned before quit), got %d", len(issues))
+	}
+}
+
+// TestHistorianTriage_Merge verifies that 'm' merges the current cluster with
+// the previous one and writes a single combined issue.
+func TestHistorianTriage_Merge(t *testing.T) {
+	repo, dir, store, app := makeHistorianTestRepo(t)
+
+	base := time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC)
+	addCommitToRepo(t, repo, dir, "a.go", "package a", "first", "alice", "alice@x.com", base)
+	addCommitToRepo(t, repo, dir, "b.go", "package b", "second", "bob", "bob@x.com", base.Add(48*time.Hour))
+
+	// Use high join threshold so each commit becomes its own cluster.
+	cfg := cluster.DefaultConfig()
+	cfg.JoinThreshold = 1.0
+	_ = historian.SaveConfig(store, cfg)
+
+	// Skip first cluster, merge second into first (which was skipped — merge
+	// should treat this as "assign the merged cluster"). Then all done.
+	// Actually: 's' skips cluster 1, 'm' tries to merge cluster 2 with previous.
+	// Since previous was skipped, 'm' should just assign the merged result.
+	// Let's simplify: assign first, merge second into it.
+	input := strings.NewReader("a\nm\n")
+	stdout, _, err := runHistorianWithStdin(t, app, input, "triage")
+	if err != nil {
+		t.Fatalf("historian triage: %v\nstdout: %s", err, stdout)
+	}
+
+	issues, err := issue.LoadAllIssues(store)
+	if err != nil {
+		t.Fatalf("LoadAllIssues: %v", err)
+	}
+	// Merge should combine both clusters into one issue.
+	if len(issues) != 1 {
+		t.Errorf("expected 1 issue (merged), got %d\nstdout: %s", len(issues), stdout)
 	}
 }

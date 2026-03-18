@@ -174,6 +174,7 @@ Use --since to restrict extraction to commits after a given date.`,
 	// Register subcommands.
 	cmd.AddCommand(newStatusCommand())
 	cmd.AddCommand(newReindexCommand())
+	cmd.AddCommand(newTriageCommand())
 
 	return cmd
 }
