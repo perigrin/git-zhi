@@ -4,6 +4,7 @@ package enrich_test
 
 import (
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -292,6 +293,25 @@ func TestClusterToIssue_TitleTruncatedTo80Chars(t *testing.T) {
 	}
 	if iss.Title != longMsg[:80] {
 		t.Errorf("Title = %q, want %q", iss.Title, longMsg[:80])
+	}
+}
+
+// TestClusterToIssue_TitleFirstLineOnly verifies that multi-line commit
+// messages use only the subject line (first line) as the issue title.
+func TestClusterToIssue_TitleFirstLineOnly(t *testing.T) {
+	msg := "Fix authentication bug\n\nThis commit fixes the broken auth handler\nby validating tokens before checking permissions."
+	commits := []extract.CommitData{
+		makeCommit("m003", "alice", "alice@example.com", msg, []string{"auth.go"}, nil, baseTime),
+	}
+	c := makeCluster("cluster-13", "", commits)
+
+	iss := enrich.ClusterToIssue(&c)
+
+	if strings.Contains(iss.Title, "\n") {
+		t.Errorf("Title contains newline: %q", iss.Title)
+	}
+	if iss.Title != "Fix authentication bug" {
+		t.Errorf("Title = %q, want %q", iss.Title, "Fix authentication bug")
 	}
 }
 

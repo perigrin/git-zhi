@@ -122,6 +122,12 @@ func titleFromCluster(c *cluster.Cluster) string {
 		return c.TicketRef
 	}
 	msg := strings.TrimSpace(c.Commits[0].Message)
+	// Use only the subject line (first line) to avoid multi-line titles that
+	// would break YAML frontmatter serialization.
+	if idx := strings.IndexByte(msg, '\n'); idx >= 0 {
+		msg = msg[:idx]
+	}
+	msg = strings.TrimSpace(msg)
 	if len(msg) > 80 {
 		return msg[:80]
 	}
