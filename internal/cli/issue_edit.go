@@ -192,7 +192,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		})
 
 		iss.State = newState
-		iss.Updated = time.Now()
+		iss.Updated = now
 
 		out, err := issue.Marshal(iss)
 		if err != nil {
