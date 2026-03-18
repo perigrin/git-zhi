@@ -122,7 +122,7 @@ func zhiFields(iss *issue.Issue) map[string]string {
 // names (high/normal/low). Status is mapped to lowercase for comparison.
 func jiraFields(ji *jclient.Issue) map[string]string {
 	return map[string]string{
-		"state":    mapJiraStatusToZhi(ji.Status),
+		"state":    MapJiraStatusToZhi(ji.Status),
 		"urgency":  mapJiraPriorityToZhi(ji.Priority),
 		"assigned": ji.Assignee,
 		"labels":   strings.Join(ji.Labels, ","),
@@ -142,10 +142,10 @@ func mapJiraPriorityToZhi(priority string) string {
 	}
 }
 
-// mapJiraStatusToZhi converts a Jira status name to a zhi state name.
+// MapJiraStatusToZhi converts a Jira status name to a zhi state name.
 // The mapping is intentionally permissive — unknown statuses are preserved
 // in lowercase so conflict detection still works with custom workflows.
-func mapJiraStatusToZhi(status string) string {
+func MapJiraStatusToZhi(status string) string {
 	switch strings.ToLower(status) {
 	case "to do", "open", "backlog", "new":
 		return "pending"

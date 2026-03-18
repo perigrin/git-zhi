@@ -506,7 +506,7 @@ func runResolve(cmd *cobra.Command, trackerKey string, keepZhi bool, snapDirFlag
 		return fmt.Errorf("fetch %s from Jira: %w", trackerKey, err)
 	}
 
-	jiraState := mapJiraStatusToZhi(ji.Status)
+	jiraState := jirasync.MapJiraStatusToZhi(ji.Status)
 
 	updates := []jirasync.PullUpdate{
 		{IssueID: target.ID.String(), Field: "state", OldValue: string(target.State), NewValue: jiraState},
@@ -524,24 +524,6 @@ func runResolve(cmd *cobra.Command, trackerKey string, keepZhi bool, snapDirFlag
 	}
 	_ = jirasync.SaveSnapshot(snapDir, target.ID.String(), snapshot)
 	return err
-}
-
-// mapJiraStatusToZhi converts a Jira status name to a zhi state string.
-// This duplicates the mapping in sync.go intentionally — the cmd package
-// must not import sync internals for this small conversion.
-func mapJiraStatusToZhi(status string) string {
-	switch strings.ToLower(status) {
-	case "to do", "open", "backlog", "new":
-		return "pending"
-	case "in progress", "in review":
-		return "in-progress"
-	case "done", "closed", "resolved":
-		return "done"
-	case "cancelled", "won't do", "wont do":
-		return "cancelled"
-	default:
-		return strings.ToLower(status)
-	}
 }
 
 // ---------------------------------------------------------------------------
