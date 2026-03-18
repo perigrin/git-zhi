@@ -15,6 +15,10 @@ go build -o git-zhi ./cmd/git-zhi/
 go build -o git-zhi-verify ./cmd/git-zhi-verify/
 go build -o git-zhi-sanbao ./cmd/git-zhi-sanbao/
 go build -o git-zhi-docs ./cmd/git-zhi-docs/
+go build -o git-zhi-historian ./cmd/git-zhi-historian/
+go build -o git-zhi-jira ./cmd/git-zhi-jira/
+go build -o git-zhi-project ./cmd/git-zhi-project/
+go build -o git-zhi-mermaid ./cmd/git-zhi-mermaid/
 go test ./...
 go test -race ./...
 ```
@@ -39,3 +43,12 @@ go test -race ./...
 - Milestone format is now YAML frontmatter + markdown body (backward-compatible with pure YAML).
 - `graph.Head(actor)` accepts optional actor string for per-worker HEAD resolution.
 - Plugin packages live under `internal/verify/`, `internal/sanbao/`, `internal/docs/`, `internal/lineage/`.
+- v0.3 packages: `internal/historian/` (core extension), `internal/jira/`, `internal/project/`, `internal/mermaid/`.
+- Label index refs live under `refs/zhi/_/labels/<label>/<uuid>` — not directly under `refs/zhi/<label>/`.
+- `issue.ValidateLabelName(name)` validates label names — call it before storing labels.
+- Historian config lives at `refs/zhi/_/historian/config` — use `historian.LoadConfig(store)` and `historian.SaveConfig(store, cfg)`.
+- `historian.LoadConfig` falls back to `cluster.DefaultConfig()` when no config ref exists.
+- Jira sync uses three-way snapshots at `.git/zhi-sync/jira/<issueID>.yaml` for conflict detection.
+- `jirasync.MapJiraStatusToZhi(status)` is the shared Jira-to-zhi status mapper — do not duplicate.
+- `jirasync.FormatBatchEdits(updates)` converts PullUpdates to batch edit JSON — handles labels as arrays and state names as transition actions.
+- Mermaid is a pure formatter — JSON in, text out, no git access. Use `escapeMermaid(s)` for titles in output.
