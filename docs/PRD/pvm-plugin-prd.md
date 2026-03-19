@@ -110,18 +110,25 @@ Wait for confirmation before proceeding.
 **Step 3: Download and install**
 
 ```bash
-BINARY="pvm-${OS}-${ARCH}"
-URL="https://github.com/perigrin/pvm/releases/latest/download/${BINARY}.tar.gz"
 INSTALL_DIR="$HOME/.local/bin"
-
 mkdir -p "$INSTALL_DIR"
 
-curl -fsSL "$URL" -o "/tmp/${BINARY}.tar.gz"
-tar -xzf "/tmp/${BINARY}.tar.gz" -C /tmp
-chmod +x "/tmp/${BINARY}"
-mv "/tmp/${BINARY}" "${INSTALL_DIR}/pvm"
+# Resolve the latest release tag (including pre-releases) via GitHub API.
+VERSION=$(curl -fsSL "https://api.github.com/repos/perigrin/pvm/releases" \
+  | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\(.*\)".*/\1/')
+VERSION_NUM=${VERSION#v}
 
-rm -f "/tmp/${BINARY}.tar.gz"
+ASSET="pvm-${VERSION_NUM}-${OS}-${ARCH}.tar.gz"
+URL="https://github.com/perigrin/pvm/releases/download/${VERSION}/${ASSET}"
+
+curl -fsSL "$URL" -o "/tmp/${ASSET}"
+tar -xzf "/tmp/${ASSET}" -C /tmp
+# The tarball contains a binary named pvm-<version>-<os>-<arch>.
+BINARY=$(ls /tmp/pvm-*-${OS}-${ARCH} 2>/dev/null | head -1)
+chmod +x "$BINARY"
+mv "$BINARY" "${INSTALL_DIR}/pvm"
+
+rm -f "/tmp/${ASSET}"
 ```
 
 **Step 4: PATH check**
@@ -138,17 +145,16 @@ fi
 **Step 5: Create symlinks**
 
 ```bash
-pvm symlinks create
+pvm self symlinks create
 ```
 
-This creates `pvx`, `pm`, and `psc` alongside the `pvm` binary.
+This creates `pvx`, `pvi`, and `psc` alongside the `pvm` binary.
 
 **Step 6: Verify**
 
 ```bash
 pvm version
 pvx --version
-pm --version
 psc --version
 ```
 
@@ -165,8 +171,8 @@ Once installed, use these commands:
 |Switch Perl version  |`PVM_PERL_VERSION=<ver>` or `.perl-version` file|
 |Current version      |`pvm current`                                   |
 |Installed versions   |`pvm versions`                                  |
-|Install CPAN module  |`pm install <Module>`                           |
-|Install from cpanfile|`pm install`                                    |
+|Install CPAN module  |`pvm module install <Module>`                   |
+|Install from cpanfile|`pvm module install`                            |
 |Run script isolated  |`pvx <script>`                                  |
 |Run tests            |`pvx prove -lr t/`                              |
 |Parse source / AST   |`psc parse <file>`                              |
@@ -312,6 +318,25 @@ Select the appropriate writing skill:
 The `<!-- Backend: pvm -->` comment is machine-readable — `perl:require-toolchain`
 reads it to determine which capability map to include.
 
+**Phase 6: Migrate from superpowers writing skills**
+
+Check for legacy `writing-perl-*` skills in `~/.claude/skills/`:
+
+```bash
+ls ~/.claude/skills/writing-perl-* 2>/dev/null
+```
+
+If found, offer to remove them:
+
+> "I found legacy Perl writing skills in ~/.claude/skills/:
+>   writing-perl-5.42.0, writing-perl-5.38.0, writing-perl-toolchain
+>
+> The perl-development plugin supersedes these with corrected versions.
+> Remove the old skills? (They can be reinstalled from superpowers if needed.)"
+
+On confirmation, remove the old skill directories. This prevents Claude Code
+from having two competing skills for the same task.
+
 -----
 
 ### `perl:require-toolchain` (shared dependency)
@@ -411,8 +436,10 @@ field variables, both fixed in 5.40.
 
 - No auto-exported builtins — explicit import required:
   `use builtin qw(true false blessed refaddr trim);`
-- `feature 'class'` has known segfault bugs — document constraints
-- `Feature::Compat::Class` not needed
+- `feature 'class'` has known segfault bugs in 5.38 — same-file
+  parent/subclass and refaliasing with field variables can segfault.
+  Use `Feature::Compat::Class` instead of native `feature 'class'` on 5.38.
+  5.40 is the minimum reliable version for native class support.
 
 **Standard boilerplate:**
 
@@ -421,7 +448,12 @@ use 5.038;
 use strict;
 use warnings;
 use builtin qw(true false blessed refaddr);
-no warnings 'experimental::class';
+```
+
+**If class syntax needed (use Feature::Compat::Class, not native):**
+
+```perl
+use Feature::Compat::Class 0.07;  # 0.07 for :reader
 ```
 
 -----
@@ -549,16 +581,20 @@ run three parallel review agents:
 
 |Test type           |Tool                                |
 |--------------------|------------------------------------|
-|HTTP / JSON / API   |`Test::Mojo` or `Test2::MojoX`      |
+|HTTP / JSON / API   |`Test::Mojo`                        |
 |DOM + HTMX          |`Test::Mojo` CSS selector assertions|
 |JavaScript execution|`agent-browser` or Playwright CLI   |
 |Visual / layout     |Playwright CLI screenshot           |
 
-```perl
-use Test2::V0;
-use Test2::MojoX;
+`Test::Mojo` is the Mojolicious-maintained testing tool that ships with the
+framework. Prefer it over third-party alternatives like `Test2::MojoX` (last
+updated 2021) unless the project already uses it.
 
-my $t = Test2::MojoX->new('MyApp');
+```perl
+use Test::More;
+use Test::Mojo;
+
+my $t = Test::Mojo->new('MyApp');
 $t->get_ok('/')->status_is(200)->content_like(qr/Welcome/);
 $t->get_ok('/api/items')->status_is(200)->json_is('/0/name' => 'Widget');
 $t->post_ok('/login' => form => {user => 'alice', pass => 'secret'})
@@ -566,6 +602,10 @@ $t->post_ok('/login' => form => {user => 'alice', pass => 'secret'})
 
 done_testing;
 ```
+
+Note: `Test::Mojo` uses `Test::More` internally. This is the one exception to
+the "Test2 everywhere" principle — Mojolicious's test infrastructure is tightly
+coupled to `Test::More` and works correctly as-is.
 
 -----
 
@@ -607,9 +647,9 @@ done_testing;
 **PVM backend:**
 
 ```bash
-pm install Mojolicious
-pm install                    # from cpanfile
-pm list | grep Module
+pvm module install Mojolicious
+pvm module install            # from cpanfile
+pvm module list | grep Module
 ```
 
 **cpanfile format:**
@@ -721,10 +761,11 @@ and move 5.40 to `pvm-stable`.
 
 ```bash
 # Install matrix (minutes via binary cache)
-pvm install 5.26.3 5.32.1 5.34.0 5.36.0 5.38.2 5.40.2 5.42.0
+# Patch versions current as of March 2026 — update periodically.
+pvm install 5.26.3 5.32.1 5.34.4 5.36.3 5.38.4 5.40.2 5.42.0
 
 # Run
-for version in 5.26.3 5.32.1 5.34.0 5.36.0 5.38.2 5.40.2 5.42.0; do
+for version in 5.26.3 5.32.1 5.34.4 5.36.3 5.38.4 5.40.2 5.42.0; do
     result=$(PVM_PERL_VERSION=$version pvx prove -lr t/ 2>&1 | tail -1)
     echo "$version: $result"
 done
@@ -855,7 +896,7 @@ perl-development-plugin/
 |`perl:write-5.36`       |`perl:write-perl` (dispatched)|Perl 5.36                          |
 |`perl:write-toolchain`  |`perl:write-perl` (dispatched)|CPAN / toolchain 5.20+             |
 |`perl:test`             |`perl:test-perl`              |Test2::V0, prove, real-data testing|
-|`perl:test-mojolicious` |`perl:test-mojolicious`       |Test::Mojo, Test2::MojoX           |
+|`perl:test-mojolicious` |`perl:test-mojolicious`       |Test::Mojo                         |
 |`perl:debug`            |`perl:debug-perl`             |Source analysis, debugging         |
 |`perl:manage-deps`      |`perl:manage-deps`            |Module install, cpanfile           |
 |`perl:review`           |`perl:review-perl`            |perlcritic, perltidy               |
