@@ -354,7 +354,12 @@ func TestMilestoneComplete_VerifySkippedWithWarning(t *testing.T) {
 	createMilestoneWithResolution(t, app, "release", "echo ok")
 	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
 
-	// git-zhi-verify is not on PATH in test environment; warn and skip.
+	// Hide git-zhi-verify by restricting PATH to system directories only.
+	// This ensures exec.LookPath("git-zhi-verify") fails, triggering
+	// the warning path. We keep /usr/bin and /bin so the resolution
+	// command ("echo ok") still works.
+	t.Setenv("PATH", "/usr/bin:/bin")
+
 	stdout, err := run("milestone", "edit", "release", "--state", "complete")
 	if err != nil {
 		t.Fatalf("milestone edit --state complete failed unexpectedly: %v", err)
