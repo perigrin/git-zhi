@@ -85,6 +85,10 @@ func TestIssueAdd_BatchIssues(t *testing.T) {
 	if !strings.Contains(output, "2 issues") {
 		t.Fatalf("expected '2 issues' in output, got: %s", output)
 	}
+	// Output should NOT say "chained sequentially"
+	if strings.Contains(output, "chained sequentially") {
+		t.Fatalf("output should not say 'chained sequentially', got: %s", output)
+	}
 	refs, err := app.Store.ListRefs("refs/zhi/_/issues/")
 	if err != nil {
 		t.Fatalf("ListRefs failed: %v", err)
@@ -188,13 +192,18 @@ func TestIssueAdd_BatchParallelDefault(t *testing.T) {
 
 func TestIssueAdd_BatchWithAfter(t *testing.T) {
 	input := "---\ntitle: \"First task\"\n---\n\nFirst body\n\n---\ntitle: \"Second task\"\nafter: \"First task\"\n---\n\nSecond body\n"
-	_, _, app, run := setupIssueAddTest(t, input)
+	stdout, _, app, run := setupIssueAddTest(t, input)
 
 	if err := app.EnsureInitialized(); err != nil {
 		t.Fatalf("init failed: %v", err)
 	}
 	if err := run("issue", "add"); err != nil {
 		t.Fatalf("issue add failed: %v", err)
+	}
+	// Verify output shows the dependency annotation
+	output := stdout.String()
+	if !strings.Contains(output, "(after: First task)") {
+		t.Fatalf("expected '(after: First task)' in output, got: %s", output)
 	}
 	refs, err := app.Store.ListRefs("refs/zhi/_/issues/")
 	if err != nil {

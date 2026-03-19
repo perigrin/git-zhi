@@ -144,6 +144,16 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Capture dep annotations before Marshal clears After/Before fields.
+	depAnnotations := make(map[uuid.UUID]string)
+	for _, iss := range created {
+		if iss.After != "" {
+			depAnnotations[iss.ID] = fmt.Sprintf(" (after: %s)", iss.After)
+		} else if iss.Before != "" {
+			depAnnotations[iss.ID] = fmt.Sprintf(" (before: %s)", iss.Before)
+		}
+	}
+
 	// Persist each issue
 	for _, iss := range created {
 		data, marshalErr := issue.Marshal(iss)
@@ -169,12 +179,10 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 		iss := created[0]
 		fmt.Fprintf(cmd.OutOrStdout(), "Created %s: %s\n", iss.ID.String()[:8], iss.Title)
 	} else {
-		fmt.Fprintf(cmd.OutOrStdout(), "Created %d issues (chained sequentially):\n", len(created))
-		for i, iss := range created {
-			fmt.Fprintf(cmd.OutOrStdout(), "  %s  %s\n", iss.ID.String()[:8], iss.Title)
-			if i < len(created)-1 {
-				fmt.Fprintf(cmd.OutOrStdout(), "   \u2193\n")
-			}
+		fmt.Fprintf(cmd.OutOrStdout(), "Created %d issues:\n", len(created))
+		for _, iss := range created {
+			annotation := depAnnotations[iss.ID]
+			fmt.Fprintf(cmd.OutOrStdout(), "  %s  %s%s\n", iss.ID.String()[:8], iss.Title, annotation)
 		}
 	}
 
