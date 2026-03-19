@@ -691,3 +691,47 @@ func TestMarshal_HistorianFields_OmitWhenEmpty(t *testing.T) {
 		}
 	}
 }
+
+func TestParse_AfterField(t *testing.T) {
+	raw := []byte("---\ntitle: \"Second task\"\nafter: \"First task\"\n---\n\nDepends on first.\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.After != "First task" {
+		t.Fatalf("expected After %q, got %q", "First task", iss.After)
+	}
+}
+
+func TestParse_BeforeField(t *testing.T) {
+	raw := []byte("---\ntitle: \"First task\"\nbefore: \"Second task\"\n---\n\nBlocks second.\n")
+	iss, err := issue.Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Before != "Second task" {
+		t.Fatalf("expected Before %q, got %q", "Second task", iss.Before)
+	}
+}
+
+func TestMarshal_AfterBefore_NotPersisted(t *testing.T) {
+	iss := &issue.Issue{
+		Title:     "Task with after",
+		State:     issue.StatePending,
+		Milestone: "v0.3.3",
+		After:     "Some other task",
+		Before:    "Another task",
+		Created:   time.Now().Truncate(time.Second),
+		Updated:   time.Now().Truncate(time.Second),
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	if bytes.Contains(out, []byte("after:")) {
+		t.Fatalf("expected after: to be omitted from marshaled output, but found it in:\n%s", out)
+	}
+	if bytes.Contains(out, []byte("before:")) {
+		t.Fatalf("expected before: to be omitted from marshaled output, but found it in:\n%s", out)
+	}
+}

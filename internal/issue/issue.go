@@ -100,6 +100,15 @@ type Issue struct {
 	// Handled separately from YAML marshaling. Included in JSON output
 	// so --format json consumers get the full issue content.
 	Body string `yaml:"-" json:"body,omitempty"`
+	// After is an input-only field parsed from YAML frontmatter during
+	// batch-add. It references another issue (by exact title or UUID ref)
+	// that this issue depends on. Consumed during batch-add dependency
+	// resolution, then cleared before persistence.
+	After string `yaml:"after,omitempty" json:"-"`
+	// Before is an input-only field parsed from YAML frontmatter during
+	// batch-add. It references another issue that depends on this issue.
+	// Same resolution rules as After. Cleared before persistence.
+	Before string `yaml:"before,omitempty" json:"-"`
 }
 
 // Parse splits raw markdown into YAML frontmatter and body, then
@@ -137,7 +146,12 @@ func Parse(raw []byte) (*Issue, error) {
 }
 
 // Marshal serializes an Issue back to YAML frontmatter + markdown body.
+// Input-only fields (After, Before) are cleared before serialization
+// to prevent them from being persisted to storage.
 func Marshal(iss *Issue) ([]byte, error) {
+	// Clear input-only fields before serialization.
+	iss.After = ""
+	iss.Before = ""
 	frontmatterBytes, err := yaml.Marshal(iss)
 	if err != nil {
 		return nil, fmt.Errorf("marshal frontmatter: %w", err)
