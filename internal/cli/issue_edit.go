@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -70,8 +72,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		return runIssueEditBatch(cmd, app)
 	}
 
-	// --body: read new body from stdin early, before any flag processing.
-	// This content is applied wherever the issue is written back.
+	// --body: read new body from stdin or open editor.
 	var newBody string
 	var bodyChanged bool
 	if cmd.Flags().Changed("body") {
@@ -83,9 +84,32 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		if trimmed != "" {
 			newBody = trimmed
 			bodyChanged = true
+		} else {
+			// Stdin was empty — open editor with current body.
+			if refInput == "" {
+				return fmt.Errorf("--body: issue ref is required")
+			}
+			refPath, resolveErr := resolve.ResolveRef(app.Store, refInput)
+			if resolveErr != nil {
+				return fmt.Errorf("resolve ref for --body: %w", resolveErr)
+			}
+			data, readEntityErr := app.Store.ReadEntity(refPath, "issue.md")
+			if readEntityErr != nil {
+				return fmt.Errorf("read issue for --body: %w", readEntityErr)
+			}
+			iss, parseErr := issue.Parse(data)
+			if parseErr != nil {
+				return fmt.Errorf("parse issue for --body: %w", parseErr)
+			}
+			edited, editErr := editBodyInEditor(iss.Body)
+			if editErr != nil {
+				return fmt.Errorf("editor: %w", editErr)
+			}
+			if edited != iss.Body {
+				newBody = edited
+				bodyChanged = true
+			}
 		}
-		// If trimmed is empty and stdin was a pipe, no change.
-		// Editor support (TTY detection) is handled in a separate issue.
 	}
 
 	// If no known flag is set, this is the bare interactive edit ($EDITOR).
@@ -1273,5 +1297,69 @@ func applyBatchOp(app *App, op batchOp) error {
 		return fmt.Errorf("write issue: %w", err)
 	}
 	return nil
+}
+
+// editBodyInEditor opens the user's editor with the current body content
+// in a temp file. Returns the edited content. Resolves the editor via
+// `git var GIT_EDITOR` (respects $GIT_EDITOR, $VISUAL, $EDITOR, vi).
+func editBodyInEditor(currentBody string) (string, error) {
+	// Resolve editor via git var GIT_EDITOR
+	editor, err := resolveGitEditor()
+	if err != nil {
+		return "", err
+	}
+
+	// Write current body to temp file
+	tmpFile, err := os.CreateTemp("", "zhi-body-*.md")
+	if err != nil {
+		return "", fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, writeErr := tmpFile.WriteString(currentBody); writeErr != nil {
+		tmpFile.Close()
+		return "", fmt.Errorf("write temp file: %w", writeErr)
+	}
+	tmpFile.Close()
+
+	// Run editor
+	editorCmd := exec.Command(editor, tmpPath)
+	editorCmd.Stdin = os.Stdin
+	editorCmd.Stdout = os.Stdout
+	editorCmd.Stderr = os.Stderr
+	if runErr := editorCmd.Run(); runErr != nil {
+		return "", fmt.Errorf("editor exited with error: %w", runErr)
+	}
+
+	// Read back
+	edited, err := os.ReadFile(tmpPath)
+	if err != nil {
+		return "", fmt.Errorf("read edited file: %w", err)
+	}
+	return strings.TrimSpace(string(edited)), nil
+}
+
+// resolveGitEditor resolves the editor using `git var GIT_EDITOR`.
+// Falls back to $EDITOR, $VISUAL, then vi if git var fails.
+func resolveGitEditor() (string, error) {
+	out, err := exec.Command("git", "var", "GIT_EDITOR").Output()
+	if err == nil {
+		editor := strings.TrimSpace(string(out))
+		if editor != "" {
+			return editor, nil
+		}
+	}
+	// Fallback chain
+	if editor := os.Getenv("GIT_EDITOR"); editor != "" {
+		return editor, nil
+	}
+	if editor := os.Getenv("VISUAL"); editor != "" {
+		return editor, nil
+	}
+	if editor := os.Getenv("EDITOR"); editor != "" {
+		return editor, nil
+	}
+	return "vi", nil
 }
 
