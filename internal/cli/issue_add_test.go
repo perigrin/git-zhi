@@ -93,12 +93,7 @@ func TestIssueAdd_BatchIssues(t *testing.T) {
 		t.Fatalf("expected 2 issue refs, got %d", len(refs))
 	}
 
-	// Verify sequential dependencies: First task blocks Second task.
-	// Parse issues and identify by title. first.Blocks[0] should be
-	// second's UUID and second.BlockedBy[0] should be first's UUID.
-	// Since ID is yaml:"-", we verify the cross-reference: the UUID
-	// that first blocks should equal the UUID that blocks second.
-	var first, second *issue.Issue
+	// Batch-add defaults to parallel: both issues should be independent.
 	for _, ref := range refs {
 		content, readErr := app.Store.ReadEntity(ref, "issue.md")
 		if readErr != nil {
@@ -108,39 +103,12 @@ func TestIssueAdd_BatchIssues(t *testing.T) {
 		if parseErr != nil {
 			t.Fatalf("Parse failed: %v", parseErr)
 		}
-		switch iss.Title {
-		case "First task":
-			first = iss
-		case "Second task":
-			second = iss
+		if len(iss.BlockedBy) != 0 {
+			t.Fatalf("issue %q should have no BlockedBy, got %d", iss.Title, len(iss.BlockedBy))
 		}
-	}
-	if first == nil || second == nil {
-		t.Fatal("could not identify First/Second issue by title")
-	}
-	// First should block something, Second should be blocked by something
-	if len(first.Blocks) != 1 {
-		t.Fatalf("expected First to block 1 issue, got %d", len(first.Blocks))
-	}
-	if len(second.BlockedBy) != 1 {
-		t.Fatalf("expected Second to be blocked by 1 issue, got %d", len(second.BlockedBy))
-	}
-	// The UUID first blocks IS second's ID, and the UUID that blocks
-	// second IS first's ID. These are different UUIDs (cross-references).
-	// Verify they are non-zero (real UUIDs were generated).
-	zeroUUID := "00000000-0000-0000-0000-000000000000"
-	if first.Blocks[0].String() == zeroUUID {
-		t.Fatal("first.Blocks contains zero UUID")
-	}
-	if second.BlockedBy[0].String() == zeroUUID {
-		t.Fatal("second.BlockedBy contains zero UUID")
-	}
-	// First should not be blocked, Second should not block anything
-	if len(first.BlockedBy) != 0 {
-		t.Fatalf("expected First to have no BlockedBy, got %d", len(first.BlockedBy))
-	}
-	if len(second.Blocks) != 0 {
-		t.Fatalf("expected Second to have no Blocks, got %d", len(second.Blocks))
+		if len(iss.Blocks) != 0 {
+			t.Fatalf("issue %q should have no Blocks, got %d", iss.Title, len(iss.Blocks))
+		}
 	}
 }
 
