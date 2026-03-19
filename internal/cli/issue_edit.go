@@ -29,7 +29,7 @@ var knownEditFlags = []string{
 	"state", "block", "unblock", "milestone", "tag", "untag",
 	"label", "unlabel",
 	"assign", "unassign",
-	"before", "after", "split", "merge", "purge", "batch",
+	"before", "after", "split", "merge", "purge", "batch", "body",
 }
 
 // runIssueEdit handles 'issue edit [ref] [flags]'.
@@ -68,6 +68,24 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	}
 	if cmd.Flags().Changed("batch") {
 		return runIssueEditBatch(cmd, app)
+	}
+
+	// --body: read new body from stdin early, before any flag processing.
+	// This content is applied wherever the issue is written back.
+	var newBody string
+	var bodyChanged bool
+	if cmd.Flags().Changed("body") {
+		bodyBytes, readErr := io.ReadAll(cmd.InOrStdin())
+		if readErr != nil {
+			return fmt.Errorf("read body from stdin: %w", readErr)
+		}
+		trimmed := strings.TrimSpace(string(bodyBytes))
+		if trimmed != "" {
+			newBody = trimmed
+			bodyChanged = true
+		}
+		// If trimmed is empty and stdin was a pipe, no change.
+		// Editor support (TTY detection) is handled in a separate issue.
 	}
 
 	// If no known flag is set, this is the bare interactive edit ($EDITOR).
@@ -193,6 +211,11 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 
 		iss.State = newState
 		iss.Updated = now
+
+		// Apply --body if set alongside --state
+		if bodyChanged {
+			iss.Body = newBody
+		}
 
 		out, err := issue.Marshal(iss)
 		if err != nil {
@@ -348,6 +371,11 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		iss.Assigned = ""
 	}
 
+	// --body: apply the new body read from stdin earlier.
+	if bodyChanged {
+		iss.Body = newBody
+	}
+
 	// Write the (potentially modified) primary issue back only if one of the
 	// flags that modifies it directly was set.
 	issueDirty := cmd.Flags().Changed("milestone") ||
@@ -358,7 +386,8 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		cmd.Flags().Changed("label") ||
 		cmd.Flags().Changed("unlabel") ||
 		cmd.Flags().Changed("assign") ||
-		cmd.Flags().Changed("unassign")
+		cmd.Flags().Changed("unassign") ||
+		bodyChanged
 
 	if issueDirty {
 		iss.Updated = time.Now()
