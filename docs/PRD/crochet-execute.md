@@ -20,7 +20,7 @@ until the milestone is complete.
 
 ```
 while milestone has open issues:
-  issue = next ready issue (git zhi chain list --ready --format json | head -1)
+  issue = next ready issue (git zhi list --milestone <ms> --ready --format json | head -1)
   git zhi issue edit <id> --state start
 
   [inner loop: TDD + code-simplifier]
@@ -142,7 +142,7 @@ crochet/
 
 ## Acceptance Criteria
 
-1. `crochet:execute <milestone>` picks the next ready issue via `git zhi chain list --ready` and starts execution
+1. `crochet:execute <milestone>` picks the next ready issue via `git zhi list --milestone <ms> --ready` and starts execution
 2. Inner TDD loop uses Ralph Loop with `--completion-promise` and `--max-iterations`
 3. `code-simplifier` runs after each green-test cycle
 4. Sanbao gate analyst extracts per-issue metrics from milestone report and determines review tier
