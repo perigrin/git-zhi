@@ -20,7 +20,7 @@ until the milestone is complete.
 
 ```
 while milestone has open issues:
-  issue = next ready issue (git zhi list --ready --format json | head -1)
+  issue = next ready issue (git zhi chain list --ready --format json | head -1)
   git zhi issue edit <id> --state start
 
   [inner loop: TDD + code-simplifier]
@@ -28,10 +28,13 @@ while milestone has open issues:
   git zhi issue edit <id> --state done
   sanbao snapshot → gate analyst → TIER_1 or TIER_2
   PAAD review (tiered by gate analyst)
-  if PAAD finds in-scope debt:
+  if PAAD finds in-scope debt (and reopens < 3):
     append findings to issue body as ### Review Findings
-    git zhi issue edit <id> --state start   # reopen
+    git zhi issue edit <id> --state reopen
+    git zhi issue edit <id> --state start
     continue                                 # back to inner loop
+  else if reopens >= 3:
+    stop, report: "issue exceeded max review passes"
   else:
     out-of-scope findings → new issues
     continue to next issue
@@ -69,6 +72,12 @@ or amend — the commit history is the iteration history.
 
 After the inner loop completes and the issue is marked done, compute a sanbao
 snapshot and run a gate analysis agent to determine review depth.
+
+Sanbao operates at milestone scope — run `git-zhi-sanbao <milestone> --format json`
+and extract the target issue's metrics from the per-issue `difficulties[]` array
+and the `complexity` domain. No `--issue` filter exists; the full milestone
+report is computed and the single issue's data is extracted. On small milestones
+(v0.3.x scale) this cost is negligible.
 
 **Sanbao per-issue metrics used:**
 - **Difficulty score** — composite of MPG, cycle time, reopens, sentiment,
@@ -108,8 +117,14 @@ sanbao gate analyst.
 - `paad:agentic-review` — technical debt, security, test coverage gaps?
 
 If PAAD finds in-scope issues, findings are appended to the issue body (as a
-`### Review Findings` section) before reopening. The next Ralph Loop iteration
-reads the issue and sees the findings — no separate feedback channel needed.
+`### Review Findings` section) before reopening. The reopen requires two state
+transitions: `--state reopen` (done → reopened) then `--state start`
+(reopened → in-progress). The next Ralph Loop iteration reads the issue and
+sees the findings — no separate feedback channel needed.
+
+**Max reopens per issue: 3.** If an issue exceeds 3 PAAD-reopen cycles, the
+skill stops and reports the problem. This prevents infinite outer-loop cycling
+when PAAD keeps finding issues.
 
 Out-of-scope findings become new git-zhi issues in the same milestone.
 
@@ -127,18 +142,19 @@ crochet/
 
 ## Acceptance Criteria
 
-1. `crochet:execute <milestone>` picks the next ready issue and starts execution
+1. `crochet:execute <milestone>` picks the next ready issue via `git zhi chain list --ready` and starts execution
 2. Inner TDD loop uses Ralph Loop with `--completion-promise` and `--max-iterations`
 3. `code-simplifier` runs after each green-test cycle
-4. Sanbao gate analyst computes per-issue metrics and determines review tier
+4. Sanbao gate analyst extracts per-issue metrics from milestone report and determines review tier
 5. Tier 1 issues get `paad:alignment` only
 6. Tier 2 issues get full PAAD suite (alignment + architecture + agentic-review)
-7. In-scope findings are appended to issue body and issue is reopened
+7. In-scope findings are appended to issue body; issue is reopened via two-step state transition (reopen then start)
 8. Out-of-scope findings create new issues
-9. Milestone completion triggers `crochet:postmortem`
-10. The skill is idempotent — can be re-invoked to resume a partially-executed milestone
-11. Each inner-loop iteration commits its state (no lost work on context limit)
-12. Report includes gate analysis summary (tier counts, avg difficulty)
+9. Max 3 PAAD-reopen cycles per issue before the skill stops and reports
+10. Milestone completion triggers `crochet:postmortem`
+11. The skill is idempotent — can be re-invoked to resume a partially-executed milestone
+12. Each inner-loop iteration commits its state (no lost work on context limit)
+13. Report includes gate analysis summary (tier counts, avg difficulty)
 
 ## Process AC
 
@@ -146,7 +162,7 @@ crochet/
 - [ ] Ralph Loop integration confirmed (completion promise terminates correctly)
 - [ ] PAAD gate confirmed (at least one finding round-trips through reopen)
 - [ ] Gate analyst confirmed (tier 2 triggers on measured high-complexity issue)
-- [ ] Sanbao per-issue snapshot confirmed (difficulty score computed for single issue)
+- [ ] Sanbao per-issue snapshot confirmed (difficulty score extracted from milestone report)
 
 ## Decisions
 
@@ -168,6 +184,11 @@ crochet/
 6. **Commit strategy:** Commit frequently, never squash. The iteration history
    is the commit history. Clean-up rebase is a separate, optional step outside
    the skill.
+7. **Sanbao scope:** Sanbao runs at milestone level (no `--issue` filter exists).
+   Gate analyst extracts single-issue metrics from the full report. Acceptable
+   cost at v0.3.x scale; `--issue` filter is a future optimization.
+8. **Max reopens:** 3 PAAD-reopen cycles per issue. Prevents infinite outer-loop
+   cycling. If exceeded, the skill stops and surfaces the problem.
 
 ## Dependencies
 
@@ -180,4 +201,4 @@ crochet/
 
 ## Versioning
 
-Target: crochet v0.4.0 (the execute skill is a major capability addition)
+Target: v0.3.4
