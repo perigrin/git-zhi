@@ -45,6 +45,7 @@ func newIssueAddCommand() *cobra.Command {
 	cmd.Flags().String("milestone", "", "milestone to assign (overrides config default)")
 	cmd.Flags().String("after", "", "issue ref that this issue depends on (not yet implemented)")
 	cmd.Flags().String("before", "", "issue ref that depends on this issue (not yet implemented)")
+	cmd.Flags().String("body", "", "issue body text (used with positional title arg; overrides stdin)")
 
 	return cmd
 }
@@ -74,15 +75,23 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 		defaultMilestone = ms
 	}
 
-	// Read stdin
-	raw, err := io.ReadAll(cmd.InOrStdin())
-	if err != nil {
-		return fmt.Errorf("read stdin: %w", err)
-	}
-
-	blocks := issue.SplitBatch(raw)
-	if len(blocks) == 0 {
-		return fmt.Errorf("no issue content found on stdin")
+	// Determine input source: --body flag takes precedence over stdin.
+	bodyFlag, _ := cmd.Flags().GetString("body")
+	var blocks [][]byte
+	if bodyFlag != "" && len(args) > 0 {
+		// Build a synthetic frontmatter block from args (title) and --body flag.
+		synthetic := fmt.Sprintf("---\ntitle: %q\n---\n\n%s\n", args[0], bodyFlag)
+		blocks = [][]byte{[]byte(synthetic)}
+	} else {
+		// Read stdin
+		raw, readErr := io.ReadAll(cmd.InOrStdin())
+		if readErr != nil {
+			return fmt.Errorf("read stdin: %w", readErr)
+		}
+		blocks = issue.SplitBatch(raw)
+		if len(blocks) == 0 {
+			return fmt.Errorf("no issue content found on stdin")
+		}
 	}
 
 	now := time.Now()
