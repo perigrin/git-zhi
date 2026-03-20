@@ -47,11 +47,14 @@ type CouplingEntry struct {
 	Count int    `json:"count"`
 }
 
-// DifficultyEntry pairs an issue's identity with its computed difficulty score.
+// DifficultyEntry pairs an issue's identity with its computed difficulty score
+// and per-issue complexity metrics (hotspots and change coupling).
 type DifficultyEntry struct {
-	IssueID    string  `json:"issue_id"`
-	IssueTitle string  `json:"issue_title"`
-	Score      float64 `json:"score"`
+	IssueID       string  `json:"issue_id"`
+	IssueTitle    string  `json:"issue_title"`
+	Score         float64 `json:"score"`
+	HotspotCount  int     `json:"hotspot_count"`
+	CouplingCount int     `json:"coupling_count"`
 }
 
 // GenerateReport loads the named milestone and all of its done issues, then
@@ -160,9 +163,24 @@ func computeComplexity(repo *git.Repository, issues []*issue.Issue) ComplexityRe
 	return cr
 }
 
+// sessionComplexityCounts computes the number of churn*size hotspot files and
+// change coupling pairs for the given session ranges. Returns (0, 0) when
+// repo is nil or sessions is empty.
+func sessionComplexityCounts(repo *git.Repository, sessions []issue.Session, repoRoot string) (hotspotCount, couplingCount int) {
+	if repo == nil || len(sessions) == 0 {
+		return 0, 0
+	}
+	churn := complexity.FileChurn(repo, sessions)
+	hotspotCount = len(complexity.ChurnSizeHotspots(churn, repoRoot))
+	couplingCount = len(complexity.ChangeCoupling(repo, sessions))
+	return hotspotCount, couplingCount
+}
+
 // computeDifficulties computes a DifficultyEntry for each done issue using
-// per-issue mean sentiment from the repo (when available).
+// per-issue mean sentiment from the repo (when available). It also computes
+// per-issue hotspot and change coupling counts scoped to each issue's sessions.
 func computeDifficulties(repo *git.Repository, issues []*issue.Issue) []DifficultyEntry {
+	repoRoot := repoRootPath(repo)
 	entries := make([]DifficultyEntry, 0, len(issues))
 	for _, iss := range issues {
 		var meanSentiment float64
@@ -177,10 +195,14 @@ func computeDifficulties(repo *git.Repository, issues []*issue.Issue) []Difficul
 			}
 		}
 		score := difficulty.ComputeDifficulty(iss, meanSentiment)
+		hotspotCount, couplingCount := sessionComplexityCounts(repo, iss.Sessions, repoRoot)
+
 		entries = append(entries, DifficultyEntry{
-			IssueID:    iss.ID.String(),
-			IssueTitle: iss.Title,
-			Score:      score,
+			IssueID:       iss.ID.String(),
+			IssueTitle:    iss.Title,
+			Score:         score,
+			HotspotCount:  hotspotCount,
+			CouplingCount: couplingCount,
 		})
 	}
 	return entries
