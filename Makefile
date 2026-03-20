@@ -1,4 +1,4 @@
-.PHONY: all build setup test clean cross-compile
+.PHONY: all build setup install test clean cross-compile
 
 all: build setup
 
@@ -14,6 +14,13 @@ build:
 
 setup: build
 	./git-zhi setup
+
+PREFIX ?= $(HOME)/.local
+install: build
+	install -d $(PREFIX)/bin
+	install -m 755 git-zhi $(PREFIX)/bin/git-zhi
+	$(PREFIX)/bin/git-zhi setup
+	$(PREFIX)/bin/git-zhi version
 
 test:
 	go test ./... -count=1

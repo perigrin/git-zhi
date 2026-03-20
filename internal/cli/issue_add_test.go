@@ -342,6 +342,77 @@ func TestIssueAdd_AfterNotFound(t *testing.T) {
 	}
 }
 
+func TestIssueAdd_BodyFlag(t *testing.T) {
+	// --body flag provides body text directly, title comes from args
+	stdout, _, app, run := setupIssueAddTest(t, "")
+
+	if err := app.EnsureInitialized(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if err := run("issue", "add", "Fix the widget", "--body", "Widget is broken.\n\nNeeds repair."); err != nil {
+		t.Fatalf("issue add --body failed: %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "Fix the widget") {
+		t.Fatalf("expected title in output, got: %s", output)
+	}
+	refs, err := app.Store.ListRefs("refs/zhi/_/issues/")
+	if err != nil {
+		t.Fatalf("ListRefs failed: %v", err)
+	}
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 issue ref, got %d", len(refs))
+	}
+	content, err := app.Store.ReadEntity(refs[0], "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity failed: %v", err)
+	}
+	iss, err := issue.Parse(content)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Title != "Fix the widget" {
+		t.Fatalf("expected title %q, got %q", "Fix the widget", iss.Title)
+	}
+	if !strings.Contains(iss.Body, "Widget is broken.") {
+		t.Fatalf("expected body to contain 'Widget is broken.', got: %s", iss.Body)
+	}
+}
+
+func TestIssueAdd_BodyFlagOverridesStdin(t *testing.T) {
+	// When both --body and stdin are provided, --body takes precedence
+	stdinContent := "---\ntitle: \"Stdin title\"\n---\n\nStdin body.\n"
+	_, _, app, run := setupIssueAddTest(t, stdinContent)
+
+	if err := app.EnsureInitialized(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if err := run("issue", "add", "Flag title", "--body", "Flag body."); err != nil {
+		t.Fatalf("issue add with both --body and stdin failed: %v", err)
+	}
+	refs, err := app.Store.ListRefs("refs/zhi/_/issues/")
+	if err != nil {
+		t.Fatalf("ListRefs failed: %v", err)
+	}
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 issue ref, got %d", len(refs))
+	}
+	content, err := app.Store.ReadEntity(refs[0], "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity failed: %v", err)
+	}
+	iss, err := issue.Parse(content)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Title != "Flag title" {
+		t.Fatalf("expected title %q, got %q", "Flag title", iss.Title)
+	}
+	if !strings.Contains(iss.Body, "Flag body.") {
+		t.Fatalf("expected body to contain 'Flag body.', got: %s", iss.Body)
+	}
+}
+
 func TestIssueAdd_DefaultMilestone(t *testing.T) {
 	input := "---\ntitle: \"No milestone specified\"\n---\n"
 	_, _, app, run := setupIssueAddTest(t, input)
