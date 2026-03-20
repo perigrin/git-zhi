@@ -3,6 +3,7 @@
 package report_test
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -214,6 +215,87 @@ func TestGenerateReport_DifficultiesPopulated(t *testing.T) {
 	}
 	if rpt.Difficulties[0].IssueID == "" {
 		t.Error("IssueID is empty, want non-empty UUID string")
+	}
+}
+
+// TestDifficultyEntry_PerIssueComplexity verifies that DifficultyEntry includes
+// per-issue hotspot and coupling counts when the issue has sessions with
+// multi-file commits.
+func TestDifficultyEntry_PerIssueComplexity(t *testing.T) {
+	repo, store := setupRepo(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v-perishue",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, store, ms)
+
+	// Get the initial HEAD — this will be the session start SHA.
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	startSHA := head.Hash().String()
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Worktree: %v", err)
+	}
+	dir := wt.Filesystem.Root()
+	sig := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
+
+	// Create two commits, each touching two files (fileA.go and fileB.go).
+	// This gives fileA churn=2, fileB churn=2, and coupling (fileA, fileB)=2.
+	for i := 0; i < 2; i++ {
+		content := []byte(fmt.Sprintf("package main\n// iteration %d\n", i))
+		if err := os.WriteFile(dir+"/fileA.go", content, 0o644); err != nil {
+			t.Fatalf("write fileA: %v", err)
+		}
+		if err := os.WriteFile(dir+"/fileB.go", content, 0o644); err != nil {
+			t.Fatalf("write fileB: %v", err)
+		}
+		if _, err := wt.Add("fileA.go"); err != nil {
+			t.Fatalf("add fileA: %v", err)
+		}
+		if _, err := wt.Add("fileB.go"); err != nil {
+			t.Fatalf("add fileB: %v", err)
+		}
+		commitSig := &object.Signature{Name: sig.Name, Email: sig.Email, When: sig.When.Add(time.Duration(i+1) * time.Hour)}
+		if _, err := wt.Commit("multi-file commit", &git.CommitOptions{Author: commitSig}); err != nil {
+			t.Fatalf("commit %d: %v", i, err)
+		}
+	}
+
+	// Get end SHA after the commits.
+	endHead, err := repo.Head()
+	if err != nil {
+		t.Fatalf("Head after commits: %v", err)
+	}
+	endSHA := endHead.Hash().String()
+
+	// Build a done issue with a session spanning both commits.
+	iss := newDoneIssue(t, "v-perishue", startSHA, endSHA)
+	writeIssue(t, store, iss)
+
+	rpt, err := report.GenerateReport(repo, store, "v-perishue")
+	if err != nil {
+		t.Fatalf("GenerateReport: %v", err)
+	}
+
+	if len(rpt.Difficulties) != 1 {
+		t.Fatalf("expected 1 difficulty entry, got %d", len(rpt.Difficulties))
+	}
+	entry := rpt.Difficulties[0]
+
+	// Per-issue hotspot count should be 2 (fileA.go and fileB.go both churned).
+	if entry.HotspotCount != 2 {
+		t.Errorf("HotspotCount = %d, want 2", entry.HotspotCount)
+	}
+
+	// Per-issue coupling count should be 1 (fileA.go + fileB.go changed together twice).
+	if entry.CouplingCount != 1 {
+		t.Errorf("CouplingCount = %d, want 1", entry.CouplingCount)
 	}
 }
 
