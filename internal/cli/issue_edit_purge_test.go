@@ -168,3 +168,151 @@ func TestIssueEdit_Purge_NoYes(t *testing.T) {
 		t.Fatalf("expected issue ref to still exist after failed purge without --yes")
 	}
 }
+
+// TestIssueEdit_Purge_DependencyWarning verifies that purging an issue with
+// upstream and downstream dependents prints a "Dependency cleanup:" section.
+func TestIssueEdit_Purge_DependencyWarning(t *testing.T) {
+	app, run := setupPurgeTest(t)
+
+	idA := createPurgeTestIssue(t, app, "Upstream issue")
+	idB := createPurgeTestIssue(t, app, "Target to purge")
+	idC := createPurgeTestIssue(t, app, "Downstream issue")
+
+	// Wire: A -> B -> C
+	now := time.Now()
+	refA := issue.RefPrefix + idA.String()
+	dataA, _ := app.Store.ReadEntity(refA, "issue.md")
+	issA, _ := issue.Parse(dataA)
+	issA.Blocks = append(issA.Blocks, idB)
+	issA.Updated = now
+	outA, _ := issue.Marshal(issA)
+	_ = app.Store.WriteEntity(refA, "issue.md", outA, "wire A->B")
+
+	refB := issue.RefPrefix + idB.String()
+	dataB, _ := app.Store.ReadEntity(refB, "issue.md")
+	issB, _ := issue.Parse(dataB)
+	issB.BlockedBy = append(issB.BlockedBy, idA)
+	issB.Blocks = append(issB.Blocks, idC)
+	issB.Updated = now
+	outB, _ := issue.Marshal(issB)
+	_ = app.Store.WriteEntity(refB, "issue.md", outB, "wire A->B->C")
+
+	refC := issue.RefPrefix + idC.String()
+	dataC, _ := app.Store.ReadEntity(refC, "issue.md")
+	issC, _ := issue.Parse(dataC)
+	issC.BlockedBy = append(issC.BlockedBy, idB)
+	issC.Updated = now
+	outC, _ := issue.Marshal(issC)
+	_ = app.Store.WriteEntity(refC, "issue.md", outC, "wire B->C")
+
+	stdout, _, err := run("issue", "edit", idB.String(), "--purge", "--yes")
+	if err != nil {
+		t.Fatalf("purge failed: %v", err)
+	}
+
+	output := stdout.String()
+
+	// Should contain "Dependency cleanup:" section.
+	if !strings.Contains(output, "Dependency cleanup:") {
+		t.Errorf("expected 'Dependency cleanup:' in output, got: %q", output)
+	}
+
+	// Should mention the upstream issue.
+	if !strings.Contains(output, idA.String()[:8]) {
+		t.Errorf("expected upstream UUID prefix %s in output, got: %q", idA.String()[:8], output)
+	}
+
+	// Should mention the downstream issue.
+	if !strings.Contains(output, idC.String()[:8]) {
+		t.Errorf("expected downstream UUID prefix %s in output, got: %q", idC.String()[:8], output)
+	}
+
+	// "Dependency cleanup:" must appear before "Purged".
+	cleanupIdx := strings.Index(output, "Dependency cleanup:")
+	purgedIdx := strings.Index(output, "Purged")
+	if cleanupIdx >= purgedIdx {
+		t.Errorf("expected 'Dependency cleanup:' before 'Purged' in output, got: %q", output)
+	}
+}
+
+// TestIssueEdit_Purge_NoDependents_NoWarning verifies that purging an issue
+// with no dependents does not print a "Dependency cleanup:" section.
+func TestIssueEdit_Purge_NoDependents_NoWarning(t *testing.T) {
+	app, run := setupPurgeTest(t)
+
+	id := createPurgeTestIssue(t, app, "Lonely issue")
+
+	stdout, _, err := run("issue", "edit", id.String(), "--purge", "--yes")
+	if err != nil {
+		t.Fatalf("purge failed: %v", err)
+	}
+
+	output := stdout.String()
+	if strings.Contains(output, "Dependency cleanup:") {
+		t.Errorf("expected no 'Dependency cleanup:' for issue with no dependents, got: %q", output)
+	}
+	if !strings.Contains(output, "Purged") {
+		t.Errorf("expected 'Purged' in output, got: %q", output)
+	}
+}
+
+// TestIssueEdit_Purge_NoYes_WithDependents verifies that purging without --yes
+// when dependents exist includes the dependent count in the error message.
+func TestIssueEdit_Purge_NoYes_WithDependents(t *testing.T) {
+	app, run := setupPurgeTest(t)
+
+	idA := createPurgeTestIssue(t, app, "Upstream")
+	idB := createPurgeTestIssue(t, app, "Target")
+
+	// Wire: A -> B (B is blocked by A)
+	now := time.Now()
+	refA := issue.RefPrefix + idA.String()
+	dataA, _ := app.Store.ReadEntity(refA, "issue.md")
+	issA, _ := issue.Parse(dataA)
+	issA.Blocks = append(issA.Blocks, idB)
+	issA.Updated = now
+	outA, _ := issue.Marshal(issA)
+	_ = app.Store.WriteEntity(refA, "issue.md", outA, "wire A->B")
+
+	refB := issue.RefPrefix + idB.String()
+	dataB, _ := app.Store.ReadEntity(refB, "issue.md")
+	issB, _ := issue.Parse(dataB)
+	issB.BlockedBy = append(issB.BlockedBy, idA)
+	issB.Updated = now
+	outB, _ := issue.Marshal(issB)
+	_ = app.Store.WriteEntity(refB, "issue.md", outB, "wire A->B blocked_by")
+
+	// Try to purge B without --yes.
+	_, _, err := run("issue", "edit", idB.String(), "--purge")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "--yes") {
+		t.Errorf("expected '--yes' in error, got: %v", errMsg)
+	}
+	if !strings.Contains(errMsg, "1 dependent") {
+		t.Errorf("expected '1 dependent' in error, got: %v", errMsg)
+	}
+}
+
+// TestIssueEdit_Purge_NoYes_NoDependents verifies that purging without --yes
+// when no dependents exist uses the original error message without a count.
+func TestIssueEdit_Purge_NoYes_NoDependents(t *testing.T) {
+	app, run := setupPurgeTest(t)
+
+	id := createPurgeTestIssue(t, app, "Standalone issue")
+
+	_, _, err := run("issue", "edit", id.String(), "--purge")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "--yes") {
+		t.Errorf("expected '--yes' in error, got: %v", errMsg)
+	}
+	// Should NOT contain "dependent" since there are no dependents.
+	if strings.Contains(errMsg, "dependent") {
+		t.Errorf("expected no 'dependent' in error for standalone issue, got: %v", errMsg)
+	}
+}

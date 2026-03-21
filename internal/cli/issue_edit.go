@@ -1040,12 +1040,9 @@ func runIssueEditMerge(cmd *cobra.Command, app *App, refInput string) error {
 
 // runIssueEditPurge handles 'issue edit <ref> --purge'. Permanently deletes
 // the issue ref and cleans up all dependency edges. Requires --yes flag.
+// When dependents exist, reports them before deletion (with --yes) or
+// includes the count in the error message (without --yes).
 func runIssueEditPurge(cmd *cobra.Command, app *App, refInput string) error {
-	yes, _ := cmd.Flags().GetBool("yes")
-	if !yes {
-		return fmt.Errorf("--purge requires --yes flag for confirmation")
-	}
-
 	refPath, err := resolve.ResolveRef(app.Store, refInput)
 	if err != nil {
 		return fmt.Errorf("resolve ref: %w", err)
@@ -1062,6 +1059,53 @@ func runIssueEditPurge(cmd *cobra.Command, app *App, refInput string) error {
 	issUUID, err := uuid.FromString(uuidStr)
 	if err != nil {
 		return fmt.Errorf("parse uuid: %w", err)
+	}
+
+	// Count dependents for the warning message.
+	dependentCount := len(iss.BlockedBy) + len(iss.Blocks)
+
+	yes, _ := cmd.Flags().GetBool("yes")
+	if !yes {
+		if dependentCount > 0 {
+			return fmt.Errorf("--purge requires --yes flag for confirmation (%d dependent issue(s) will be updated)", dependentCount)
+		}
+		return fmt.Errorf("--purge requires --yes flag for confirmation")
+	}
+
+	w := cmd.OutOrStdout()
+
+	// Print dependency cleanup warning before performing the cleanup.
+	if dependentCount > 0 {
+		fmt.Fprintf(w, "Purging %s %q\n\nDependency cleanup:\n", uuidStr[:8], iss.Title)
+		for _, upUUID := range iss.BlockedBy {
+			upRef := issue.RefPrefix + upUUID.String()
+			upData, readErr := app.Store.ReadEntity(upRef, "issue.md")
+			if readErr != nil {
+				fmt.Fprintf(w, "  %s  (unreadable) — will remove from blocks list\n", upUUID.String()[:8])
+				continue
+			}
+			upIss, parseErr := issue.Parse(upData)
+			if parseErr != nil {
+				fmt.Fprintf(w, "  %s  (unparseable) — will remove from blocks list\n", upUUID.String()[:8])
+				continue
+			}
+			fmt.Fprintf(w, "  %s  %s — will remove from blocks list\n", upUUID.String()[:8], upIss.Title)
+		}
+		for _, downUUID := range iss.Blocks {
+			downRef := issue.RefPrefix + downUUID.String()
+			downData, readErr := app.Store.ReadEntity(downRef, "issue.md")
+			if readErr != nil {
+				fmt.Fprintf(w, "  %s  (unreadable) — will remove from blocked_by list\n", downUUID.String()[:8])
+				continue
+			}
+			downIss, parseErr := issue.Parse(downData)
+			if parseErr != nil {
+				fmt.Fprintf(w, "  %s  (unparseable) — will remove from blocked_by list\n", downUUID.String()[:8])
+				continue
+			}
+			fmt.Fprintf(w, "  %s  %s — will remove from blocked_by list\n", downUUID.String()[:8], downIss.Title)
+		}
+		fmt.Fprintln(w)
 	}
 
 	now := time.Now()
