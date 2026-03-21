@@ -452,13 +452,17 @@ func TestMilestoneEdit_Reopen(t *testing.T) {
 func TestMilestoneEdit_Reopen_AlreadyOpen(t *testing.T) {
 	_, run := setupMilestoneTest(t)
 
-	// v0.1 is created by EnsureInitialized in "open" state.
+	// v0.1 is created by EnsureInitialized with no explicit state (defaults to "open").
 	_, err := run("milestone", "edit", "v0.1", "--state", "reopen")
 	if err == nil {
 		t.Fatal("expected error when reopening an open milestone, got nil")
 	}
 	if !strings.Contains(err.Error(), "cannot reopen") {
 		t.Errorf("expected 'cannot reopen' in error, got: %v", err)
+	}
+	// Error message should show "open" as the state, not a blank string.
+	if !strings.Contains(err.Error(), "is open") {
+		t.Errorf("expected 'is open' in error message, got: %v", err)
 	}
 }
 

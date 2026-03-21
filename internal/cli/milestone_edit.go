@@ -42,7 +42,7 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if !anyFlagSet {
-		return fmt.Errorf("no changes specified: use --due, --name, --tag, --untag, or --resolve")
+		return fmt.Errorf("no changes specified: use --due, --name, --state, --tag, --untag, or --resolve")
 	}
 
 	ms, err := milestone.LoadMilestone(app.Store, name)
@@ -93,6 +93,9 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("name") {
 		if newName == name {
 			return fmt.Errorf("new name is the same as the current name")
+		}
+		if err := milestone.ValidateMilestoneName(newName); err != nil {
+			return err
 		}
 		newRef := milestone.RefPrefix + newName
 		if app.Store.RefExists(newRef) {
@@ -262,8 +265,12 @@ func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer) error 
 // No quality gates are enforced on reopen. Issues in the milestone retain
 // their current state.
 func runMilestoneReopen(app *App, ms *milestone.Milestone, w io.Writer) error {
-	if ms.State != "completed" {
-		return fmt.Errorf("cannot reopen: milestone is %s, expected completed", ms.State)
+	state := ms.State
+	if state == "" {
+		state = "open"
+	}
+	if state != "completed" {
+		return fmt.Errorf("cannot reopen: milestone is %s, expected completed", state)
 	}
 
 	ms.State = "open"

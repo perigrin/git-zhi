@@ -1073,83 +1073,102 @@ func runIssueEditPurge(cmd *cobra.Command, app *App, refInput string) error {
 	}
 
 	w := cmd.OutOrStdout()
-
-	// Print dependency cleanup warning before performing the cleanup.
-	if dependentCount > 0 {
-		fmt.Fprintf(w, "Purging %s %q\n\nDependency cleanup:\n", uuidStr[:8], iss.Title)
-		for _, upUUID := range iss.BlockedBy {
-			upRef := issue.RefPrefix + upUUID.String()
-			upData, readErr := app.Store.ReadEntity(upRef, "issue.md")
-			if readErr != nil {
-				fmt.Fprintf(w, "  %s  (unreadable) — will remove from blocks list\n", upUUID.String()[:8])
-				continue
-			}
-			upIss, parseErr := issue.Parse(upData)
-			if parseErr != nil {
-				fmt.Fprintf(w, "  %s  (unparseable) — will remove from blocks list\n", upUUID.String()[:8])
-				continue
-			}
-			fmt.Fprintf(w, "  %s  %s — will remove from blocks list\n", upUUID.String()[:8], upIss.Title)
-		}
-		for _, downUUID := range iss.Blocks {
-			downRef := issue.RefPrefix + downUUID.String()
-			downData, readErr := app.Store.ReadEntity(downRef, "issue.md")
-			if readErr != nil {
-				fmt.Fprintf(w, "  %s  (unreadable) — will remove from blocked_by list\n", downUUID.String()[:8])
-				continue
-			}
-			downIss, parseErr := issue.Parse(downData)
-			if parseErr != nil {
-				fmt.Fprintf(w, "  %s  (unparseable) — will remove from blocked_by list\n", downUUID.String()[:8])
-				continue
-			}
-			fmt.Fprintf(w, "  %s  %s — will remove from blocked_by list\n", downUUID.String()[:8], downIss.Title)
-		}
-		fmt.Fprintln(w)
-	}
-
 	now := time.Now()
 
-	// Remove this issue from each upstream issue's Blocks list.
+	// Single-pass: read all dependents, display warning, then mutate and write.
+	type depEntry struct {
+		id  uuid.UUID
+		ref string
+		iss *issue.Issue
+	}
+	var upstreams, downstreams []depEntry
+
 	for _, upUUID := range iss.BlockedBy {
 		upRef := issue.RefPrefix + upUUID.String()
 		upData, readErr := app.Store.ReadEntity(upRef, "issue.md")
 		if readErr != nil {
+			upstreams = append(upstreams, depEntry{id: upUUID, ref: upRef})
 			continue
 		}
 		upIss, parseErr := issue.Parse(upData)
 		if parseErr != nil {
+			upstreams = append(upstreams, depEntry{id: upUUID, ref: upRef})
 			continue
 		}
-		upIss.Blocks = uuids.RemoveUUID(upIss.Blocks, issUUID)
-		upIss.Updated = now
-		upOut, marshalErr := issue.Marshal(upIss)
-		if marshalErr != nil {
-			continue
-		}
-		_ = app.Store.WriteEntity(upRef, "issue.md", upOut,
-			fmt.Sprintf("Edit issue %s: remove blocks %s (purged)", upUUID.String()[:8], uuidStr[:8]))
+		upstreams = append(upstreams, depEntry{id: upUUID, ref: upRef, iss: upIss})
 	}
-
-	// Remove this issue from each downstream issue's BlockedBy list.
 	for _, downUUID := range iss.Blocks {
 		downRef := issue.RefPrefix + downUUID.String()
 		downData, readErr := app.Store.ReadEntity(downRef, "issue.md")
 		if readErr != nil {
+			downstreams = append(downstreams, depEntry{id: downUUID, ref: downRef})
 			continue
 		}
 		downIss, parseErr := issue.Parse(downData)
 		if parseErr != nil {
+			downstreams = append(downstreams, depEntry{id: downUUID, ref: downRef})
 			continue
 		}
-		downIss.BlockedBy = uuids.RemoveUUID(downIss.BlockedBy, issUUID)
-		downIss.Updated = now
-		downOut, marshalErr := issue.Marshal(downIss)
+		downstreams = append(downstreams, depEntry{id: downUUID, ref: downRef, iss: downIss})
+	}
+
+	// Print dependency cleanup warning.
+	if dependentCount > 0 {
+		fmt.Fprintf(w, "Purging %s %q\n\nDependency cleanup:\n", uuidStr[:8], iss.Title)
+		for _, dep := range upstreams {
+			if dep.iss == nil {
+				fmt.Fprintf(w, "  %s  (unreadable) — will remove from blocks list\n", dep.id.String()[:8])
+			} else {
+				fmt.Fprintf(w, "  %s  %s — will remove from blocks list\n", dep.id.String()[:8], dep.iss.Title)
+			}
+		}
+		for _, dep := range downstreams {
+			if dep.iss == nil {
+				fmt.Fprintf(w, "  %s  (unreadable) — will remove from blocked_by list\n", dep.id.String()[:8])
+			} else {
+				fmt.Fprintf(w, "  %s  %s — will remove from blocked_by list\n", dep.id.String()[:8], dep.iss.Title)
+			}
+		}
+		fmt.Fprintln(w)
+	}
+
+	// Remove this issue from each upstream issue's Blocks list.
+	var writeErrors []string
+	for _, dep := range upstreams {
+		if dep.iss == nil {
+			continue
+		}
+		dep.iss.Blocks = uuids.RemoveUUID(dep.iss.Blocks, issUUID)
+		dep.iss.Updated = now
+		upOut, marshalErr := issue.Marshal(dep.iss)
 		if marshalErr != nil {
 			continue
 		}
-		_ = app.Store.WriteEntity(downRef, "issue.md", downOut,
-			fmt.Sprintf("Edit issue %s: remove blocked_by %s (purged)", downUUID.String()[:8], uuidStr[:8]))
+		if writeErr := app.Store.WriteEntity(dep.ref, "issue.md", upOut,
+			fmt.Sprintf("Edit issue %s: remove blocks %s (purged)", dep.id.String()[:8], uuidStr[:8])); writeErr != nil {
+			writeErrors = append(writeErrors, fmt.Sprintf("  %s: %v", dep.id.String()[:8], writeErr))
+		}
+	}
+
+	// Remove this issue from each downstream issue's BlockedBy list.
+	for _, dep := range downstreams {
+		if dep.iss == nil {
+			continue
+		}
+		dep.iss.BlockedBy = uuids.RemoveUUID(dep.iss.BlockedBy, issUUID)
+		dep.iss.Updated = now
+		downOut, marshalErr := issue.Marshal(dep.iss)
+		if marshalErr != nil {
+			continue
+		}
+		if writeErr := app.Store.WriteEntity(dep.ref, "issue.md", downOut,
+			fmt.Sprintf("Edit issue %s: remove blocked_by %s (purged)", dep.id.String()[:8], uuidStr[:8])); writeErr != nil {
+			writeErrors = append(writeErrors, fmt.Sprintf("  %s: %v", dep.id.String()[:8], writeErr))
+		}
+	}
+
+	if len(writeErrors) > 0 {
+		return fmt.Errorf("dependency cleanup failed (issue not deleted):\n%s", strings.Join(writeErrors, "\n"))
 	}
 
 	// Clean up any tags that point to this issue's ref.
@@ -1164,6 +1183,12 @@ func runIssueEditPurge(cmd *cobra.Command, app *App, refInput string) error {
 				_ = app.Store.DeleteRef(tagRef)
 			}
 		}
+	}
+
+	// Clean up label index refs for this issue.
+	for _, label := range iss.Labels {
+		labelRef := "refs/zhi/_/labels/" + label + "/" + issUUID.String()
+		_ = app.Store.DeleteRef(labelRef)
 	}
 
 	// Delete the issue ref.

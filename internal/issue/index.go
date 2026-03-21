@@ -1,5 +1,5 @@
 // ABOUTME: Label index management for fast --label filtering without full issue scans.
-// ABOUTME: BuildLabelIndexes writes refs under refs/zhi/<label>/; LoadLabelIndex reads them back.
+// ABOUTME: BuildLabelIndexes writes refs under refs/zhi/_/labels/<label>/; LoadLabelIndex reads them back.
 package issue
 
 import (
@@ -42,7 +42,7 @@ func ValidateLabelName(label string) error {
 
 // BuildLabelIndexes clears and rebuilds label index refs for all provided issues.
 // For each issue-label pair, a lightweight marker ref is written at
-// refs/zhi/<label>/<issue-uuid> containing the full issue ref path.
+// refs/zhi/_/labels/<label>/<issue-uuid> containing the full issue ref path.
 // Running BuildLabelIndexes twice with the same input is idempotent.
 // Returns an error if any label name is invalid.
 func BuildLabelIndexes(store *storage.Store, issues []*Issue) error {
