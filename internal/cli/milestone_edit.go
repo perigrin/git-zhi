@@ -58,14 +58,18 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 		return runMilestoneResolve(app, ms, w)
 	}
 
-	// Apply --state: only "complete" is supported. Runs all quality gates before
-	// transitioning state to "completed" and persisting the milestone.
+	// Apply --state: "complete" runs quality gates before transitioning,
+	// "reopen" transitions a completed milestone back to open.
 	if cmd.Flags().Changed("state") {
 		stateVal, _ := cmd.Flags().GetString("state")
-		if stateVal != "complete" {
-			return fmt.Errorf("unsupported milestone state %q: only 'complete' is supported", stateVal)
+		switch stateVal {
+		case "complete":
+			return runMilestoneComplete(app, ms, w)
+		case "reopen":
+			return runMilestoneReopen(app, ms, w)
+		default:
+			return fmt.Errorf("unsupported milestone state %q: use 'complete' or 'reopen'", stateVal)
 		}
-		return runMilestoneComplete(app, ms, w)
 	}
 
 	// Apply --due change.
@@ -251,6 +255,30 @@ func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer) error 
 	}
 
 	fmt.Fprintf(w, "%s: state → completed\n", ms.Name)
+	return nil
+}
+
+// runMilestoneReopen transitions a completed milestone back to open state.
+// No quality gates are enforced on reopen. Issues in the milestone retain
+// their current state.
+func runMilestoneReopen(app *App, ms *milestone.Milestone, w io.Writer) error {
+	if ms.State != "completed" {
+		return fmt.Errorf("cannot reopen: milestone is %s, expected completed", ms.State)
+	}
+
+	ms.State = "open"
+	ms.Completed = nil
+
+	data, err := milestone.MarshalMilestone(ms)
+	if err != nil {
+		return fmt.Errorf("marshal milestone: %w", err)
+	}
+	refPath := milestone.RefPrefix + ms.Name
+	if err := app.Store.WriteEntity(refPath, "milestone.yaml", data, "Reopen milestone: "+ms.Name); err != nil {
+		return fmt.Errorf("write milestone: %w", err)
+	}
+
+	fmt.Fprintf(w, "%s: state → open (reopened)\n", ms.Name)
 	return nil
 }
 

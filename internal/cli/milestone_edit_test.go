@@ -396,3 +396,139 @@ func TestIssueEdit_MilestoneLocked(t *testing.T) {
 		t.Errorf("expected 'completed' in error, got: %v", err)
 	}
 }
+
+// TestMilestoneEdit_Reopen verifies that --state reopen transitions a completed
+// milestone back to "open" and clears the Completed timestamp.
+func TestMilestoneEdit_Reopen(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	// Create and complete a milestone.
+	createMilestoneWithResolution(t, app, "release", "echo ok")
+	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+
+	t.Setenv("PATH", "/usr/bin:/bin")
+	if _, err := run("milestone", "edit", "release", "--state", "complete"); err != nil {
+		t.Fatalf("complete milestone: %v", err)
+	}
+
+	// Verify it's completed.
+	ms, err := milestone.LoadMilestone(app.Store, "release")
+	if err != nil {
+		t.Fatalf("LoadMilestone after complete: %v", err)
+	}
+	if ms.State != "completed" {
+		t.Fatalf("expected State 'completed', got %q", ms.State)
+	}
+	if ms.Completed == nil {
+		t.Fatal("expected Completed timestamp to be set")
+	}
+
+	// Reopen it.
+	stdout, err := run("milestone", "edit", "release", "--state", "reopen")
+	if err != nil {
+		t.Fatalf("milestone edit --state reopen failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "reopened") {
+		t.Errorf("expected 'reopened' in output, got: %q", output)
+	}
+
+	// Verify state is "open" and Completed is nil.
+	ms, err = milestone.LoadMilestone(app.Store, "release")
+	if err != nil {
+		t.Fatalf("LoadMilestone after reopen: %v", err)
+	}
+	if ms.State != "open" {
+		t.Errorf("expected State 'open' after reopen, got %q", ms.State)
+	}
+	if ms.Completed != nil {
+		t.Errorf("expected Completed to be nil after reopen, got: %v", ms.Completed)
+	}
+}
+
+// TestMilestoneEdit_Reopen_AlreadyOpen verifies that reopening an already-open
+// milestone returns an error.
+func TestMilestoneEdit_Reopen_AlreadyOpen(t *testing.T) {
+	_, run := setupMilestoneTest(t)
+
+	// v0.1 is created by EnsureInitialized in "open" state.
+	_, err := run("milestone", "edit", "v0.1", "--state", "reopen")
+	if err == nil {
+		t.Fatal("expected error when reopening an open milestone, got nil")
+	}
+	if !strings.Contains(err.Error(), "cannot reopen") {
+		t.Errorf("expected 'cannot reopen' in error, got: %v", err)
+	}
+}
+
+// TestMilestoneEdit_Reopen_IssuesUnchanged verifies that issues in the
+// milestone retain their state after the milestone is reopened.
+func TestMilestoneEdit_Reopen_IssuesUnchanged(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	createMilestoneWithResolution(t, app, "release", "echo ok")
+	doneID := createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+	cancelledID := createTestIssueInMilestoneWithState(t, app, "Cancelled issue", issue.StateCancelled, "release")
+
+	t.Setenv("PATH", "/usr/bin:/bin")
+	if _, err := run("milestone", "edit", "release", "--state", "complete"); err != nil {
+		t.Fatalf("complete milestone: %v", err)
+	}
+
+	// Reopen.
+	if _, err := run("milestone", "edit", "release", "--state", "reopen"); err != nil {
+		t.Fatalf("reopen milestone: %v", err)
+	}
+
+	// Check that issue states are unchanged.
+	issues, err := issue.LoadAllIssues(app.Store)
+	if err != nil {
+		t.Fatalf("LoadAllIssues: %v", err)
+	}
+	for _, iss := range issues {
+		switch iss.ID {
+		case doneID:
+			if iss.State != issue.StateDone {
+				t.Errorf("Done issue state changed to %q after reopen", iss.State)
+			}
+		case cancelledID:
+			if iss.State != issue.StateCancelled {
+				t.Errorf("Cancelled issue state changed to %q after reopen", iss.State)
+			}
+		}
+	}
+}
+
+// TestMilestoneEdit_Reopen_RoundTrip verifies the complete → reopen → complete
+// cycle works and quality gates are re-enforced on the second completion.
+func TestMilestoneEdit_Reopen_RoundTrip(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	createMilestoneWithResolution(t, app, "release", "echo ok")
+	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	// First complete.
+	if _, err := run("milestone", "edit", "release", "--state", "complete"); err != nil {
+		t.Fatalf("first complete: %v", err)
+	}
+
+	// Reopen.
+	if _, err := run("milestone", "edit", "release", "--state", "reopen"); err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+
+	// Add a pending issue — this should block second completion.
+	createTestIssueInMilestoneWithState(t, app, "New pending", issue.StatePending, "release")
+
+	// Second complete should fail (pending issue blocks).
+	_, err := run("milestone", "edit", "release", "--state", "complete")
+	if err == nil {
+		t.Fatal("expected error on second complete with pending issue, got nil")
+	}
+	if !strings.Contains(err.Error(), "New pending") {
+		t.Errorf("expected blocking issue title in error, got: %v", err)
+	}
+}
