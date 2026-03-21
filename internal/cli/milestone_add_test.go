@@ -70,6 +70,32 @@ func TestMilestoneAdd(t *testing.T) {
 	}
 }
 
+func TestMilestoneAdd_InvalidName(t *testing.T) {
+	_, run := setupMilestoneTest(t)
+
+	tests := []struct {
+		name   string
+		input  string
+		errSub string
+	}{
+		{"slash in name", "foo/bar", "'/'"},
+		{"path traversal", "../escape", "'/'"},
+		{"double dot", "foo..bar", "'..'"},
+		{"underscore reserved", "_", "collide"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := run("milestone", "add", tc.input)
+			if err == nil {
+				t.Fatalf("expected error for milestone name %q, got nil", tc.input)
+			}
+			if !strings.Contains(err.Error(), tc.errSub) {
+				t.Errorf("expected %q in error for %q, got: %v", tc.errSub, tc.input, err)
+			}
+		})
+	}
+}
+
 func TestMilestoneAdd_Duplicate(t *testing.T) {
 	_, run := setupMilestoneTest(t)
 

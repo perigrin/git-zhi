@@ -29,6 +29,10 @@ func runMilestoneAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("initialize chain: %w", err)
 	}
 
+	if err := milestone.ValidateMilestoneName(name); err != nil {
+		return err
+	}
+
 	refPath := milestone.RefPrefix + name
 	if app.Store.RefExists(refPath) {
 		return fmt.Errorf("milestone %q already exists", name)

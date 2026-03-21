@@ -13,6 +13,25 @@ import (
 // RefPrefix is the git ref namespace under which all milestones are stored.
 const RefPrefix = "refs/zhi/_/milestones/"
 
+// ValidateMilestoneName checks whether a milestone name is valid for use in
+// ref paths. Returns an error if the name would produce malformed refs, escape
+// the milestone namespace via path traversal, or collide with reserved names.
+func ValidateMilestoneName(name string) error {
+	if name == "" {
+		return fmt.Errorf("milestone name must not be empty")
+	}
+	if name == "_" {
+		return fmt.Errorf("invalid milestone name %q: '_' would collide with the core refs/zhi/_/ namespace", name)
+	}
+	if strings.Contains(name, "/") {
+		return fmt.Errorf("invalid milestone name %q: milestone names must not contain '/'", name)
+	}
+	if strings.Contains(name, "..") {
+		return fmt.Errorf("invalid milestone name %q: milestone names must not contain '..'", name)
+	}
+	return nil
+}
+
 // UnmarshalMilestone deserializes a Milestone from either frontmatter+body
 // format (v0.2) or pure YAML (v0.1). Delegates to Parse for format detection.
 func UnmarshalMilestone(data []byte) (*Milestone, error) {

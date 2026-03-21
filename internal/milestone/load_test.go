@@ -3,6 +3,7 @@
 package milestone_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -136,6 +137,41 @@ func TestLoadAllMilestones(t *testing.T) {
 	}
 	if len(all) != 2 {
 		t.Fatalf("expected 2 milestones, got %d", len(all))
+	}
+}
+
+func TestValidateMilestoneName(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+		errSub  string
+	}{
+		{"valid simple name", "v0.1", false, ""},
+		{"valid hyphenated", "release-2026", false, ""},
+		{"empty name", "", true, "must not be empty"},
+		{"underscore reserved", "_", true, "collide"},
+		{"contains slash", "foo/bar", true, "'/'"},
+		{"path traversal", "..", true, "'..'"},
+		{"embedded traversal", "foo..bar", true, "'..'"},
+		{"traversal prefix", "../etc", true, "'/'"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := milestone.ValidateMilestoneName(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for %q, got nil", tc.input)
+				}
+				if tc.errSub != "" && !strings.Contains(err.Error(), tc.errSub) {
+					t.Errorf("expected %q in error, got: %v", tc.errSub, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("unexpected error for %q: %v", tc.input, err)
+				}
+			}
+		})
 	}
 }
 
