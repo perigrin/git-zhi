@@ -114,6 +114,9 @@ func TestIssueEditBody_EmptyStdin(t *testing.T) {
 	originalBody := iss.Body
 
 	prefix := uuidStr[:8]
+	// Empty stdin triggers the editor path. Set GIT_EDITOR to a no-op so
+	// the test doesn't hang waiting for a TTY (e.g., vi in CI).
+	t.Setenv("GIT_EDITOR", "true")
 	// Empty stdin — body should not change (or error gracefully)
 	_, _, err := runWithStdin(app, "", "issue", "edit", prefix, "--body")
 	// Either succeeds with no change or errors — both acceptable
