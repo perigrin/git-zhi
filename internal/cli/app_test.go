@@ -5,6 +5,8 @@ package cli_test
 import (
 	"context"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -81,6 +83,67 @@ func TestOpenRepo(t *testing.T) {
 	}
 	if app.Store == nil {
 		t.Fatal("expected non-nil Store")
+	}
+}
+
+func TestOpenRepo_WorktreeHEADResolution(t *testing.T) {
+	// Create main repo with a commit so HEAD exists.
+	mainDir := t.TempDir()
+	cmd := exec.Command("git", "init", mainDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %s\n%s", err, out)
+	}
+
+	// Create an initial commit on the default branch.
+	testFile := filepath.Join(mainDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("hello"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	cmd = exec.Command("git", "-C", mainDir, "add", "test.txt")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add failed: %s\n%s", err, out)
+	}
+	cmd = exec.Command("git", "-C", mainDir, "commit", "-m", "initial")
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit failed: %s\n%s", err, out)
+	}
+
+	// Create a feature branch and add a worktree for it.
+	wtDir := filepath.Join(t.TempDir(), "worktree")
+	cmd = exec.Command("git", "-C", mainDir, "worktree", "add", wtDir, "-b", "feature/test-branch")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git worktree add failed: %s\n%s", err, out)
+	}
+
+	// Open the worktree with OpenRepo — this is the code under test.
+	app, err := cli.OpenRepo(wtDir)
+	if err != nil {
+		t.Fatalf("OpenRepo in worktree failed: %v", err)
+	}
+
+	// RepoHEAD must resolve the branch ref that lives in the main repo's
+	// refs/heads/, not in the worktree-local refs directory.
+	head, err := app.Store.RepoHEAD()
+	if err != nil {
+		t.Fatalf("RepoHEAD in worktree failed: %v", err)
+	}
+	if head == "" {
+		t.Fatal("expected non-empty HEAD SHA in worktree")
+	}
+
+	// Verify HEAD matches the commit we made.
+	cmd = exec.Command("git", "-C", wtDir, "rev-parse", "HEAD")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD failed: %s\n%s", err, out)
+	}
+	expected := strings.TrimSpace(string(out))
+	if head != expected {
+		t.Fatalf("RepoHEAD returned %q, expected %q", head, expected)
 	}
 }
 

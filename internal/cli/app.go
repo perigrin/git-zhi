@@ -41,7 +41,8 @@ func GetApp(ctx context.Context) *App {
 // and returns an App with a Store backed by that repo.
 func OpenRepo(dir string) (*App, error) {
 	repo, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{
-		DetectDotGit: true,
+		DetectDotGit:          true,
+		EnableDotGitCommonDir: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open git repository: %w", err)

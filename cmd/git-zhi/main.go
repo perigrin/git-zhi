@@ -83,7 +83,8 @@ func runDocs() {
 	}
 	var repo *git.Repository
 	r, openErr := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{
-		DetectDotGit: true,
+		DetectDotGit:          true,
+		EnableDotGitCommonDir: true,
 	})
 	if openErr == nil {
 		repo = r

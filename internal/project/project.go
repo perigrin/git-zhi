@@ -115,7 +115,8 @@ type repoState struct {
 // openRepoState opens a repo at the given path and loads its issue/milestone state.
 func openRepoState(rd RepoDef) (*repoState, error) {
 	repo, err := git.PlainOpenWithOptions(rd.Path, &git.PlainOpenOptions{
-		DetectDotGit: true,
+		DetectDotGit:          true,
+		EnableDotGitCommonDir: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open repo at %q: %w", rd.Path, err)
