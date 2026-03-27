@@ -913,6 +913,125 @@ func TestIssueEdit_Cancel_ZeroCommits_Unaffected(t *testing.T) {
 	}
 }
 
+// TestIssueEdit_Done_AutoVerify_AllPass verifies that --state done runs
+// auto-verify on acceptance criteria and reports passing results.
+func TestIssueEdit_Done_AutoVerify_AllPass(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	// Create an issue with a body containing AC commands that will pass.
+	iss := &issue.Issue{
+		Title:     "Issue with passing ACs",
+		State:     issue.StatePending,
+		Milestone: "v0.1",
+		Created:   time.Now(),
+		Updated:   time.Now(),
+		Body: "## Acceptance Criteria\n- [ ] `true` always passes\n- [ ] `echo hello` produces output\n",
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	uuidStr := createEditTestIssue(t, app, "placeholder")
+	ref := issue.RefPrefix + uuidStr
+	if err := app.Store.WriteEntity(ref, "issue.md", out, "create with AC"); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+
+	prefix := uuidStr[:8]
+
+	// Start and make a commit so the guard passes.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	makeTestCommit(t, app, "work commit")
+
+	// Mark done — should auto-verify and report passing ACs.
+	stdout, _, err := run("issue", "edit", "--state", "done", prefix)
+	if err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "acceptance criteria verified") {
+		t.Fatalf("expected 'acceptance criteria verified' in output, got: %s", output)
+	}
+}
+
+// TestIssueEdit_Done_AutoVerify_PartialFail verifies that --state done reports
+// a warning when some acceptance criteria fail, but does not block the transition.
+func TestIssueEdit_Done_AutoVerify_PartialFail(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	// Create an issue with one passing and one failing AC.
+	iss := &issue.Issue{
+		Title:     "Issue with mixed ACs",
+		State:     issue.StatePending,
+		Milestone: "v0.1",
+		Created:   time.Now(),
+		Updated:   time.Now(),
+		Body: "## Acceptance Criteria\n- [ ] `true` passes\n- [ ] `false` fails\n",
+	}
+	out, err := issue.Marshal(iss)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	uuidStr := createEditTestIssue(t, app, "placeholder")
+	ref := issue.RefPrefix + uuidStr
+	if err := app.Store.WriteEntity(ref, "issue.md", out, "create with AC"); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+
+	prefix := uuidStr[:8]
+
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	makeTestCommit(t, app, "work commit")
+
+	// Mark done — should succeed but warn about failed ACs.
+	stdout, _, err := run("issue", "edit", "--state", "done", prefix)
+	if err != nil {
+		t.Fatalf("done should succeed even with failed ACs, got: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "could not be verified") {
+		t.Fatalf("expected 'could not be verified' warning in output, got: %s", output)
+	}
+
+	// Verify the issue is actually done (not blocked by failed ACs).
+	data, _ := app.Store.ReadEntity(ref, "issue.md")
+	iss2, _ := issue.Parse(data)
+	if iss2.State != issue.StateDone {
+		t.Fatalf("expected state done despite failed ACs, got %s", iss2.State)
+	}
+}
+
+// TestIssueEdit_Done_AutoVerify_NoACs verifies that --state done skips
+// auto-verify silently when there are no acceptance criteria.
+func TestIssueEdit_Done_AutoVerify_NoACs(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Issue without ACs")
+	prefix := uuidStr[:8]
+
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	makeTestCommit(t, app, "work commit")
+
+	stdout, _, err := run("issue", "edit", "--state", "done", prefix)
+	if err != nil {
+		t.Fatalf("done failed: %v", err)
+	}
+
+	output := stdout.String()
+	// Should not mention verification at all when no ACs exist.
+	if strings.Contains(output, "acceptance criteria") {
+		t.Fatalf("expected no verification output when no ACs, got: %s", output)
+	}
+}
+
 // TestReopenRecordsTransition verifies that --state reopen appends a Transition.
 func TestReopenRecordsTransition(t *testing.T) {
 	app, run := setupEditTestWithAuthor(t, "carol", "carol@example.com")

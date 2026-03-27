@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -277,7 +278,16 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 			return enc.Encode(iss)
 		}
 
-		return printEditResult(cmd, stateAction, uuidStr, iss, currentHEAD)
+		if err := printEditResult(cmd, stateAction, uuidStr, iss, currentHEAD); err != nil {
+			return err
+		}
+
+		// Auto-verify acceptance criteria on done (informational, not blocking).
+		if stateAction == "done" {
+			autoVerifyACs(cmd, app, iss)
+		}
+
+		return nil
 	}
 
 	// For non-state flags: resolve and load the primary issue once, then apply
@@ -674,6 +684,56 @@ func printEditResult(cmd *cobra.Command, action, uuidStr string, iss *issue.Issu
 	}
 
 	return nil
+}
+
+// backtickACRe matches the first backtick-delimited command in a checkbox item.
+var backtickACRe = regexp.MustCompile("`([^`]+)`")
+
+// autoVerifyACs extracts AC commands from the issue body, runs them, and
+// prints an informational summary. Results are advisory — they never block
+// the done transition because runtime context (services, containers) may
+// not be available.
+func autoVerifyACs(cmd *cobra.Command, app *App, iss *issue.Issue) {
+	sections := issue.ParseSections(iss.Body)
+
+	// Collect backtick-delimited commands from all AC items.
+	var cmds []string
+	for _, items := range [][]issue.Checkbox{sections.PositiveScenarios, sections.NegativeScenarios} {
+		for _, item := range items {
+			m := backtickACRe.FindStringSubmatch(item.Text)
+			if m != nil {
+				cmds = append(cmds, m[1])
+			}
+		}
+	}
+	if len(cmds) == 0 {
+		return
+	}
+
+	repoRoot := "."
+	if app.Repo != nil {
+		if wt, err := app.Repo.Worktree(); err == nil {
+			repoRoot = wt.Filesystem.Root()
+		}
+	}
+
+	passed := 0
+	total := len(cmds)
+	for _, c := range cmds {
+		shellCmd := exec.Command("sh", "-c", c)
+		shellCmd.Dir = repoRoot
+		if err := shellCmd.Run(); err == nil {
+			passed++
+		}
+	}
+
+	if passed == total {
+		fmt.Fprintf(cmd.OutOrStdout(), "  %d/%d acceptance criteria verified\n", passed, total)
+	} else {
+		fmt.Fprintf(cmd.OutOrStdout(), "  %d/%d acceptance criteria could not be verified\n",
+			total-passed, total)
+		fmt.Fprintf(cmd.OutOrStdout(), "  marking done anyway -- run 'git zhi verify' to check\n")
+	}
 }
 
 // findLastClosedSession returns the index of the last session that has a non-empty EndSHA.
