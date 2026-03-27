@@ -668,7 +668,9 @@ func TestIssueEdit_Done_NoSession_ObservedPathsEmpty(t *testing.T) {
 	}
 
 	prefix := uuidStr[:8]
-	if _, _, err := run("issue", "edit", "--state", "done", prefix); err != nil {
+	// Use --force because the zero-commit guard would otherwise reject this
+	// transition (no sessions means no commits recorded).
+	if _, _, err := run("issue", "edit", "--state", "done", "--force", prefix); err != nil {
 		t.Fatalf("done failed: %v", err)
 	}
 
@@ -814,6 +816,100 @@ func TestDoneRecordsTransition(t *testing.T) {
 	}
 	if doneTransition.Actor != "human:bob" {
 		t.Fatalf("expected actor 'human:bob', got %q", doneTransition.Actor)
+	}
+}
+
+// TestIssueEdit_Done_ZeroCommits_Rejected verifies that --state done is rejected
+// when the session has zero commits (no work recorded).
+func TestIssueEdit_Done_ZeroCommits_Rejected(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Zero commit done attempt")
+	prefix := uuidStr[:8]
+
+	// Start the issue but make no commits.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	// Attempt to mark done with zero commits — should be rejected.
+	_, _, err := run("issue", "edit", "--state", "done", prefix)
+	if err == nil {
+		t.Fatal("expected error when marking done with zero commits, got nil")
+	}
+	if !strings.Contains(err.Error(), "0 commits") {
+		t.Fatalf("expected '0 commits' in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("expected '--force' in error, got: %v", err)
+	}
+
+	// Verify the issue is still in-progress (transition was rejected).
+	ref := issue.RefPrefix + uuidStr
+	data, _ := app.Store.ReadEntity(ref, "issue.md")
+	iss, _ := issue.Parse(data)
+	if iss.State != issue.StateInProgress {
+		t.Fatalf("expected issue to remain in-progress after rejected done, got %s", iss.State)
+	}
+}
+
+// TestIssueEdit_Done_ZeroCommits_ForceOverride verifies that --force bypasses
+// the zero-commit guard on --state done.
+func TestIssueEdit_Done_ZeroCommits_ForceOverride(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Force done with zero commits")
+	prefix := uuidStr[:8]
+
+	// Start the issue but make no commits.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	// Mark done with --force — should succeed despite zero commits.
+	stdout, _, err := run("issue", "edit", "--state", "done", "--force", prefix)
+	if err != nil {
+		t.Fatalf("done --force failed: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Completed") {
+		t.Fatalf("expected 'Completed' in output, got: %s", output)
+	}
+
+	// Verify the issue is done.
+	ref := issue.RefPrefix + uuidStr
+	data, _ := app.Store.ReadEntity(ref, "issue.md")
+	iss, _ := issue.Parse(data)
+	if iss.State != issue.StateDone {
+		t.Fatalf("expected state done after --force, got %s", iss.State)
+	}
+}
+
+// TestIssueEdit_Cancel_ZeroCommits_Unaffected verifies that --state cancel
+// is not blocked by the zero-commit guard (only done is guarded).
+func TestIssueEdit_Cancel_ZeroCommits_Unaffected(t *testing.T) {
+	app, run := setupEditTest(t)
+
+	uuidStr := createEditTestIssue(t, app, "Cancel with zero commits")
+	prefix := uuidStr[:8]
+
+	// Start the issue but make no commits.
+	if _, _, err := run("issue", "edit", "--state", "start", prefix); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	// Cancel should succeed even with zero commits.
+	_, _, err := run("issue", "edit", "--state", "cancel", prefix)
+	if err != nil {
+		t.Fatalf("cancel with zero commits should succeed, got: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	data, _ := app.Store.ReadEntity(ref, "issue.md")
+	iss, _ := issue.Parse(data)
+	if iss.State != issue.StateCancelled {
+		t.Fatalf("expected state cancelled, got %s", iss.State)
 	}
 }
 

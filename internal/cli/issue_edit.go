@@ -223,6 +223,20 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 			}
 		}
 
+		// Guard: reject --state done when no commits were recorded across
+		// all sessions, unless --force is set. This prevents bulk
+		// reconciliation from silently closing issues without real work.
+		if stateAction == "done" {
+			totalCommits := 0
+			for _, sess := range iss.Sessions {
+				totalCommits += sess.Commits
+			}
+			force, _ := cmd.Flags().GetBool("force")
+			if totalCommits == 0 && !force {
+				return fmt.Errorf("cannot mark done: session has 0 commits (use --force to override)")
+			}
+		}
+
 		// Record a Transition for every state change. Derive the actor from
 		// the Store's git author config so lineage tracking knows who acted.
 		authorName, authorEmail := app.Store.AuthorInfo()
