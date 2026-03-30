@@ -925,7 +925,7 @@ func TestIssueEdit_Done_AutoVerify_AllPass(t *testing.T) {
 		Milestone: "v0.1",
 		Created:   time.Now(),
 		Updated:   time.Now(),
-		Body: "## Acceptance Criteria\n- [ ] `true` always passes\n- [ ] `echo hello` produces output\n",
+		Body: "## Acceptance Criteria\n- [ ] true always passes (`true`)\n- [ ] echo produces output (`echo hello`)\n",
 	}
 	out, err := issue.Marshal(iss)
 	if err != nil {
@@ -969,7 +969,7 @@ func TestIssueEdit_Done_AutoVerify_PartialFail(t *testing.T) {
 		Milestone: "v0.1",
 		Created:   time.Now(),
 		Updated:   time.Now(),
-		Body: "## Acceptance Criteria\n- [ ] `true` passes\n- [ ] `false` fails\n",
+		Body: "## Acceptance Criteria\n- [ ] this passes (`true`)\n- [ ] this fails (`false`)\n",
 	}
 	out, err := issue.Marshal(iss)
 	if err != nil {

@@ -35,7 +35,7 @@ func makeIssue(state issue.State, body string, sessions []issue.Session, transit
 // bodyWithAC constructs an issue body with a simple Acceptance Criteria section
 // containing one executable backtick command.
 func bodyWithAC(command string) string {
-	return "## Acceptance Criteria\n- [ ] run `" + command + "` to verify\n"
+	return "## Acceptance Criteria\n- [ ] run to verify (`" + command + "`)\n"
 }
 
 // bodyWithContextPaths constructs an issue body with a Context section containing paths.
@@ -45,7 +45,7 @@ func bodyWithContextPaths(paths string) string {
 
 // bodyWithACAndContext constructs an issue body with both AC (executable) and Context (paths).
 func bodyWithACAndContext(command, paths string) string {
-	return "## Acceptance Criteria\n- [ ] run `" + command + "` to verify\n\n## Context\n- paths: " + paths + "\n"
+	return "## Acceptance Criteria\n- [ ] run to verify (`" + command + "`)\n\n## Context\n- paths: " + paths + "\n"
 }
 
 func TestVerificationCoverage(t *testing.T) {

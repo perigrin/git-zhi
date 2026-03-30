@@ -22,17 +22,21 @@ type Command struct {
 	IssueTitle string
 }
 
-// backtickRe matches the first backtick-delimited command in a string.
-var backtickRe = regexp.MustCompile("`([^`]+)`")
+// parenBacktickRe matches a backtick-delimited command inside parentheses,
+// typically the last parenthetical on an AC line. This avoids extracting
+// inline code mentions like `.gitignore` that appear outside parentheses.
+// The convention is: "description (`verification command`)"
+var parenBacktickRe = regexp.MustCompile(`\(` + "`([^`]+)`" + `\)`)
 
 // extractFromItems scans checkbox items and returns a Command for each item
-// whose text contains at least one backtick-delimited string. Items without
-// backtick commands are silently skipped. All returned commands carry the
-// given subsection tag, issueID, and issueTitle.
+// whose text contains a backtick-delimited string inside parentheses. Inline
+// backtick code outside parentheses is ignored — only parenthetical commands
+// are treated as verification commands. All returned commands carry the given
+// subsection tag, issueID, and issueTitle.
 func extractFromItems(items []issue.Checkbox, subsection string, issueID uuid.UUID, issueTitle string) []Command {
 	var cmds []Command
 	for _, item := range items {
-		m := backtickRe.FindStringSubmatch(item.Text)
+		m := parenBacktickRe.FindStringSubmatch(item.Text)
 		if m == nil {
 			continue
 		}

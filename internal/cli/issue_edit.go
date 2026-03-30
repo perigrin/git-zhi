@@ -686,8 +686,10 @@ func printEditResult(cmd *cobra.Command, action, uuidStr string, iss *issue.Issu
 	return nil
 }
 
-// backtickACRe matches the first backtick-delimited command in a checkbox item.
-var backtickACRe = regexp.MustCompile("`([^`]+)`")
+// backtickACRe matches a backtick-delimited command inside parentheses.
+// Only parenthetical commands are verification commands; inline backtick code
+// like `.gitignore` outside parentheses is ignored.
+var backtickACRe = regexp.MustCompile(`\(` + "`([^`]+)`" + `\)`)
 
 // autoVerifyACs extracts AC commands from the issue body, runs them, and
 // prints an informational summary. Results are advisory — they never block

@@ -126,6 +126,60 @@ func TestExtractCommands_SkipsItemsWithoutBackticks(t *testing.T) {
 	}
 }
 
+func TestExtractCommands_InlineCodeIgnored(t *testing.T) {
+	// Inline backtick code outside parentheses should NOT be extracted.
+	// Only backtick content inside parentheses is a verification command.
+	body := "## Acceptance Criteria\n\n" +
+		"- [ ] `.gitignore` exists at repo root (`test -f .gitignore`)\n" +
+		"- [ ] `.claude-plugin/` directory is present (`test -d .claude-plugin`)\n"
+
+	sections := issue.ParseSections(body)
+	id := issueID(t)
+	cmds := verify.ExtractCommands(sections, id, "Inline Code Issue")
+
+	if len(cmds) != 2 {
+		t.Fatalf("expected 2 commands (only paren commands), got %d: %v", len(cmds), cmds)
+	}
+	if cmds[0].Text != "test -f .gitignore" {
+		t.Errorf("cmds[0].Text = %q, want %q", cmds[0].Text, "test -f .gitignore")
+	}
+	if cmds[1].Text != "test -d .claude-plugin" {
+		t.Errorf("cmds[1].Text = %q, want %q", cmds[1].Text, "test -d .claude-plugin")
+	}
+}
+
+func TestExtractCommands_CommandOnlyNoParen(t *testing.T) {
+	// AC line with just a bare backtick command (no parens) should NOT be extracted
+	// since we can't distinguish it from inline code.
+	body := "## Acceptance Criteria\n\n" +
+		"- [ ] `test -f README.md`\n"
+
+	sections := issue.ParseSections(body)
+	id := issueID(t)
+	cmds := verify.ExtractCommands(sections, id, "Bare Command Issue")
+
+	if len(cmds) != 0 {
+		t.Fatalf("expected 0 commands (bare backtick without parens), got %d: %v", len(cmds), cmds)
+	}
+}
+
+func TestExtractCommands_MixedInlineAndCommand(t *testing.T) {
+	// Multiple inline code mentions plus one paren command — only the paren command extracted.
+	body := "## Acceptance Criteria\n\n" +
+		"- [ ] The `system-reminder` tag in `CLAUDE.md` is `installed: false` when missing (`grep -q 'installed.*false' out.json`)\n"
+
+	sections := issue.ParseSections(body)
+	id := issueID(t)
+	cmds := verify.ExtractCommands(sections, id, "Mixed Issue")
+
+	if len(cmds) != 1 {
+		t.Fatalf("expected 1 command, got %d: %v", len(cmds), cmds)
+	}
+	if cmds[0].Text != "grep -q 'installed.*false' out.json" {
+		t.Errorf("cmds[0].Text = %q, want %q", cmds[0].Text, "grep -q 'installed.*false' out.json")
+	}
+}
+
 func TestExtractCommands_EmptySections(t *testing.T) {
 	sections := issue.ParseSections("")
 	id := issueID(t)
