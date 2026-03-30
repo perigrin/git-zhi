@@ -29,6 +29,41 @@ func ValidateMilestoneName(name string) error {
 	if strings.Contains(name, "..") {
 		return fmt.Errorf("invalid milestone name %q: milestone names must not contain '..'", name)
 	}
+	// Validate against git ref format rules (git-check-ref-format). Milestone
+	// names become the final component of refs/zhi/_/milestones/<name>, so
+	// they must not contain characters that git forbids in ref names.
+	if err := validateGitRefComponent(name); err != nil {
+		return fmt.Errorf("invalid milestone name %q: invalid git ref: %s", name, err)
+	}
+	return nil
+}
+
+// validateGitRefComponent checks a single ref path component against the rules
+// from git-check-ref-format(1). This is not a full ref path check — it only
+// validates one component (no slashes expected).
+func validateGitRefComponent(name string) error {
+	if strings.HasPrefix(name, ".") {
+		return fmt.Errorf("must not start with '.'")
+	}
+	if strings.HasSuffix(name, ".") {
+		return fmt.Errorf("must not end with '.'")
+	}
+	if strings.HasSuffix(name, ".lock") {
+		return fmt.Errorf("must not end with '.lock'")
+	}
+	for _, c := range name {
+		// Control characters (< 0x20) and DEL (0x7f)
+		if c < 0x20 || c == 0x7f {
+			return fmt.Errorf("must not contain control characters")
+		}
+		// Characters forbidden by git-check-ref-format
+		switch c {
+		case ' ', '~', '^', ':', '?', '*', '[', '\\':
+			return fmt.Errorf("must not contain '%c'", c)
+		case '&':
+			return fmt.Errorf("must not contain '&'")
+		}
+	}
 	return nil
 }
 

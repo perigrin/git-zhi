@@ -155,6 +155,21 @@ func TestValidateMilestoneName(t *testing.T) {
 		{"path traversal", "..", true, "'..'"},
 		{"embedded traversal", "foo..bar", true, "'..'"},
 		{"traversal prefix", "../etc", true, "'/'"},
+		{"contains space", "Controller Integration", true, "invalid git ref"},
+		{"contains ampersand", "Controller&Integration", true, "invalid git ref"},
+		{"contains colon", "foo:bar", true, "invalid git ref"},
+		{"contains backslash", "foo\\bar", true, "invalid git ref"},
+		{"contains tilde", "foo~1", true, "invalid git ref"},
+		{"contains caret", "foo^bar", true, "invalid git ref"},
+		{"contains question mark", "foo?bar", true, "invalid git ref"},
+		{"contains asterisk", "foo*bar", true, "invalid git ref"},
+		{"contains open bracket", "foo[bar", true, "invalid git ref"},
+		{"starts with dot", ".hidden", true, "invalid git ref"},
+		{"ends with dot", "foo.", true, "invalid git ref"},
+		{"ends with .lock", "foo.lock", true, "invalid git ref"},
+		{"contains control char", "foo\x01bar", true, "invalid git ref"},
+		{"valid with dots", "v0.3.7", false, ""},
+		{"valid with underscores", "my_milestone", false, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
