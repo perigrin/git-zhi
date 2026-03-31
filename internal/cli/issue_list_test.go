@@ -164,6 +164,28 @@ func TestIssueList_FilterMilestone(t *testing.T) {
 	_ = id2
 }
 
+// TestIssueList_StateAll verifies that --state all shows all issues, equivalent to --all.
+func TestIssueList_StateAll(t *testing.T) {
+	app, run := setupListTest(t)
+
+	createTestIssue(t, app, "Alpha", issue.StatePending, "")
+	createTestIssue(t, app, "Beta", issue.StateInProgress, "")
+	createTestIssue(t, app, "Gamma", issue.StateDone, "")
+	createTestIssue(t, app, "Delta", issue.StateCancelled, "")
+
+	stdout, err := run("issue", "list", "--state", "all")
+	if err != nil {
+		t.Fatalf("issue list --state all failed: %v", err)
+	}
+
+	output := stdout.String()
+	for _, name := range []string{"Alpha", "Beta", "Gamma", "Delta"} {
+		if !strings.Contains(output, name) {
+			t.Errorf("expected %q in --state all output, got:\n%s", name, output)
+		}
+	}
+}
+
 // TestIssueList_FilterState creates pending and in-progress issues and verifies
 // that --state pending shows only pending issues.
 func TestIssueList_FilterState(t *testing.T) {

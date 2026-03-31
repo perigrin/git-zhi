@@ -36,6 +36,12 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 	labelFilter, _ := cmd.Flags().GetString("label")
 	assignedFilter, _ := cmd.Flags().GetString("assigned")
 
+	// Treat --state all as equivalent to --all.
+	if stateFilter == "all" {
+		includeAll = true
+		stateFilter = ""
+	}
+
 	// Validate --state flag against known states.
 	validStates := []string{
 		string(issue.StatePending),
@@ -52,7 +58,7 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if !valid {
-			return fmt.Errorf("invalid --state %q: valid states are %s", stateFilter, strings.Join(validStates, ", "))
+			return fmt.Errorf("invalid --state %q: valid states are %s, all", stateFilter, strings.Join(validStates, ", "))
 		}
 	}
 
