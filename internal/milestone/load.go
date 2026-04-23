@@ -33,9 +33,48 @@ func ValidateMilestoneName(name string) error {
 	// names become the final component of refs/zhi/_/milestones/<name>, so
 	// they must not contain characters that git forbids in ref names.
 	if err := validateGitRefComponent(name); err != nil {
+		suggestion := suggestAlternative(name)
+		if suggestion != "" {
+			return fmt.Errorf("invalid milestone name %q: invalid git ref: %s (try %q instead)", name, err, suggestion)
+		}
 		return fmt.Errorf("invalid milestone name %q: invalid git ref: %s", name, err)
 	}
 	return nil
+}
+
+// suggestAlternative produces a valid milestone name derived from an invalid
+// one by replacing each forbidden character (or run of them) with '-',
+// stripping leading/trailing dots, and dropping a trailing ".lock" suffix.
+// Returns "" if no usable alternative can be constructed.
+func suggestAlternative(name string) string {
+	var b strings.Builder
+	prevHyphen := false
+	for _, c := range name {
+		valid := true
+		if c < 0x20 || c == 0x7f {
+			valid = false
+		} else {
+			switch c {
+			case ' ', '~', '^', ':', '?', '*', '[', '\\', '&':
+				valid = false
+			}
+		}
+		if valid {
+			b.WriteRune(c)
+			prevHyphen = false
+		} else if !prevHyphen {
+			b.WriteRune('-')
+			prevHyphen = true
+		}
+	}
+	s := b.String()
+	s = strings.Trim(s, "-.")
+	s = strings.TrimSuffix(s, ".lock")
+	s = strings.Trim(s, "-.")
+	if s == "" || s == "_" {
+		return ""
+	}
+	return s
 }
 
 // validateGitRefComponent checks a single ref path component against the rules

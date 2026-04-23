@@ -190,6 +190,38 @@ func TestValidateMilestoneName(t *testing.T) {
 	}
 }
 
+func TestValidateMilestoneName_SuggestsAlternative(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantSuggest string
+	}{
+		{"space becomes hyphen", "Controller Integration", "Controller-Integration"},
+		{"ampersand becomes hyphen", "Controller&Integration", "Controller-Integration"},
+		{"mixed invalid chars collapse", "Controller & Integration", "Controller-Integration"},
+		{"leading dot stripped", ".hidden", "hidden"},
+		{"trailing dot stripped", "foo.", "foo"},
+		{".lock suffix stripped", "foo.lock", "foo"},
+		{"colon becomes hyphen", "foo:bar", "foo-bar"},
+		{"multiple invalids collapse", "foo~~^bar", "foo-bar"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := milestone.ValidateMilestoneName(tc.input)
+			if err == nil {
+				t.Fatalf("expected error for %q, got nil", tc.input)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, tc.wantSuggest) {
+				t.Errorf("expected suggestion %q in error, got: %v", tc.wantSuggest, err)
+			}
+			if !strings.Contains(msg, "try") {
+				t.Errorf("expected 'try' hint in error, got: %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadAllMilestones_Empty(t *testing.T) {
 	store := initMilestoneTestStore(t)
 
