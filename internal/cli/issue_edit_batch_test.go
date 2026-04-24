@@ -473,6 +473,81 @@ func TestIssueEditBatch_Title(t *testing.T) {
 	}
 }
 
+// TestIssueEditBatch_FlatFieldsRejected verifies that a JSON line with update
+// fields as siblings of issue_id (instead of nested under "fields") is
+// rejected with a parse error rather than silently succeeding as a no-op.
+// Regression test for the silent title-drop bug where callers sent
+// {"issue_id":"...","title":"..."} and saw "ok" while nothing was written.
+func TestIssueEditBatch_FlatFieldsRejected(t *testing.T) {
+	app, _ := setupEditTest(t)
+
+	id := createEditTestIssue(t, app, "Original Title")
+
+	batchInput := fmt.Sprintf(
+		`{"issue_id": "%s", "title": "Renamed via flat JSON"}`,
+		id,
+	)
+
+	stdout, _, err := runWithStdin(app, batchInput, "issue", "edit", "--batch")
+	if err != nil {
+		t.Fatalf("issue edit --batch returned unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	lines := nonEmptyLines(out)
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 result line, got %d:\n%s", len(lines), out)
+	}
+	if !strings.Contains(lines[0], "error") {
+		t.Errorf("expected 'error' for flat JSON, got: %s", lines[0])
+	}
+
+	// The issue title must not have been changed.
+	ref := issue.RefPrefix + id
+	data, err := app.Store.ReadEntity(ref, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	iss, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if iss.Title != "Original Title" {
+		t.Errorf("title should be unchanged after rejected op, got %q", iss.Title)
+	}
+}
+
+// TestIssueEditBatch_EmptyFieldsRejected verifies that a batch op with no
+// update fields (either an empty "fields" object or the key omitted) returns
+// a per-line error rather than silently succeeding.
+func TestIssueEditBatch_EmptyFieldsRejected(t *testing.T) {
+	app, _ := setupEditTest(t)
+
+	id := createEditTestIssue(t, app, "Unchanged issue")
+
+	batchInput := fmt.Sprintf(
+		`{"issue_id": "%s", "fields": {}}`+"\n"+
+			`{"issue_id": "%s"}`,
+		id, id,
+	)
+
+	stdout, _, err := runWithStdin(app, batchInput, "issue", "edit", "--batch")
+	if err != nil {
+		t.Fatalf("issue edit --batch returned unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	lines := nonEmptyLines(out)
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 result lines, got %d:\n%s", len(lines), out)
+	}
+	for i, line := range lines {
+		if !strings.Contains(line, "error") {
+			t.Errorf("line %d: expected 'error' for empty fields, got: %s", i+1, line)
+		}
+	}
+}
+
 // nonEmptyLines splits a string into lines, dropping blank ones.
 func nonEmptyLines(s string) []string {
 	var out []string

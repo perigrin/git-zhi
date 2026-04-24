@@ -1304,7 +1304,9 @@ func runIssueEditBatch(cmd *cobra.Command, app *App) error {
 		lineNum++
 
 		var op batchOp
-		if err := json.Unmarshal([]byte(line), &op); err != nil {
+		dec := json.NewDecoder(strings.NewReader(line))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&op); err != nil {
 			fmt.Fprintf(cmd.OutOrStdout(), "%d error: parse JSON: %v\n", lineNum, err)
 			continue
 		}
@@ -1329,6 +1331,9 @@ func runIssueEditBatch(cmd *cobra.Command, app *App) error {
 func applyBatchOp(app *App, op batchOp) error {
 	if op.IssueID == "" {
 		return fmt.Errorf("issue_id is required")
+	}
+	if len(op.Fields) == 0 {
+		return fmt.Errorf("fields is required (object with at least one update)")
 	}
 
 	refPath, err := resolve.ResolveRef(app.Store, op.IssueID)
