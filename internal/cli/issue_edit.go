@@ -811,6 +811,9 @@ func runIssueEditSplit(cmd *cobra.Command, app *App, refInput string) error {
 		if parseErr != nil {
 			return fmt.Errorf("parse block %d: %w", i+1, parseErr)
 		}
+		if strings.TrimSpace(b.Title) == "" {
+			return fmt.Errorf("block %d: title is required", i+1)
+		}
 		parsed[i] = parsedBlock{iss: b}
 	}
 
