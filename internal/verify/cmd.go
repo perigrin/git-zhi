@@ -29,13 +29,24 @@ type JSONResultEntry struct {
 	Stderr     string `json:"stderr"`
 }
 
+// JSONUnverifiableEntry is a single AC item that carried backtick text but
+// produced no parenthesized verification command.
+type JSONUnverifiableEntry struct {
+	IssueID    string `json:"issue_id"`
+	IssueTitle string `json:"issue_title"`
+	Subsection string `json:"subsection"`
+	Item       string `json:"item"`
+}
+
 // JSONReport is the top-level JSON output structure for --format json.
 type JSONReport struct {
-	Milestone string            `json:"milestone"`
-	Total     int               `json:"total"`
-	Passed    int               `json:"passed"`
-	Failed    int               `json:"failed"`
-	Results   []JSONResultEntry `json:"results"`
+	Milestone         string                  `json:"milestone"`
+	Total             int                     `json:"total"`
+	Passed            int                     `json:"passed"`
+	Failed            int                     `json:"failed"`
+	Unverifiable      int                     `json:"unverifiable"`
+	Results           []JSONResultEntry       `json:"results"`
+	UnverifiableItems []JSONUnverifiableEntry `json:"unverifiable_items"`
 }
 
 // NewVerifyCommand creates and returns the top-level verify Cobra command.
@@ -105,15 +116,17 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 
 			// Execute each issue's commands in priority order, collecting results.
 			var jsonResults []JSONResultEntry
+			var jsonUnverifiable []JSONUnverifiableEntry
 			totalCount := 0
 			passedCount := 0
 			failedCount := 0
+			unverifiableCount := 0
 			earlyStop := false
 
 			for _, iss := range prioritized {
 				sections := issue.ParseSections(iss.Body)
-				cmds := ExtractCommands(sections, iss.ID, iss.Title)
-				if len(cmds) == 0 {
+				cmds, dropped := ExtractCommands(sections, iss.ID, iss.Title)
+				if len(cmds) == 0 && len(dropped) == 0 {
 					continue
 				}
 
@@ -243,6 +256,29 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 				if earlyStop {
 					break
 				}
+
+				// Report dropped AC commands: backtick text that yielded no
+				// parenthesized command. These run nothing, so they fail the gate
+				// as a category distinct from regressions.
+				if len(dropped) > 0 && !dryRun && format != "json" {
+					fmt.Fprintf(cmd.OutOrStdout(), "  Unverifiable:\n")
+				}
+				for _, d := range dropped {
+					unverifiableCount++
+					if dryRun {
+						fmt.Fprintf(cmd.OutOrStdout(), "[dry-run] %s  %s  unverifiable: %s\n", iss.Title, d.Subsection, d.Text)
+						continue
+					}
+					if format != "json" {
+						fmt.Fprintf(cmd.OutOrStdout(), "    ⚠ %s          ← no (`command`) form\n", d.Text)
+					}
+					jsonUnverifiable = append(jsonUnverifiable, JSONUnverifiableEntry{
+						IssueID:    d.IssueID.String(),
+						IssueTitle: d.IssueTitle,
+						Subsection: d.Subsection,
+						Item:       d.Text,
+					})
+				}
 			}
 
 			// If dry-run, nothing to summarize.
@@ -254,12 +290,17 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 				if jsonResults == nil {
 					jsonResults = []JSONResultEntry{}
 				}
+				if jsonUnverifiable == nil {
+					jsonUnverifiable = []JSONUnverifiableEntry{}
+				}
 				report := JSONReport{
-					Milestone: milestoneName,
-					Total:     totalCount,
-					Passed:    passedCount,
-					Failed:    failedCount,
-					Results:   jsonResults,
+					Milestone:         milestoneName,
+					Total:             totalCount,
+					Passed:            passedCount,
+					Failed:            failedCount,
+					Unverifiable:      unverifiableCount,
+					Results:           jsonResults,
+					UnverifiableItems: jsonUnverifiable,
 				}
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
@@ -270,13 +311,17 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 				// Human-readable summary.
 				fmt.Fprintf(cmd.OutOrStdout(), "\n%s: %d/%d acceptance criteria passing\n",
 					milestoneName, passedCount, totalCount)
+				if unverifiableCount > 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "      %d unverifiable acceptance criterion(s)\n", unverifiableCount)
+				}
 				if failedCount > 0 {
 					fmt.Fprintf(cmd.OutOrStdout(), "      %d regression(s) detected\n", failedCount)
 				}
 			}
 
-			if failedCount > 0 {
-				return fmt.Errorf("%d regression(s) detected in milestone %s", failedCount, milestoneName)
+			if failedCount > 0 || unverifiableCount > 0 {
+				return fmt.Errorf("milestone %s: %d regression(s), %d unverifiable acceptance criterion(s)",
+					milestoneName, failedCount, unverifiableCount)
 			}
 			return nil
 		},

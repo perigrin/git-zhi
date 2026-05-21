@@ -31,7 +31,7 @@ func VerificationCoverage(issues []*issue.Issue) float64 {
 	var covered int
 	for _, iss := range issues {
 		sections := issue.ParseSections(iss.Body)
-		cmds := verify.ExtractCommands(sections, uuid.UUID{}, "")
+		cmds, _ := verify.ExtractCommands(sections, uuid.UUID{}, "")
 		if len(cmds) > 0 {
 			covered++
 		}
@@ -183,7 +183,7 @@ func isMetricallyComplete(iss *issue.Issue) bool {
 		return false
 	}
 	sections := issue.ParseSections(iss.Body)
-	cmds := verify.ExtractCommands(sections, uuid.UUID{}, "")
+	cmds, _ := verify.ExtractCommands(sections, uuid.UUID{}, "")
 	if len(cmds) == 0 {
 		return false
 	}

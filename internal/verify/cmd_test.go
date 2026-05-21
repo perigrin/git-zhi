@@ -341,6 +341,100 @@ func TestVerifyCLI_PositiveNegativeSubsections(t *testing.T) {
 	}
 }
 
+// TestVerifyCLI_DroppedACFailsGate reproduces git-zhi#3: a done issue whose AC
+// command is written in the colon form (not the (`...`) convention) must make
+// verify exit non-zero and report the item as unverifiable, instead of silently
+// reporting 0/0 and exiting 0.
+func TestVerifyCLI_DroppedACFailsGate(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] greet works: `bash test.sh`\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for a dropped AC command, got nil\noutput:\n%s", stdout)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "unverifiable") {
+		t.Errorf("expected 'unverifiable' in output, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_DroppedACReportedSeparately verifies a dropped AC command is not
+// counted as a regression: a clean passing command alongside it still shows the
+// dropped item as unverifiable, distinct from any regression count.
+func TestVerifyCLI_DroppedACReportedSeparately(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n" +
+		"- [ ] echo works (`echo hello`)\n" +
+		"- [ ] greet works: `bash test.sh`\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err == nil {
+		t.Fatalf("expected non-zero exit, got nil\noutput:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "regression") {
+		t.Errorf("dropped AC should not be reported as a regression, got:\n%s", stdout)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "unverifiable") {
+		t.Errorf("expected 'unverifiable' in output, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_DroppedACJSON verifies the JSON report surfaces dropped AC
+// commands in dedicated fields and still exits non-zero.
+func TestVerifyCLI_DroppedACJSON(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] greet works: `bash test.sh`\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1", "--format", "json")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for dropped AC in JSON mode, got nil\noutput:\n%s", stdout)
+	}
+
+	var out verify.JSONReport
+	if e := json.Unmarshal([]byte(stdout), &out); e != nil {
+		t.Fatalf("failed to parse JSON output: %v\noutput was:\n%s", e, stdout)
+	}
+	if out.Unverifiable != 1 {
+		t.Errorf("Unverifiable = %d, want 1", out.Unverifiable)
+	}
+	if len(out.UnverifiableItems) != 1 {
+		t.Fatalf("UnverifiableItems len = %d, want 1", len(out.UnverifiableItems))
+	}
+	if !strings.Contains(out.UnverifiableItems[0].Item, "bash test.sh") {
+		t.Errorf("UnverifiableItems[0].Item = %q, want it to contain the AC item text", out.UnverifiableItems[0].Item)
+	}
+}
+
 // TestVerifyCLI_Timeout verifies --timeout is accepted.
 func TestVerifyCLI_Timeout(t *testing.T) {
 	app, run := setupVerifyTest(t)
