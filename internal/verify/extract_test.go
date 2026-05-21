@@ -3,6 +3,7 @@
 package verify_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gofrs/uuid/v5"
@@ -33,7 +34,7 @@ func TestExtractCommands_PositiveAndNegative(t *testing.T) {
 
 	sections := issue.ParseSections(body)
 	id := issueID(t)
-	cmds := verify.ExtractCommands(sections, id, "My Issue")
+	cmds, _ := verify.ExtractCommands(sections, id, "My Issue")
 
 	if len(cmds) != 4 {
 		t.Fatalf("expected 4 commands, got %d", len(cmds))
@@ -85,7 +86,7 @@ func TestExtractCommands_FlatListTaggedPositive(t *testing.T) {
 
 	sections := issue.ParseSections(body)
 	id := issueID(t)
-	cmds := verify.ExtractCommands(sections, id, "Flat Issue")
+	cmds, _ := verify.ExtractCommands(sections, id, "Flat Issue")
 
 	if len(cmds) != 2 {
 		t.Fatalf("expected 2 commands for flat AC list, got %d", len(cmds))
@@ -112,7 +113,7 @@ func TestExtractCommands_SkipsItemsWithoutBackticks(t *testing.T) {
 
 	sections := issue.ParseSections(body)
 	id := issueID(t)
-	cmds := verify.ExtractCommands(sections, id, "Skip Issue")
+	cmds, _ := verify.ExtractCommands(sections, id, "Skip Issue")
 
 	// Only 2 commands: the item without backticks is silently skipped
 	if len(cmds) != 2 {
@@ -135,7 +136,7 @@ func TestExtractCommands_InlineCodeIgnored(t *testing.T) {
 
 	sections := issue.ParseSections(body)
 	id := issueID(t)
-	cmds := verify.ExtractCommands(sections, id, "Inline Code Issue")
+	cmds, _ := verify.ExtractCommands(sections, id, "Inline Code Issue")
 
 	if len(cmds) != 2 {
 		t.Fatalf("expected 2 commands (only paren commands), got %d: %v", len(cmds), cmds)
@@ -149,17 +150,21 @@ func TestExtractCommands_InlineCodeIgnored(t *testing.T) {
 }
 
 func TestExtractCommands_CommandOnlyNoParen(t *testing.T) {
-	// AC line with just a bare backtick command (no parens) should NOT be extracted
-	// since we can't distinguish it from inline code.
+	// AC line with just a bare backtick command (no parens) is NOT extracted as a
+	// command, but it IS reported as dropped: it contains backtick text that
+	// yielded no parenthesized command, so the gate must not silently pass it.
 	body := "## Acceptance Criteria\n\n" +
 		"- [ ] `test -f README.md`\n"
 
 	sections := issue.ParseSections(body)
 	id := issueID(t)
-	cmds := verify.ExtractCommands(sections, id, "Bare Command Issue")
+	cmds, dropped := verify.ExtractCommands(sections, id, "Bare Command Issue")
 
 	if len(cmds) != 0 {
 		t.Fatalf("expected 0 commands (bare backtick without parens), got %d: %v", len(cmds), cmds)
+	}
+	if len(dropped) != 1 {
+		t.Fatalf("expected 1 dropped item (bare backtick yields no paren command), got %d: %v", len(dropped), dropped)
 	}
 }
 
@@ -170,7 +175,7 @@ func TestExtractCommands_MixedInlineAndCommand(t *testing.T) {
 
 	sections := issue.ParseSections(body)
 	id := issueID(t)
-	cmds := verify.ExtractCommands(sections, id, "Mixed Issue")
+	cmds, _ := verify.ExtractCommands(sections, id, "Mixed Issue")
 
 	if len(cmds) != 1 {
 		t.Fatalf("expected 1 command, got %d: %v", len(cmds), cmds)
@@ -183,9 +188,71 @@ func TestExtractCommands_MixedInlineAndCommand(t *testing.T) {
 func TestExtractCommands_EmptySections(t *testing.T) {
 	sections := issue.ParseSections("")
 	id := issueID(t)
-	cmds := verify.ExtractCommands(sections, id, "Empty Issue")
+	cmds, dropped := verify.ExtractCommands(sections, id, "Empty Issue")
 
 	if len(cmds) != 0 {
 		t.Fatalf("expected 0 commands from empty sections, got %d", len(cmds))
+	}
+	if len(dropped) != 0 {
+		t.Fatalf("expected 0 dropped from empty sections, got %d", len(dropped))
+	}
+}
+
+func TestExtractCommands_DropsColonFormCommand(t *testing.T) {
+	// A backtick command in the colon form "desc: `cmd`" is not parenthesized, so
+	// it yields no command — but it must be reported as dropped, not silently
+	// ignored. This is the git-zhi#3 false-green case.
+	body := "## Acceptance Criteria\n\n" +
+		"- [ ] greet works: `bash test.sh`\n"
+
+	sections := issue.ParseSections(body)
+	id := issueID(t)
+	cmds, dropped := verify.ExtractCommands(sections, id, "Colon Form Issue")
+
+	if len(cmds) != 0 {
+		t.Fatalf("expected 0 commands (colon form, no parens), got %d: %v", len(cmds), cmds)
+	}
+	if len(dropped) != 1 {
+		t.Fatalf("expected 1 dropped item, got %d: %v", len(dropped), dropped)
+	}
+	if dropped[0].Subsection != "positive" {
+		t.Errorf("dropped[0].Subsection = %q, want %q", dropped[0].Subsection, "positive")
+	}
+	if dropped[0].IssueID != id {
+		t.Errorf("dropped[0].IssueID = %v, want %v", dropped[0].IssueID, id)
+	}
+	if dropped[0].IssueTitle != "Colon Form Issue" {
+		t.Errorf("dropped[0].IssueTitle = %q, want %q", dropped[0].IssueTitle, "Colon Form Issue")
+	}
+	if !strings.Contains(dropped[0].Text, "bash test.sh") {
+		t.Errorf("dropped[0].Text = %q, want it to contain the AC item text", dropped[0].Text)
+	}
+}
+
+func TestExtractCommands_ParenCommandNotDropped(t *testing.T) {
+	// A well-formed parenthesized command extracts cleanly and is never dropped.
+	body := "## Acceptance Criteria\n\n- [ ] echo works (`echo hi`)\n"
+
+	sections := issue.ParseSections(body)
+	cmds, dropped := verify.ExtractCommands(sections, issueID(t), "OK Issue")
+
+	if len(cmds) != 1 {
+		t.Fatalf("expected 1 command, got %d: %v", len(cmds), cmds)
+	}
+	if len(dropped) != 0 {
+		t.Fatalf("expected 0 dropped, got %d: %v", len(dropped), dropped)
+	}
+}
+
+func TestExtractCommands_ProseOnlyNotDropped(t *testing.T) {
+	// An AC item with no backtick text at all is genuinely prose — not a dropped
+	// command. It is skipped silently, never flagged.
+	body := "## Acceptance Criteria\n\n- [ ] this item has no command\n"
+
+	sections := issue.ParseSections(body)
+	cmds, dropped := verify.ExtractCommands(sections, issueID(t), "Prose Issue")
+
+	if len(cmds) != 0 || len(dropped) != 0 {
+		t.Fatalf("prose-only AC: expected 0 cmds / 0 dropped, got %d / %d", len(cmds), len(dropped))
 	}
 }
