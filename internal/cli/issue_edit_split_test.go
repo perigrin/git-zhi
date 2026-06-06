@@ -269,3 +269,133 @@ Replaced body.
 		t.Fatalf("expected no Blocks after single-block split, got %v", updIss.Blocks)
 	}
 }
+
+// TestIssueEdit_Split_RejectsEmptyTitleSingleBlock verifies that a single-block
+// split with no title in the stdin frontmatter is rejected and the original
+// issue's title is preserved. Regression test for the silent title-wipe bug
+// where callers piped body-only content and saw the title replaced with "".
+func TestIssueEdit_Split_RejectsEmptyTitleSingleBlock(t *testing.T) {
+	app, run := setupSplitTest(t)
+
+	id, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("uuid.NewV7: %v", err)
+	}
+	now := time.Now()
+	orig := &issue.Issue{
+		ID:        id,
+		Title:     "Original title must survive",
+		State:     issue.StatePending,
+		Milestone: "v0.1",
+		Created:   now,
+		Updated:   now,
+		Body:      "Original body.",
+	}
+	data, err := issue.Marshal(orig)
+	if err != nil {
+		t.Fatalf("issue.Marshal: %v", err)
+	}
+	refPath := issue.RefPrefix + id.String()
+	if err := app.Store.WriteEntity(refPath, "issue.md", data, "Add test issue"); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+
+	// Body-only stdin with frontmatter that has no title field.
+	stdin := `---
+---
+
+Only a body, no title.
+`
+
+	_, _, err = run(stdin, "issue", "edit", id.String(), "--split")
+	if err == nil {
+		t.Fatal("expected error for missing title, got nil")
+	}
+	if !strings.Contains(err.Error(), "title is required") {
+		t.Errorf("expected 'title is required' in error, got: %v", err)
+	}
+
+	// Original issue must be unchanged.
+	updData, readErr := app.Store.ReadEntity(refPath, "issue.md")
+	if readErr != nil {
+		t.Fatalf("ReadEntity: %v", readErr)
+	}
+	updIss, parseErr := issue.Parse(updData)
+	if parseErr != nil {
+		t.Fatalf("Parse: %v", parseErr)
+	}
+	if updIss.Title != "Original title must survive" {
+		t.Errorf("title should be unchanged after rejected split, got %q", updIss.Title)
+	}
+	if !strings.Contains(updIss.Body, "Original body") {
+		t.Errorf("body should be unchanged after rejected split, got %q", updIss.Body)
+	}
+}
+
+// TestIssueEdit_Split_RejectsEmptyTitleMultiBlock verifies that a multi-block
+// split is rejected if any block lacks a title, and the original issue plus
+// any to-be-created blocks remain unwritten (atomic reject).
+func TestIssueEdit_Split_RejectsEmptyTitleMultiBlock(t *testing.T) {
+	app, run := setupSplitTest(t)
+
+	id, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("uuid.NewV7: %v", err)
+	}
+	now := time.Now()
+	orig := &issue.Issue{
+		ID:        id,
+		Title:     "Original title",
+		State:     issue.StatePending,
+		Milestone: "v0.1",
+		Created:   now,
+		Updated:   now,
+		Body:      "Original body.",
+	}
+	data, err := issue.Marshal(orig)
+	if err != nil {
+		t.Fatalf("issue.Marshal: %v", err)
+	}
+	refPath := issue.RefPrefix + id.String()
+	if err := app.Store.WriteEntity(refPath, "issue.md", data, "Add test issue"); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+
+	// Block 0 has a title; block 1 has title: "" (empty string).
+	// SplitBatch only recognizes block boundaries when the next line starts
+	// with "title:", so we use an explicit but empty title to trigger the
+	// split and then exercise the missing-title validation on block 1.
+	stdin := `---
+title: First block has a title
+---
+
+First body.
+
+---
+title:
+---
+
+Second block's title is the empty string.
+`
+
+	_, _, err = run(stdin, "issue", "edit", id.String(), "--split")
+	if err == nil {
+		t.Fatal("expected error for missing title in block 2, got nil")
+	}
+	if !strings.Contains(err.Error(), "title is required") {
+		t.Errorf("expected 'title is required' in error, got: %v", err)
+	}
+
+	// Original issue must be unchanged.
+	updData, readErr := app.Store.ReadEntity(refPath, "issue.md")
+	if readErr != nil {
+		t.Fatalf("ReadEntity: %v", readErr)
+	}
+	updIss, parseErr := issue.Parse(updData)
+	if parseErr != nil {
+		t.Fatalf("Parse: %v", parseErr)
+	}
+	if updIss.Title != "Original title" {
+		t.Errorf("original title should be unchanged after rejected split, got %q", updIss.Title)
+	}
+}
