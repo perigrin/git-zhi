@@ -32,9 +32,16 @@ git zhi sync [--push | --pull] [--remote <name>]
 
 ### Pull (down)
 
-1. `git fetch <remote> 'refs/zhi/*:refs/zhi/*'` — bring chain state down.
-   Non-force (no leading `+`): a diverged local zhi ref is reported as a
-   conflict, not silently overwritten.
+1. Bring chain state down. **Do not** use a single wildcard fetch
+   (`refs/zhi/*:refs/zhi/*`): git prunes any local ref whose source is absent on
+   the remote (`[deleted] (none) -> refs/zhi/...`), destroying local-only chain
+   state that has not been pushed — including the common multi-worker case where
+   the remote has *some* but not *all* of the local zhi refs. Instead, enumerate
+   the remote's zhi refs via read-only `git ls-remote` and fetch each as its own
+   explicit `refs/zhi/X:refs/zhi/X` refspec. Per-ref refspecs never carry the
+   delete-on-absent-source semantics, so local-only refs survive. Non-force (no
+   leading `+`): a diverged shared ref is reported as a conflict, not silently
+   overwritten.
 2. Fast-forward the current branch from its upstream. If the branch has
    diverged (cannot fast-forward), **refuse** with a clear error rather than
    merging — guaranteeing a consistent working tree before any `verify`.

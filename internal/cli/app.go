@@ -38,6 +38,16 @@ type App struct {
 	MigrationErr error
 }
 
+// worktreeDir returns the absolute path to the repo's working tree root, used
+// when shelling out to git (e.g. by sync).
+func (a *App) worktreeDir() (string, error) {
+	wt, err := a.Repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("resolve worktree: %w", err)
+	}
+	return wt.Filesystem.Root(), nil
+}
+
 // ReportMigration writes a one-line notice to w when OpenRepo recovered
 // stranded worktree-local refs, so the user knows their previously-invisible
 // chain has been restored. Writes nothing when no refs were migrated.

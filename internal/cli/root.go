@@ -60,6 +60,7 @@ No external services required.`,
 		NewUpdateCommand(),
 		NewSetupCommand(),
 		NewStatusCommand(),
+		NewSyncCommand(),
 	)
 
 	// Discover and register external git-zhi-* subcommands
