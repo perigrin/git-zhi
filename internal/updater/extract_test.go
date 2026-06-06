@@ -121,6 +121,38 @@ func TestExtractBinaryMissingFromArchive(t *testing.T) {
 	}
 }
 
+// TestExtractBinaryPlatformSuffixedName verifies extraction succeeds when the
+// archive member is named with the platform suffix (git-zhi-<os>-<arch>), which
+// is how the release workflow actually packages the binary.
+func TestExtractBinaryPlatformSuffixedName(t *testing.T) {
+	dir := t.TempDir()
+
+	archiveMember := "git-zhi-" + runtime.GOOS + "-" + runtime.GOARCH
+	if runtime.GOOS == "windows" {
+		archiveMember += ".exe"
+	}
+	binaryContent := createFakeBinaryContent(minBinarySize)
+
+	archivePath := filepath.Join(dir, "git-zhi-1.0.0-"+runtime.GOOS+"-"+runtime.GOARCH+".tar.gz")
+	if err := makeTarGz(archivePath, archiveMember, binaryContent); err != nil {
+		t.Fatalf("makeTarGz: %v", err)
+	}
+
+	destDir := t.TempDir()
+	extractedPath, err := extractBinaryFromArchive(archivePath, destDir)
+	if err != nil {
+		t.Fatalf("extractBinaryFromArchive(platform-suffixed): %v", err)
+	}
+
+	got, err := os.ReadFile(extractedPath)
+	if err != nil {
+		t.Fatalf("reading extracted binary: %v", err)
+	}
+	if !bytes.Equal(got, binaryContent) {
+		t.Error("extracted binary content does not match original")
+	}
+}
+
 // makeTarGz writes a .tar.gz archive at dest containing a single file with name and content.
 func makeTarGz(dest, name string, content []byte) error {
 	f, err := os.Create(dest)

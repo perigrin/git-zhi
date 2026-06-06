@@ -15,12 +15,28 @@ import (
 	"strings"
 )
 
-// binaryNameInArchive returns the expected binary name inside a release archive.
+// binaryNameInArchive returns the canonical binary name written to disk after
+// extraction (the name git-zhi is invoked by once installed).
 func binaryNameInArchive() string {
 	if runtime.GOOS == "windows" {
 		return "git-zhi.exe"
 	}
 	return "git-zhi"
+}
+
+// isBinaryArchiveMember reports whether an archive member's base name is the
+// git-zhi binary. The release workflow packages the binary with a platform
+// suffix (git-zhi-<os>-<arch>[.exe]), while a bare git-zhi[.exe] is also
+// accepted for archives that ship the canonical name.
+func isBinaryArchiveMember(base string) bool {
+	if base == binaryNameInArchive() {
+		return true
+	}
+	suffixed := "git-zhi-" + runtime.GOOS + "-" + runtime.GOARCH
+	if runtime.GOOS == "windows" {
+		suffixed += ".exe"
+	}
+	return base == suffixed
 }
 
 // extractBinaryFromArchive detects whether archivePath is a .tar.gz or .zip archive
@@ -67,7 +83,7 @@ func extractFromTarGz(archivePath, destDir string) (string, error) {
 		}
 
 		// Match by base name to handle flat archives or single-directory archives.
-		if filepath.Base(hdr.Name) != binaryName {
+		if !isBinaryArchiveMember(filepath.Base(hdr.Name)) {
 			continue
 		}
 
@@ -92,7 +108,7 @@ func extractFromZip(archivePath, destDir string) (string, error) {
 	binaryName := binaryNameInArchive()
 
 	for _, f := range rc.File {
-		if filepath.Base(f.Name) != binaryName {
+		if !isBinaryArchiveMember(filepath.Base(f.Name)) {
 			continue
 		}
 
