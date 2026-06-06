@@ -20,10 +20,9 @@ import (
 // live in the shared common-dir object store, so no object copy is needed. The
 // copy is deliberately non-destructive — the source ref file is left in place.
 //
-// Only loose refs are migrated. Stranded refs that an old binary packed into a
-// per-worktree packed-refs file are not handled (tracked in
-// github.com/perigrin/git-zhi#11). Non-hash content (symbolic refs, lock files,
-// malformed SHAs) is skipped rather than promoted.
+// This handles loose refs only; packed refs are handled by MigratePackedRefs.
+// Non-hash content (symbolic refs, lock files, malformed SHAs) is skipped
+// rather than promoted.
 func MigrateLooseRefs(srcDir, refPrefix string, refExists func(name string) bool, setRef func(name, sha string) error) (int, error) {
 	info, err := os.Stat(srcDir)
 	if err != nil {
@@ -80,6 +79,57 @@ func MigrateLooseRefs(srcDir, refPrefix string, refExists func(name string) bool
 	})
 	if walkErr != nil {
 		return migrated, fmt.Errorf("walk ref source %s: %w", srcDir, walkErr)
+	}
+	return migrated, nil
+}
+
+// MigratePackedRefs parses a git packed-refs file (such as
+// .git/worktrees/<name>/packed-refs) and, for each entry whose ref name falls
+// under refPrefix and is absent according to refExists, copies it into the
+// shared namespace via setRef. A missing file is a no-op. Returns the number of
+// refs migrated.
+//
+// Lines are "<sha> <refname>". Comment lines (#), peeled-tag lines (^<sha>),
+// blank lines, non-refPrefix entries, and malformed entries are skipped. As
+// with the loose path, only the ref pointer is copied and existing refs are
+// left untouched.
+func MigratePackedRefs(packedRefsPath, refPrefix string, refExists func(name string) bool, setRef func(name, sha string) error) (int, error) {
+	data, err := os.ReadFile(packedRefsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("read packed-refs %s: %w", packedRefsPath, err)
+	}
+
+	want := refPrefix + "/"
+	migrated := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "^") {
+			// Blank, comment header, or peeled-tag continuation line.
+			continue
+		}
+
+		sha, refName, ok := strings.Cut(line, " ")
+		if !ok {
+			// No ref name on the line; not a usable entry.
+			continue
+		}
+		refName = strings.TrimSpace(refName)
+		if !strings.HasPrefix(refName, want) {
+			continue
+		}
+		if refExists(refName) {
+			continue
+		}
+		if !isHexSHA(sha) {
+			continue
+		}
+		if err := setRef(refName, sha); err != nil {
+			return migrated, fmt.Errorf("set ref %s: %w", refName, err)
+		}
+		migrated++
 	}
 	return migrated, nil
 }

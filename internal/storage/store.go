@@ -217,11 +217,12 @@ func (s *Store) SetRefToHash(refPath, sha string) error {
 	return s.repo.Storer.SetReference(ref)
 }
 
-// MigrateStrandedWorktreeRefs copies any refs under the worktree-local
-// refs/<prefixDir> directory into the shared namespace when they are not
-// already present. Older git-zhi versions, lacking commondir support, wrote
-// chain refs to the linked worktree's own refs directory; newer versions read
-// the shared common-dir namespace and would otherwise not see them.
+// MigrateStrandedWorktreeRefs copies any worktree-local refs under refPrefix
+// into the shared namespace when they are not already present, covering both
+// loose refs (refs/<prefix>/...) and entries in the worktree's own packed-refs
+// file. Older git-zhi versions, lacking commondir support, wrote chain refs to
+// the linked worktree's own refs storage; newer versions read the shared
+// common-dir namespace and would otherwise not see them.
 //
 // worktreeGitDir is the per-worktree git directory (git rev-parse --git-dir);
 // commonGitDir is the shared common dir (git rev-parse --git-common-dir). When
@@ -244,8 +245,24 @@ func (s *Store) MigrateStrandedWorktreeRefs(worktreeGitDir, commonGitDir, refPre
 		return 0, nil
 	}
 
+	// Loose refs under <worktree-git-dir>/refs/zhi.
 	srcDir := filepath.Join(wtAbs, filepath.FromSlash(refPrefix))
-	return MigrateLooseRefs(srcDir, refPrefix, s.RefExists, s.SetRefToHash)
+	looseCount, err := MigrateLooseRefs(srcDir, refPrefix, s.RefExists, s.SetRefToHash)
+	if err != nil {
+		return looseCount, err
+	}
+
+	// Packed refs that a gc/pack-refs run may have moved into the worktree's
+	// own packed-refs file. Loose entries already migrated above take
+	// precedence; RefExists now reports them as present, so packed duplicates
+	// are skipped.
+	packedRefsPath := filepath.Join(wtAbs, "packed-refs")
+	packedCount, err := MigratePackedRefs(packedRefsPath, refPrefix, s.RefExists, s.SetRefToHash)
+	if err != nil {
+		return looseCount + packedCount, err
+	}
+
+	return looseCount + packedCount, nil
 }
 
 // RefExists reports whether the given ref path resolves to a valid reference.
