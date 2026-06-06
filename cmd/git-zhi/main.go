@@ -58,6 +58,7 @@ func runWithRepo(cmd *cobra.Command, name string) {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", name, err)
 		os.Exit(1)
 	}
+	app.ReportMigration(os.Stderr)
 	cmd.SetContext(cli.WithApp(context.Background(), app))
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", name, err)

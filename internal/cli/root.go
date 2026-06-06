@@ -42,6 +42,7 @@ No external services required.`,
 				// but --help and other non-repo commands should still work.
 				return nil
 			}
+			app.ReportMigration(cmd.ErrOrStderr())
 			cmd.SetContext(WithApp(cmd.Context(), app))
 			return nil
 		},

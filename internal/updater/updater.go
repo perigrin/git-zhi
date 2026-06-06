@@ -172,6 +172,21 @@ func validateDownloadedBinary(path string) error {
 	return nil
 }
 
+// buildDryRunResult returns the result reported for a --dry-run: it describes
+// the update that would be performed without downloading, extracting, or
+// installing anything.
+func buildDryRunResult(previousVersion, newVersion string, startTime time.Time) *UpdateResult {
+	return &UpdateResult{
+		Success:         true,
+		DryRun:          true,
+		UpdatePerformed: false,
+		PreviousVersion: previousVersion,
+		NewVersion:      newVersion,
+		Message:         fmt.Sprintf("Dry run: would update from %s to %s", previousVersion, newVersion),
+		Duration:        time.Since(startTime),
+	}
+}
+
 // PerformUpdate performs the complete update process
 func (u *Updater) PerformUpdate(opts *UpdateOptions) (*UpdateResult, error) {
 	startTime := time.Now()
@@ -237,6 +252,12 @@ func (u *Updater) PerformUpdate(opts *UpdateOptions) (*UpdateResult, error) {
 	}
 
 	result.NewVersion = updateInfo.LatestVersion.String()
+
+	// A dry run reports the planned update without downloading, extracting,
+	// or installing anything.
+	if opts.DryRun {
+		return buildDryRunResult(result.PreviousVersion, result.NewVersion, startTime), nil
+	}
 
 	// Detect platform
 	reportProgress(StageDetectingPlatform, "Detecting platform", 0.2)
@@ -308,15 +329,6 @@ func (u *Updater) PerformUpdate(opts *UpdateOptions) (*UpdateResult, error) {
 	if err := validateDownloadedBinary(binaryPath); err != nil {
 		result.Message = fmt.Sprintf("Downloaded binary validation failed: %v", err)
 		return result, err
-	}
-
-	// Perform replacement (or simulate if dry run)
-	if opts.DryRun {
-		result.Message = fmt.Sprintf("Dry run: would update from %s to %s",
-			result.PreviousVersion, result.NewVersion)
-		result.Success = true
-		result.Duration = time.Since(startTime)
-		return result, nil
 	}
 
 	// Create backup
