@@ -86,6 +86,107 @@ func TestOpenRepo(t *testing.T) {
 	}
 }
 
+// runGit runs a git command (optionally with -C dir) and returns combined output, failing the test on error.
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	full := args
+	if dir != "" {
+		full = append([]string{"-C", dir}, args...)
+	}
+	cmd := exec.Command("git", full...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %s\n%s", args, err, out)
+	}
+	return string(out)
+}
+
+// runGitCommit makes a commit with deterministic identity.
+func runGitCommit(t *testing.T, dir, message string) {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "commit", "-m", message)
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit failed: %s\n%s", err, out)
+	}
+}
+
+func TestReportMigration(t *testing.T) {
+	tests := []struct {
+		count int
+		want  string
+	}{
+		{0, ""},
+		{1, "notice: recovered 1 worktree-local ref into the shared refs/zhi namespace\n"},
+		{13, "notice: recovered 13 worktree-local refs into the shared refs/zhi namespace\n"},
+	}
+	for _, tc := range tests {
+		var buf strings.Builder
+		app := &cli.App{MigratedRefCount: tc.count}
+		app.ReportMigration(&buf)
+		if buf.String() != tc.want {
+			t.Errorf("count %d: got %q, want %q", tc.count, buf.String(), tc.want)
+		}
+	}
+}
+
+func TestOpenRepo_MigratesStrandedWorktreeRefs(t *testing.T) {
+	// Main repo with an initial commit.
+	mainDir := t.TempDir()
+	runGit(t, "", "init", mainDir)
+	testFile := filepath.Join(mainDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("hello"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	runGit(t, mainDir, "add", "test.txt")
+	runGitCommit(t, mainDir, "initial")
+	headSHA := strings.TrimSpace(runGit(t, mainDir, "rev-parse", "HEAD"))
+
+	// Add a linked worktree.
+	wtDir := filepath.Join(t.TempDir(), "worktree")
+	runGit(t, mainDir, "worktree", "add", wtDir, "-b", "feature/strand")
+
+	// Resolve the worktree-local git dir and plant a stranded chain ref there,
+	// exactly as an older git-zhi (without commondir support) would have.
+	wtGitDir := strings.TrimSpace(runGit(t, wtDir, "rev-parse", "--git-dir"))
+	if !filepath.IsAbs(wtGitDir) {
+		wtGitDir = filepath.Join(wtDir, wtGitDir)
+	}
+	strandedRefPath := filepath.Join(wtGitDir, "refs", "zhi", "_", "issues", "019e9a26-aaaa-7000-8000-000000000001")
+	if err := os.MkdirAll(filepath.Dir(strandedRefPath), 0o755); err != nil {
+		t.Fatalf("mkdir stranded ref dir: %v", err)
+	}
+	if err := os.WriteFile(strandedRefPath, []byte(headSHA+"\n"), 0o644); err != nil {
+		t.Fatalf("write stranded ref: %v", err)
+	}
+
+	// OpenRepo should detect and migrate the stranded ref into the shared namespace.
+	app, err := cli.OpenRepo(wtDir)
+	if err != nil {
+		t.Fatalf("OpenRepo in worktree failed: %v", err)
+	}
+
+	if app.MigratedRefCount != 1 {
+		t.Errorf("MigratedRefCount = %d, want 1", app.MigratedRefCount)
+	}
+	wantRef := "refs/zhi/_/issues/019e9a26-aaaa-7000-8000-000000000001"
+	if !app.Store.RefExists(wantRef) {
+		t.Errorf("expected migrated ref %s to be visible in shared namespace", wantRef)
+	}
+
+	// Re-opening must be idempotent: nothing left to migrate.
+	app2, err := cli.OpenRepo(wtDir)
+	if err != nil {
+		t.Fatalf("second OpenRepo failed: %v", err)
+	}
+	if app2.MigratedRefCount != 0 {
+		t.Errorf("second OpenRepo MigratedRefCount = %d, want 0 (idempotent)", app2.MigratedRefCount)
+	}
+}
+
 func TestOpenRepo_WorktreeHEADResolution(t *testing.T) {
 	// Create main repo with a commit so HEAD exists.
 	mainDir := t.TempDir()

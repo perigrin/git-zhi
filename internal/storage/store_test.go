@@ -272,3 +272,34 @@ func TestCountCommits_SameSHA(t *testing.T) {
 		t.Fatalf("expected 0 commits when start==end, got %d", count)
 	}
 }
+
+func TestMigrateStrandedWorktreeRefs_MainWorktreeNoOp(t *testing.T) {
+	repo, store := initTestRepoWithGit(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("get worktree: %v", err)
+	}
+	dir := wt.Filesystem.Root()
+	gitDir := filepath.Join(dir, ".git")
+
+	// In the main worktree, the per-worktree git dir IS the common dir, so
+	// migration must short-circuit to a no-op.
+	migrated, err := store.MigrateStrandedWorktreeRefs(gitDir, gitDir, "refs/zhi")
+	if err != nil {
+		t.Fatalf("MigrateStrandedWorktreeRefs (main worktree): %v", err)
+	}
+	if migrated != 0 {
+		t.Errorf("migrated = %d, want 0 in main worktree", migrated)
+	}
+}
+
+func TestMigrateStrandedWorktreeRefs_EmptyDirsNoOp(t *testing.T) {
+	_, store := initTestRepoWithGit(t)
+	migrated, err := store.MigrateStrandedWorktreeRefs("", "", "refs/zhi")
+	if err != nil {
+		t.Fatalf("MigrateStrandedWorktreeRefs (empty dirs): %v", err)
+	}
+	if migrated != 0 {
+		t.Errorf("migrated = %d, want 0 for empty dirs", migrated)
+	}
+}

@@ -5,6 +5,7 @@ package storage
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -206,6 +207,45 @@ func (s *Store) ListRefs(prefix string) ([]string, error) {
 // DeleteRef removes a ref. Used for --untag.
 func (s *Store) DeleteRef(refPath string) error {
 	return s.repo.Storer.RemoveReference(plumbing.ReferenceName(refPath))
+}
+
+// SetRefToHash points refPath at an existing commit SHA without creating a new
+// commit. Used to copy a ref pointer (e.g. during worktree-local migration);
+// the referenced objects must already exist in the object store.
+func (s *Store) SetRefToHash(refPath, sha string) error {
+	ref := plumbing.NewHashReference(plumbing.ReferenceName(refPath), plumbing.NewHash(sha))
+	return s.repo.Storer.SetReference(ref)
+}
+
+// MigrateStrandedWorktreeRefs copies any refs under the worktree-local
+// refs/<prefixDir> directory into the shared namespace when they are not
+// already present. Older git-zhi versions, lacking commondir support, wrote
+// chain refs to the linked worktree's own refs directory; newer versions read
+// the shared common-dir namespace and would otherwise not see them.
+//
+// worktreeGitDir is the per-worktree git directory (git rev-parse --git-dir);
+// commonGitDir is the shared common dir (git rev-parse --git-common-dir). When
+// they are equal, this is the main worktree and there is nothing to migrate.
+// Returns the number of refs migrated.
+func (s *Store) MigrateStrandedWorktreeRefs(worktreeGitDir, commonGitDir, refPrefix string) (int, error) {
+	if worktreeGitDir == "" || commonGitDir == "" {
+		return 0, nil
+	}
+	wtAbs, err := filepath.Abs(worktreeGitDir)
+	if err != nil {
+		return 0, fmt.Errorf("resolve worktree git dir: %w", err)
+	}
+	commonAbs, err := filepath.Abs(commonGitDir)
+	if err != nil {
+		return 0, fmt.Errorf("resolve common git dir: %w", err)
+	}
+	if wtAbs == commonAbs {
+		// Main worktree: refs already live in the shared namespace.
+		return 0, nil
+	}
+
+	srcDir := filepath.Join(wtAbs, filepath.FromSlash(refPrefix))
+	return MigrateLooseRefs(srcDir, refPrefix, s.RefExists, s.SetRefToHash)
 }
 
 // RefExists reports whether the given ref path resolves to a valid reference.
