@@ -10,6 +10,7 @@ import (
 	"time"
 
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/perigrin/git-zhi/internal/storage"
@@ -301,5 +302,98 @@ func TestMigrateStrandedWorktreeRefs_EmptyDirsNoOp(t *testing.T) {
 	}
 	if migrated != 0 {
 		t.Errorf("migrated = %d, want 0 for empty dirs", migrated)
+	}
+}
+
+func TestMigrateStrandedWorktreeRefs_LooseAndPacked(t *testing.T) {
+	repo, store := initTestRepoWithGit(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("get worktree: %v", err)
+	}
+	dir := wt.Filesystem.Root()
+	commonGitDir := filepath.Join(dir, ".git")
+
+	// A real commit so the migrated refs point at an existing object.
+	sha := makeCommit(t, repo, dir, "a.txt", "v1", "first")
+
+	// Simulate a linked worktree's own git dir, distinct from the common dir,
+	// holding one loose stranded ref and one packed stranded ref.
+	wtGitDir := t.TempDir()
+
+	loosePath := filepath.Join(wtGitDir, "refs", "zhi", "_", "issues", "loose-one")
+	if err := os.MkdirAll(filepath.Dir(loosePath), 0o755); err != nil {
+		t.Fatalf("mkdir loose: %v", err)
+	}
+	if err := os.WriteFile(loosePath, []byte(sha+"\n"), 0o644); err != nil {
+		t.Fatalf("write loose ref: %v", err)
+	}
+
+	packed := "# pack-refs with: peeled fully-peeled sorted\n" +
+		sha + " refs/zhi/_/issues/packed-one\n"
+	if err := os.WriteFile(filepath.Join(wtGitDir, "packed-refs"), []byte(packed), 0o644); err != nil {
+		t.Fatalf("write packed-refs: %v", err)
+	}
+
+	migrated, err := store.MigrateStrandedWorktreeRefs(wtGitDir, commonGitDir, "refs/zhi")
+	if err != nil {
+		t.Fatalf("MigrateStrandedWorktreeRefs: %v", err)
+	}
+	if migrated != 2 {
+		t.Errorf("migrated = %d, want 2 (one loose + one packed)", migrated)
+	}
+	if !store.RefExists("refs/zhi/_/issues/loose-one") {
+		t.Error("loose stranded ref not migrated into shared namespace")
+	}
+	if !store.RefExists("refs/zhi/_/issues/packed-one") {
+		t.Error("packed stranded ref not migrated into shared namespace")
+	}
+}
+
+func TestMigrateStrandedWorktreeRefs_SameNameLoosePackedDedup(t *testing.T) {
+	repo, store := initTestRepoWithGit(t)
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("get worktree: %v", err)
+	}
+	dir := wt.Filesystem.Root()
+	commonGitDir := filepath.Join(dir, ".git")
+
+	looseSHA := makeCommit(t, repo, dir, "a.txt", "v1", "first")
+	packedSHA := makeCommit(t, repo, dir, "a.txt", "v2", "second")
+	if looseSHA == packedSHA {
+		t.Fatal("expected distinct SHAs for loose and packed copies")
+	}
+
+	wtGitDir := t.TempDir()
+
+	// Same ref name appears both loose and packed, pointing at different SHAs.
+	const refName = "refs/zhi/_/issues/dup"
+	loosePath := filepath.Join(wtGitDir, "refs", "zhi", "_", "issues", "dup")
+	if err := os.MkdirAll(filepath.Dir(loosePath), 0o755); err != nil {
+		t.Fatalf("mkdir loose: %v", err)
+	}
+	if err := os.WriteFile(loosePath, []byte(looseSHA+"\n"), 0o644); err != nil {
+		t.Fatalf("write loose ref: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wtGitDir, "packed-refs"),
+		[]byte(packedSHA+" "+refName+"\n"), 0o644); err != nil {
+		t.Fatalf("write packed-refs: %v", err)
+	}
+
+	migrated, err := store.MigrateStrandedWorktreeRefs(wtGitDir, commonGitDir, "refs/zhi")
+	if err != nil {
+		t.Fatalf("MigrateStrandedWorktreeRefs: %v", err)
+	}
+	// Loose migrates first; the packed duplicate is skipped as already-present.
+	if migrated != 1 {
+		t.Errorf("migrated = %d, want 1 (loose wins, packed duplicate skipped)", migrated)
+	}
+	ref, err := repo.Reference(plumbing.ReferenceName(refName), false)
+	if err != nil {
+		t.Fatalf("resolve migrated ref: %v", err)
+	}
+	if got := ref.Hash().String(); got != looseSHA {
+		t.Errorf("migrated ref points at %q, want loose SHA %q", got, looseSHA)
 	}
 }
