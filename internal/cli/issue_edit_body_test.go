@@ -21,7 +21,7 @@ func TestIssueEditBody_StdinReplace(t *testing.T) {
 	prefix := uuidStr[:8]
 
 	newBody := "Updated acceptance criteria\n\n- [ ] New criterion"
-	_, _, err := runWithStdin(app, newBody, "issue", "edit", prefix, "--body")
+	_, _, err := runWithStdin(app, newBody, "issue", "edit", prefix, "--body", "-")
 	if err != nil {
 		t.Fatalf("issue edit --body failed: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestIssueEditBody_CombinedWithState(t *testing.T) {
 	prefix := uuidStr[:8]
 
 	newBody := "New body after state change"
-	_, _, err := runWithStdin(app, newBody, "issue", "edit", prefix, "--body", "--state", "start")
+	_, _, err := runWithStdin(app, newBody, "issue", "edit", prefix, "--body", "-", "--state", "start")
 	if err != nil {
 		t.Fatalf("issue edit --body --state start failed: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestIssueEditBody_YAMLLikeContent(t *testing.T) {
 
 	// Body contains YAML frontmatter markers — should be stored as body, not parsed
 	newBody := "---\ntitle: \"This is NOT a new issue\"\n---\n\nJust some markdown with dashes."
-	_, _, err := runWithStdin(app, newBody, "issue", "edit", prefix, "--body")
+	_, _, err := runWithStdin(app, newBody, "issue", "edit", prefix, "--body", "-")
 	if err != nil {
 		t.Fatalf("issue edit --body failed: %v", err)
 	}
@@ -117,8 +117,8 @@ func TestIssueEditBody_EmptyStdin(t *testing.T) {
 	// Empty stdin triggers the editor path. Set GIT_EDITOR to a no-op so
 	// the test doesn't hang waiting for a TTY (e.g., vi in CI).
 	t.Setenv("GIT_EDITOR", "true")
-	// Empty stdin — body should not change (or error gracefully)
-	_, _, err := runWithStdin(app, "", "issue", "edit", prefix, "--body")
+	// Empty value (editor path) — body should not change (or error gracefully)
+	_, _, err := runWithStdin(app, "", "issue", "edit", prefix, "--body", "")
 	// Either succeeds with no change or errors — both acceptable
 	if err == nil {
 		content2, _ := app.Store.ReadEntity(ref, "issue.md")
@@ -136,8 +136,8 @@ func TestIssueEditBody_EditorIntegration(t *testing.T) {
 	// Create an issue with a known body
 	id := createEditTestIssue(t, app, "Editor test issue")
 	ref := issue.RefPrefix + id
-	// Set an initial body via stdin
-	_, _, err := runWithStdin(app, "Original body content", "issue", "edit", id[:8], "--body")
+	// Set an initial body via stdin sentinel
+	_, _, err := runWithStdin(app, "Original body content", "issue", "edit", id[:8], "--body", "-")
 	if err != nil {
 		t.Fatalf("setup body failed: %v", err)
 	}
@@ -148,18 +148,18 @@ func TestIssueEditBody_EditorIntegration(t *testing.T) {
 		t.Fatalf("write editor script: %v", writeErr)
 	}
 
-	// Run --body with the editor script. We need to simulate a TTY-like
-	// scenario. Since we can't easily make stdin a TTY in tests, we invoke
-	// the editor function directly. For now, set GIT_EDITOR env and use
-	// a custom run that doesn't pipe stdin.
+	// Run --body "" (empty string triggers editor path). We need to simulate
+	// a TTY-like scenario. Since we can't easily make stdin a TTY in tests,
+	// we invoke the editor function directly. For now, set GIT_EDITOR env and
+	// use a custom run that doesn't pipe stdin.
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
 	cmd := cli.NewRootCommand()
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
-	// Set stdin to nil/empty to trigger editor path
+	// Empty value triggers editor path
 	cmd.SetIn(strings.NewReader(""))
-	cmd.SetArgs([]string{"issue", "edit", id[:8], "--body"})
+	cmd.SetArgs([]string{"issue", "edit", id[:8], "--body", ""})
 	cmd.SetContext(cli.WithApp(context.Background(), app))
 	t.Setenv("GIT_EDITOR", editorScript)
 	err = cmd.Execute()
@@ -189,7 +189,7 @@ func TestIssueEditBody_EditorNonZeroExit(t *testing.T) {
 	id := createEditTestIssue(t, app, "Editor abort test")
 
 	// Set an initial body
-	_, _, err := runWithStdin(app, "Should not change", "issue", "edit", id[:8], "--body")
+	_, _, err := runWithStdin(app, "Should not change", "issue", "edit", id[:8], "--body", "-")
 	if err != nil {
 		t.Fatalf("setup body failed: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestIssueEditBody_EditorNonZeroExit(t *testing.T) {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	cmd.SetIn(strings.NewReader(""))
-	cmd.SetArgs([]string{"issue", "edit", id[:8], "--body"})
+	cmd.SetArgs([]string{"issue", "edit", id[:8], "--body", ""})
 	cmd.SetContext(cli.WithApp(context.Background(), app))
 	t.Setenv("GIT_EDITOR", editorScript)
 	err = cmd.Execute()
@@ -218,5 +218,114 @@ func TestIssueEditBody_EditorNonZeroExit(t *testing.T) {
 		if !strings.Contains(iss.Body, "Should not change") {
 			t.Fatalf("expected body unchanged after editor abort, got: %q", iss.Body)
 		}
+	}
+}
+
+// TestIssueEditBody_InlineValue verifies that --body "text" stores the inline
+// value without reading from stdin.
+func TestIssueEditBody_InlineValue(t *testing.T) {
+	app, _ := setupEditTest(t)
+	uuidStr := createEditTestIssue(t, app, "Issue for inline body")
+	prefix := uuidStr[:8]
+
+	_, _, err := runWithStdin(app, "", "issue", "edit", prefix, "--body", "Line one.\n\nLine two.")
+	if err != nil {
+		t.Fatalf("issue edit --body <value> failed: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	content, readErr := app.Store.ReadEntity(ref, "issue.md")
+	if readErr != nil {
+		t.Fatalf("ReadEntity failed: %v", readErr)
+	}
+	iss, parseErr := issue.Parse(content)
+	if parseErr != nil {
+		t.Fatalf("Parse failed: %v", parseErr)
+	}
+	if !strings.Contains(iss.Body, "Line one.") {
+		t.Fatalf("expected body to contain 'Line one.', got: %q", iss.Body)
+	}
+	if !strings.Contains(iss.Body, "Line two.") {
+		t.Fatalf("expected body to contain 'Line two.', got: %q", iss.Body)
+	}
+}
+
+// TestIssueEditBody_SingleToken verifies that --body "single token" persists correctly.
+func TestIssueEditBody_SingleToken(t *testing.T) {
+	app, _ := setupEditTest(t)
+	uuidStr := createEditTestIssue(t, app, "Issue for single token body")
+	prefix := uuidStr[:8]
+
+	_, _, err := runWithStdin(app, "", "issue", "edit", prefix, "--body", "single token")
+	if err != nil {
+		t.Fatalf("issue edit --body 'single token' failed: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	content, readErr := app.Store.ReadEntity(ref, "issue.md")
+	if readErr != nil {
+		t.Fatalf("ReadEntity failed: %v", readErr)
+	}
+	iss, parseErr := issue.Parse(content)
+	if parseErr != nil {
+		t.Fatalf("Parse failed: %v", parseErr)
+	}
+	if !strings.Contains(iss.Body, "single token") {
+		t.Fatalf("expected body to contain 'single token', got: %q", iss.Body)
+	}
+}
+
+// TestIssueEditBody_StdinSentinel verifies that --body - reads from stdin.
+func TestIssueEditBody_StdinSentinel(t *testing.T) {
+	app, _ := setupEditTest(t)
+	uuidStr := createEditTestIssue(t, app, "Issue for stdin sentinel")
+	prefix := uuidStr[:8]
+
+	_, _, err := runWithStdin(app, "piped content", "issue", "edit", prefix, "--body", "-")
+	if err != nil {
+		t.Fatalf("issue edit --body - failed: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	content, readErr := app.Store.ReadEntity(ref, "issue.md")
+	if readErr != nil {
+		t.Fatalf("ReadEntity failed: %v", readErr)
+	}
+	iss, parseErr := issue.Parse(content)
+	if parseErr != nil {
+		t.Fatalf("Parse failed: %v", parseErr)
+	}
+	if !strings.Contains(iss.Body, "piped content") {
+		t.Fatalf("expected body to contain 'piped content', got: %q", iss.Body)
+	}
+}
+
+// TestIssueEditBody_InlineVsStdinPrecedence verifies that inline value takes
+// precedence over stdin when both are provided.
+func TestIssueEditBody_InlineVsStdinPrecedence(t *testing.T) {
+	app, _ := setupEditTest(t)
+	uuidStr := createEditTestIssue(t, app, "Issue for precedence test")
+	prefix := uuidStr[:8]
+
+	// Inline value + stdin content: inline should win
+	_, _, err := runWithStdin(app, "stdin content (should be ignored)", "issue", "edit", prefix, "--body", "inline wins")
+	if err != nil {
+		t.Fatalf("issue edit --body <value> with stdin failed: %v", err)
+	}
+
+	ref := issue.RefPrefix + uuidStr
+	content, readErr := app.Store.ReadEntity(ref, "issue.md")
+	if readErr != nil {
+		t.Fatalf("ReadEntity failed: %v", readErr)
+	}
+	iss, parseErr := issue.Parse(content)
+	if parseErr != nil {
+		t.Fatalf("Parse failed: %v", parseErr)
+	}
+	if !strings.Contains(iss.Body, "inline wins") {
+		t.Fatalf("expected inline value to win, got: %q", iss.Body)
+	}
+	if strings.Contains(iss.Body, "stdin content") {
+		t.Fatalf("expected stdin content to be ignored, got: %q", iss.Body)
 	}
 }

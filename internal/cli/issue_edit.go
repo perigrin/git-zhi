@@ -73,20 +73,30 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		return runIssueEditBatch(cmd, app)
 	}
 
-	// --body: read new body from stdin or open editor.
+	// --body: inline value, '-' sentinel for stdin, or '' to open editor.
 	var newBody string
 	var bodyChanged bool
 	if cmd.Flags().Changed("body") {
-		bodyBytes, readErr := io.ReadAll(cmd.InOrStdin())
-		if readErr != nil {
-			return fmt.Errorf("read body from stdin: %w", readErr)
-		}
-		trimmed := strings.TrimSpace(string(bodyBytes))
-		if trimmed != "" {
-			newBody = trimmed
+		bodyValue, _ := cmd.Flags().GetString("body")
+		switch {
+		case bodyValue == "-":
+			// '-' is an explicit sentinel meaning "read from stdin".
+			bodyBytes, readErr := io.ReadAll(cmd.InOrStdin())
+			if readErr != nil {
+				return fmt.Errorf("read body from stdin: %w", readErr)
+			}
+			trimmed := strings.TrimSpace(string(bodyBytes))
+			if trimmed != "" {
+				newBody = trimmed
+				bodyChanged = true
+			}
+			// Empty stdin with '-' sentinel: no-op (no body change).
+		case bodyValue != "":
+			// Non-empty inline value — use it directly.
+			newBody = strings.TrimSpace(bodyValue)
 			bodyChanged = true
-		} else {
-			// Stdin was empty — open editor with current body.
+		default:
+			// Empty string value — open editor with current body.
 			if refInput == "" {
 				return fmt.Errorf("--body: issue ref is required")
 			}
