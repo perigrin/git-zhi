@@ -30,7 +30,7 @@ import `internal/cli`, so `cli.NewRootCommand` cannot register them itself.
 - The ref namespace is `refs/zhi/_/` — issue refs at `refs/zhi/_/issues/<uuid>`, milestones at `refs/zhi/_/milestones/<name>`.
 - `issue.RefPrefix` and `milestone.RefPrefix` constants exist — use them instead of string literals.
 - `--format` is a persistent flag on the root command. Read it via `cmd.Root().PersistentFlags().GetString("format")`.
-- `uuids.ContainsUUID` and `uuids.RemoveUUID` are shared utilities — don't duplicate them.
+- Use `slices.Contains` and `slices.DeleteFunc` for UUID slice work — don't hand-roll loops.
 - `issue.LoadAllIssues(store)` is the shared loader — don't reimplement issue scanning.
 - `actor.TypeHuman` and `actor.TypeAgent` constants — use them instead of string literals for actor types.
 - `Store.AuthorInfo()` returns git author name/email — use with `actor.DeriveActor()`.

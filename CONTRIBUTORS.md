@@ -42,7 +42,6 @@ internal/
   telemetry/           MPG, speed, buffer, fever chart, time-in-chain
   config/              Chain configuration
   resolve/             Ref argument resolution (HEAD, tag, UUID prefix, title)
-  uuids/               Shared UUID slice utilities
   actor/               Worker identity (human/agent type, parsing)
   verify/              AC command extraction, execution, prioritization, CLI
   sanbao/              Observatory plugin (report, cmd)
@@ -52,7 +51,6 @@ internal/
     sentiment/         VADER commit sentiment analysis
     difficulty/        Composite issue difficulty scoring
     complexity/        Language-agnostic code complexity (churn, coupling)
-    lsp/               LSP JSON-RPC client for language-specific metrics
     report/            Report aggregation
   docs/                Documentation scaffolding, validation, health checks, CLI
   lineage/             Blame-to-issue mapping, observed coupling graph
@@ -63,13 +61,10 @@ internal/
   jira/                Jira sync plugin domain logic
     client/            Jira REST API client (HTTP, auth, pagination)
     sync/              Bidirectional sync, conflict detection, snapshots
-    identity/          Actor-to-Jira user mapping
     credentials/       Env var and git config credential resolution
   project/             Cross-repo aggregation, CCPM buffers, capacity
   mermaid/             Gantt and DAG chart generation from JSON
-  download/            Binary download utilities
-  version/             Version information
-  updater/             Auto-update manager
+  version/             Build-time version information (ldflags)
 ```
 
 ### Storage Model
