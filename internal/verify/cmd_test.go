@@ -456,3 +456,81 @@ func TestVerifyCLI_Timeout(t *testing.T) {
 		t.Fatalf("verify with --timeout 30 failed: %v", err)
 	}
 }
+
+// TestVerifyCLI_NoTestsRanFailsGate verifies a criterion whose command ran no
+// tests fails the gate rather than counting as a pass. Everything about issue
+// #20 lives in the gate wiring, not the detector: dropping `!result.NoTestsRan`
+// from the pass condition, or the vacuous count from the final error, silently
+// reintroduces the vacuous pass while the detector's own tests stay green.
+func TestVerifyCLI_NoTestsRanFailsGate(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	writeMilestone(t, app.Store, &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	})
+
+	body := "## Acceptance Criteria\n\n" +
+		"### Positive Scenarios\n" +
+		"- [ ] phantom test (`echo \"?   ex/a\t[no test files]\"`)\n"
+	writeIssue(t, app.Store, newDoneIssueWithAC(t, "v0.1", body))
+
+	stdout, _, err := run("v0.1")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for a criterion that ran no tests\noutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "NO TESTS RAN") {
+		t.Errorf("expected the vacuous marker in output, got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "1/1 acceptance criteria passing") {
+		t.Errorf("a criterion that ran no tests was counted as passing:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_NoTestsRanJSON verifies the JSON report distinguishes a
+// vacuous criterion from a pass and from a regression. exit_code 0 with
+// passed=false is the pairing that makes the category meaningful to a consumer.
+func TestVerifyCLI_NoTestsRanJSON(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	writeMilestone(t, app.Store, &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	})
+
+	body := "## Acceptance Criteria\n\n" +
+		"### Positive Scenarios\n" +
+		"- [ ] phantom test (`echo \"?   ex/a\t[no test files]\"`)\n"
+	writeIssue(t, app.Store, newDoneIssueWithAC(t, "v0.1", body))
+
+	stdout, _, _ := run("v0.1", "--format", "json")
+
+	var report struct {
+		Passed     int `json:"passed"`
+		Failed     int `json:"failed"`
+		NoTestsRan int `json:"no_tests_ran"`
+		Results    []struct {
+			Passed     bool `json:"passed"`
+			ExitCode   int  `json:"exit_code"`
+			NoTestsRan bool `json:"no_tests_ran"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, stdout)
+	}
+
+	if report.NoTestsRan != 1 {
+		t.Errorf("no_tests_ran = %d, want 1", report.NoTestsRan)
+	}
+	if report.Passed != 0 || report.Failed != 0 {
+		t.Errorf("vacuous criterion counted as passed=%d failed=%d, want both 0", report.Passed, report.Failed)
+	}
+	if len(report.Results) != 1 {
+		t.Fatalf("expected 1 result entry, got %d", len(report.Results))
+	}
+	if r := report.Results[0]; r.Passed || r.ExitCode != 0 || !r.NoTestsRan {
+		t.Errorf("entry = {passed:%v exit_code:%d no_tests_ran:%v}, want {false 0 true}", r.Passed, r.ExitCode, r.NoTestsRan)
+	}
+}
