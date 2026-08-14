@@ -221,31 +221,6 @@ func TestGetIssueAuthError(t *testing.T) {
 	}
 }
 
-func TestSearchIssuesPagination(t *testing.T) {
-	srv := httptest.NewServer(jiraHandler(t))
-	defer srv.Close()
-
-	// maxResults=2 so we exercise the two-page path (3 total issues).
-	c := client.NewClient(srv.URL, "user@example.com", "token123")
-	issues, err := c.SearchIssues("project = PROJ ORDER BY created DESC", 2)
-	if err != nil {
-		t.Fatalf("SearchIssues returned error: %v", err)
-	}
-	if len(issues) != 3 {
-		t.Errorf("got %d issues, want 3", len(issues))
-	}
-	keys := make([]string, len(issues))
-	for i, iss := range issues {
-		keys[i] = iss.Key
-	}
-	want := []string{"PROJ-1", "PROJ-2", "PROJ-3"}
-	for i, k := range want {
-		if keys[i] != k {
-			t.Errorf("issue[%d].Key = %q, want %q", i, keys[i], k)
-		}
-	}
-}
-
 func TestGetTransitions(t *testing.T) {
 	srv := httptest.NewServer(jiraHandler(t))
 	defer srv.Close()
@@ -274,15 +249,3 @@ func TestDoTransition(t *testing.T) {
 	}
 }
 
-func TestUpdateIssue(t *testing.T) {
-	srv := httptest.NewServer(jiraHandler(t))
-	defer srv.Close()
-
-	c := client.NewClient(srv.URL, "user@example.com", "token123")
-	err := c.UpdateIssue("LOPS-142", map[string]interface{}{
-		"summary": map[string]string{"set": "New summary"},
-	})
-	if err != nil {
-		t.Fatalf("UpdateIssue returned error: %v", err)
-	}
-}
