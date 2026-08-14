@@ -422,3 +422,56 @@ func TestIssueEdit_DestructiveFlagsMutuallyExclusive(t *testing.T) {
 		}
 	}
 }
+
+// TestIssueEditSplit_SingleBlockPreservesOutgoingEdges verifies that replacing
+// an issue's content with a single-block --split keeps its outgoing blocks
+// edges. A single block is the body-replacement case; dropping the edges there
+// is silent data loss, and it cannot be undone once a downstream issue is done
+// or cancelled, because addBlockEdge refuses to give a done target new
+// dependencies.
+func TestIssueEditSplit_SingleBlockPreservesOutgoingEdges(t *testing.T) {
+	app, run := setupSplitTest(t)
+
+	origUUID, downUUID := createSplitTestIssueWithDownstream(t, app, "upstream")
+
+	stdin := `---
+title: upstream
+---
+replacement body
+`
+	if _, _, err := run(stdin, "issue", "edit", origUUID, "--split"); err != nil {
+		t.Fatalf("--split: %v", err)
+	}
+
+	data, err := app.Store.ReadEntity(issue.RefPrefix+origUUID, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity: %v", err)
+	}
+	after, err := issue.Parse(data)
+	if err != nil {
+		t.Fatalf("issue.Parse: %v", err)
+	}
+
+	if !strings.Contains(after.Body, "replacement body") {
+		t.Errorf("body not replaced: %q", after.Body)
+	}
+	if len(after.Blocks) != 1 || after.Blocks[0].String() != downUUID {
+		t.Errorf("split dropped the outgoing edge: Blocks = %v, want [%s]", after.Blocks, downUUID)
+	}
+
+	// The downstream's reverse edge is deliberately not rewritten on this path,
+	// because the original keeps its identity. Assert it, so a future change
+	// that "helpfully" cleans up downstream issues here cannot pass silently
+	// while leaving the graph asymmetric.
+	downData, err := app.Store.ReadEntity(issue.RefPrefix+downUUID, "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity downstream: %v", err)
+	}
+	downIss, err := issue.Parse(downData)
+	if err != nil {
+		t.Fatalf("Parse downstream: %v", err)
+	}
+	if len(downIss.BlockedBy) != 1 || downIss.BlockedBy[0].String() != origUUID {
+		t.Errorf("downstream reverse edge broken: BlockedBy = %v, want [%s]", downIss.BlockedBy, origUUID)
+	}
+}
