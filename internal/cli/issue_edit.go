@@ -17,7 +17,10 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
+	"github.com/goccy/go-yaml"
+
 	"github.com/perigrin/git-zhi/internal/actor"
+	"github.com/perigrin/git-zhi/internal/config"
 	"github.com/perigrin/git-zhi/internal/graph"
 	"github.com/perigrin/git-zhi/internal/issue"
 	"github.com/perigrin/git-zhi/internal/milestone"
@@ -168,6 +171,15 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		}
 
 		uuidStr := strings.TrimPrefix(refPath, issue.RefPrefix)
+		// Parse deliberately leaves ID unset — it lives in the ref path, not the
+		// frontmatter. Set it here rather than after the write, so anything
+		// reasoning about this issue's identity before then (the WIP limit
+		// excluding it from its own count) sees the real UUID and not uuid.Nil.
+		parsedID, err := uuid.FromString(uuidStr)
+		if err != nil {
+			return fmt.Errorf("parse uuid: %w", err)
+		}
+		iss.ID = parsedID
 
 		newState, err := issue.ValidateTransition(iss.State, stateAction)
 		if err != nil {
@@ -183,11 +195,15 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		// session fields so start/end timestamps are consistent within a single
 		// state change.
 		now := time.Now()
+		force, _ := cmd.Flags().GetBool("force")
 
 		switch stateAction {
 		case "start", "resume":
 			if findOpenSession(iss.Sessions) >= 0 {
 				return fmt.Errorf("cannot %s: a measurement session is already open", stateAction)
+			}
+			if wipErr := checkWIPLimit(cmd.ErrOrStderr(), app, iss, force); wipErr != nil {
+				return wipErr
 			}
 			iss.Sessions = append(iss.Sessions, issue.Session{
 				StartSHA:  currentHEAD,
@@ -248,7 +264,6 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 			for _, sess := range iss.Sessions {
 				totalCommits += sess.Commits
 			}
-			force, _ := cmd.Flags().GetBool("force")
 			if totalCommits == 0 && !force {
 				return fmt.Errorf("cannot mark done: session has 0 commits (use --force to override)")
 			}
@@ -280,12 +295,6 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		if err := app.Store.WriteEntity(refPath, "issue.md", out, commitMsg); err != nil {
 			return fmt.Errorf("write issue: %w", err)
 		}
-
-		parsedID, err := uuid.FromString(uuidStr)
-		if err != nil {
-			return fmt.Errorf("parse uuid: %w", err)
-		}
-		iss.ID = parsedID
 
 		format, _ := cmd.Root().PersistentFlags().GetString("format")
 		if format == "json" {
@@ -631,6 +640,63 @@ func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string)
 		return fmt.Errorf("write target issue: %w", err)
 	}
 	return nil
+}
+
+// checkWIPLimit refuses to start an issue once the chain already has wip_limit
+// issues in progress. The cap is chain-wide: it bounds work actually in flight,
+// not what an orchestrator may look at, so list --ready and next still report
+// everything and the scheduler decides what to do about it.
+//
+// A zero limit disables the check. --force overrides, matching the other
+// safety checks on --state.
+//
+// ponytail: advisory cap, not a mutex. Concurrent workers can each pass this
+// check before any of them writes, overshooting by up to N-1. Acceptable
+// because the cap is a scheduling hint and the overshoot drains as issues
+// finish; upgrade path if it ever matters is a CAS on a counter ref.
+func checkWIPLimit(warn io.Writer, app *App, starting *issue.Issue, force bool) error {
+	if force {
+		return nil
+	}
+	data, err := app.Store.ReadEntity("refs/zhi/_/config", "config.yaml")
+	if err != nil {
+		return nil // no config ref: nothing to enforce
+	}
+	var cfg config.Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		// Fail open: a policy knob must never wedge the tool that does the
+		// work. Say so, though — silently dropping the cap is how a fleet ends
+		// up running unbounded without anyone noticing.
+		fmt.Fprintf(warn, "warning: chain config unreadable, WIP limit not enforced: %v\n", err)
+		return nil
+	}
+	if cfg.WIPLimit <= 0 {
+		return nil
+	}
+
+	// resume re-opens a session on an issue that already holds a slot, so it
+	// cannot increase work in flight and the cap does not apply. Gating it
+	// meant that lowering the limit below the current count left every
+	// in-flight issue unresumable without --force.
+	if starting.State == issue.StateInProgress {
+		return nil
+	}
+
+	all, err := issue.LoadAllIssues(app.Store)
+	if err != nil {
+		return fmt.Errorf("load issues for WIP limit: %w", err)
+	}
+	inProgress := 0
+	for _, other := range all {
+		if other.State == issue.StateInProgress {
+			inProgress++
+		}
+	}
+	if inProgress < cfg.WIPLimit {
+		return nil
+	}
+	return fmt.Errorf("WIP limit reached: %d issue(s) already in progress (limit %d); finish or cancel one first, or pass --force",
+		inProgress, cfg.WIPLimit)
 }
 
 // findOpenSession returns the index of the last session whose EndSHA is empty,
@@ -1419,6 +1485,10 @@ func applyBatchOp(app *App, op batchOp) error {
 			dirty = true
 
 		case "state":
+			// No WIP check here. Batch is reconciliation from an external source of
+			// truth (jira sync pull routes through it), not scheduling: refusing
+			// mid-stream would leave the chain half-synced, which is worse than
+			// briefly exceeding an advisory cap.
 			var action string
 			if err := json.Unmarshal(rawVal, &action); err != nil {
 				return fmt.Errorf("field %q: %w", fieldName, err)
