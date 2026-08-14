@@ -14,9 +14,9 @@ import (
 )
 
 // zhiRefspec carries chain state. Non-force: a diverged local zhi ref is
-// reported as a conflict rather than silently overwritten. This is deliberately
-// stricter than the +force fetch refspec configureRemoteRefspecs writes for
-// plain `git fetch origin` — sync is the careful porcelain.
+// reported as a conflict rather than silently overwritten. git-zhi configures
+// no refs/zhi/* fetch refspec at all, because a wildcard one lets a pruning
+// fetch delete the chain, so sync is the only path that moves these refs.
 const zhiRefspec = "refs/zhi/*:refs/zhi/*"
 
 // NewSyncCommand creates the top-level "sync" subcommand.
@@ -89,8 +89,10 @@ func SyncPull(dir, remote string, out io.Writer) error {
 		return err
 	}
 	// Fetch each refs/zhi/* ref the remote advertises, as its own explicit
-	// refspec. A single wildcard fetch (refs/zhi/*:refs/zhi/*) would PRUNE any
-	// local ref whose source is absent on the remote — git reports
+	// refspec. A single wildcard fetch (refs/zhi/*:refs/zhi/*) under --prune or
+	// fetch.prune would delete any local ref whose source is absent on the
+	// remote; naming each ref explicitly keeps pruning scoped to those
+	// destinations, so unpushed local refs stay outside it — git reports
 	// "[deleted] (none) -> refs/zhi/..." — destroying local-only chain state
 	// that has not been pushed yet. Explicit per-ref refspecs never carry that
 	// delete-on-absent-source semantics, so local-only refs survive. ls-remote

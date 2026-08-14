@@ -3,6 +3,7 @@
 package cli_test
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -314,7 +315,9 @@ func TestEnsureInitialized_WithRemote(t *testing.T) {
 		t.Fatalf("EnsureInitialized failed: %v", err)
 	}
 
-	// Verify the fetch refspec for refs/zhi/* was added.
+	// Init must leave the remote's fetch refspecs alone. A wildcard
+	// refs/zhi/* refspec makes the chain a prune target, so a pruning
+	// `git fetch` would delete it.
 	cfg, err := repo.Config()
 	if err != nil {
 		t.Fatalf("failed to read repo config: %v", err)
@@ -324,13 +327,32 @@ func TestEnsureInitialized_WithRemote(t *testing.T) {
 		t.Fatal("expected origin remote to exist")
 	}
 
-	hasFetchSpec := false
 	for _, spec := range remote.Fetch {
 		if strings.Contains(spec.String(), "refs/zhi/") {
-			hasFetchSpec = true
+			t.Errorf("init configured a refs/zhi fetch refspec %q; a pruning `git fetch` would delete the chain", spec.String())
 		}
 	}
-	if !hasFetchSpec {
-		t.Errorf("expected refs/zhi/* fetch refspec to be configured, got: %v", remote.Fetch)
+}
+
+// TestReportMigration_RefspecNotice verifies the repair is announced. The
+// config edit is invisible otherwise, and a user who deliberately added the
+// refspec needs to know what replaced it.
+func TestReportMigration_RefspecNotice(t *testing.T) {
+	var out bytes.Buffer
+	app := &cli.App{RemovedFetchRefspec: true}
+	app.ReportMigration(&out)
+
+	got := out.String()
+	if !strings.Contains(got, "refs/zhi/*") {
+		t.Errorf("notice does not name the refspec removed: %q", got)
+	}
+	if !strings.Contains(got, "refs/remotes/") {
+		t.Errorf("notice does not point at the safe alternative: %q", got)
+	}
+
+	var quiet bytes.Buffer
+	(&cli.App{}).ReportMigration(&quiet)
+	if quiet.String() != "" {
+		t.Errorf("expected no output when nothing was repaired, got %q", quiet.String())
 	}
 }

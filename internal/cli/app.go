@@ -12,7 +12,6 @@ import (
 	"time"
 
 	git "github.com/go-git/go-git/v5"
-	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/goccy/go-yaml"
 
 	"github.com/perigrin/git-zhi/internal/config"
@@ -33,6 +32,10 @@ type App struct {
 	// that OpenRepo migrated into the shared namespace. Zero in the common case.
 	MigratedRefCount int
 
+	// RemovedFetchRefspec records that OpenRepo stripped a destructive
+	// refs/zhi/* fetch refspec left by an earlier version.
+	RemovedFetchRefspec bool
+
 	// MigrationErr records a non-fatal failure during stranded-ref migration.
 	// Migration is best-effort and never blocks a command, but a failure is
 	// surfaced so a still-invisible chain is not mistaken for "nothing to do".
@@ -49,15 +52,19 @@ func (a *App) worktreeDir() (string, error) {
 	return wt.Filesystem.Root(), nil
 }
 
-// ReportMigration writes a one-line notice to w when OpenRepo recovered
-// stranded worktree-local refs, so the user knows their previously-invisible
-// chain has been restored. Writes nothing when no refs were migrated.
+// ReportMigration writes a one-line notice to w for each repair OpenRepo made:
+// stranded worktree-local refs recovered, and a destructive refs/zhi/* fetch
+// refspec removed. Writes nothing when there was nothing to repair.
 func (a *App) ReportMigration(w io.Writer) {
 	if a == nil {
 		return
 	}
 	if a.MigrationErr != nil {
 		fmt.Fprintf(w, "warning: worktree-local ref migration failed: %v\n", a.MigrationErr)
+	}
+	if a.RemovedFetchRefspec {
+		fmt.Fprintln(w, "notice: removed a refs/zhi/* fetch refspec that let a pruning 'git fetch' delete the chain")
+		fmt.Fprintln(w, "        (to mirror another chain, use a refs/remotes/<name>/... destination instead)")
 	}
 	if a.MigratedRefCount == 0 {
 		return
@@ -104,6 +111,9 @@ func OpenRepo(dir string) (*App, error) {
 	migrated, mErr := migrateStrandedRefs(dir, store)
 	app.MigratedRefCount = migrated
 	app.MigrationErr = mErr
+
+	// Strip the destructive refs/zhi/* fetch refspec earlier versions wrote.
+	app.RemovedFetchRefspec = app.removeZhiFetchRefspecs()
 
 	return app, nil
 }
@@ -187,10 +197,6 @@ func (a *App) EnsureInitializedWithOutput(w io.Writer) error {
 		}
 	}
 
-	// Configure fetch refspecs for refs/zhi/* when a remote exists.
-	// This is best-effort — silently skipped if no remote or config fails.
-	a.configureRemoteRefspecs()
-
 	// Print push refspec guidance when a remote is present. go-git's
 	// RemoteConfig struct only exposes the Fetch field, so push refspecs
 	// must be configured manually. One git-config command is all it takes.
@@ -205,34 +211,61 @@ func (a *App) EnsureInitializedWithOutput(w io.Writer) error {
 	return nil
 }
 
-// configureRemoteRefspecs adds a fetch refspec for refs/zhi/* to the origin
-// remote if it exists and the refspec is not already present. Errors are
-// silently ignored because sync configuration is best-effort at init time.
-func (a *App) configureRemoteRefspecs() {
+// removeZhiFetchRefspecs strips fetch refspecs that land refs/zhi/* in the
+// local namespace. Earlier versions wrote "+refs/zhi/*:refs/zhi/*" at init.
+// That makes refs/zhi/* a fetch destination, so any pruning fetch — the common
+// fetch.prune=true, an explicit `git fetch --prune`, or `git remote prune` —
+// deletes every local ref the remote has no counterpart for. Before the first
+// `sync push` the remote has none, so the whole chain goes. The force marker
+// is irrelevant: dropping it does not change the behaviour.
+//
+// Only a destination outside refs/remotes/ is dangerous. A remote-tracking
+// form such as "+refs/zhi/*:refs/remotes/upstream/zhi/*" is exactly how a user
+// should mirror another chain, so it is left alone.
+//
+// sync pull does not need any of this: it enumerates the remote with ls-remote
+// and fetches each ref as its own explicit refspec, which cannot prune.
+//
+// Returns true only when a refspec was removed AND the config was persisted,
+// so the caller never reports a repair that did not happen.
+func (a *App) removeZhiFetchRefspecs() bool {
 	repoCfg, err := a.Repo.Config()
 	if err != nil {
-		return
-	}
-	remote, ok := repoCfg.Remotes["origin"]
-	if !ok {
-		return
+		return false
 	}
 
-	fetchSpec := gitconfig.RefSpec("+refs/zhi/*:refs/zhi/*")
-	// Note: go-git's RemoteConfig only exposes a Fetch field; there is no Push
-	// field in the struct. Push refspecs (refs/zhi/*:refs/zhi/*) must be
-	// configured manually in .git/config until go-git adds Push support.
-
-	hasFetch := false
-	for _, spec := range remote.Fetch {
-		if spec == fetchSpec {
-			hasFetch = true
+	changed := false
+	for _, remote := range repoCfg.Remotes {
+		kept := remote.Fetch[:0:0]
+		for _, spec := range remote.Fetch {
+			if zhiRefspecIsDestructive(spec.String()) {
+				changed = true
+				continue
+			}
+			kept = append(kept, spec)
 		}
+		remote.Fetch = kept
 	}
 
-	if !hasFetch {
-		remote.Fetch = append(remote.Fetch, fetchSpec)
-		// SetConfig persists the updated remote configuration.
-		_ = a.Repo.SetConfig(repoCfg)
+	if !changed {
+		return false
 	}
+	// A failed write leaves the destructive refspec on disk; saying otherwise
+	// would be worse than staying quiet, since the user remains exposed.
+	if err := a.Repo.SetConfig(repoCfg); err != nil {
+		return false
+	}
+	return true
+}
+
+// zhiRefspecIsDestructive reports whether a fetch refspec writes refs/zhi/*
+// into the local namespace, where a pruning fetch will delete it. The hazard
+// is the destination, not the source.
+func zhiRefspecIsDestructive(spec string) bool {
+	idx := strings.LastIndex(spec, ":")
+	if idx < 0 {
+		return false
+	}
+	dst := spec[idx+1:]
+	return strings.HasPrefix(dst, "refs/zhi/")
 }
