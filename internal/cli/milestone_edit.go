@@ -1,5 +1,5 @@
-// ABOUTME: Implementation of the milestone edit command: set or clear due date,
-// ABOUTME: rename milestones, tag/untag, run the resolution command, and complete the milestone.
+// ABOUTME: Implementation of the milestone edit command: due date, rename,
+// ABOUTME: body/resolution/postmortem, tag/untag, --resolve and --state.
 package cli
 
 import (
@@ -16,7 +16,7 @@ import (
 )
 
 // knownMilestoneEditFlags lists all flags that constitute a valid edit operation.
-var knownMilestoneEditFlags = []string{"due", "name", "tag", "untag", "resolve", "state"}
+var knownMilestoneEditFlags = []string{"due", "name", "tag", "untag", "resolve", "state", "body", "resolution", "postmortem"}
 
 // runMilestoneEdit loads a milestone, applies --due, --name, --tag, and/or
 // --untag changes. On rename, the old ref is deleted and all issues'
@@ -42,7 +42,7 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if !anyFlagSet {
-		return fmt.Errorf("no changes specified: use --due, --name, --state, --tag, --untag, or --resolve")
+		return fmt.Errorf("no changes specified: use --due, --name, --body, --resolution, --postmortem, --state, --tag, --untag, or --resolve")
 	}
 
 	ms, err := milestone.LoadMilestone(app.Store, name)
@@ -52,8 +52,33 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 
 	w := cmd.OutOrStdout()
 
+	// Apply --body / --resolution / --postmortem before anything that can return
+	// early. --state complete with a --postmortem is the natural way to close a
+	// milestone out, and applying these afterwards would silently discard them.
+	contentChanged, err := applyMilestoneWrites(cmd, ms, w)
+	if err != nil {
+		return err
+	}
+	// Persist now only when a path that returns early follows, and no rename
+	// will rewrite the ref anyway. --resolve never persists, and --state's
+	// gates can fail after the content flags have already reported success —
+	// losing a postmortem to a gate failure is the routine case, since failing
+	// is what gates are for. Everything else falls through to the single write
+	// below, so --due combined with a content flag produces one commit rather
+	// than two.
+	earlyReturn := cmd.Flags().Changed("resolve") || cmd.Flags().Changed("state")
+	if contentChanged && earlyReturn && !cmd.Flags().Changed("name") {
+		data, marshalErr := milestone.MarshalMilestone(ms)
+		if marshalErr != nil {
+			return fmt.Errorf("marshal milestone: %w", marshalErr)
+		}
+		if writeErr := app.Store.WriteEntity(milestone.RefPrefix+name, "milestone.yaml", data, "Edit milestone: "+name); writeErr != nil {
+			return fmt.Errorf("write milestone: %w", writeErr)
+		}
+		contentChanged = false
+	}
+
 	// Apply --resolve: execute the milestone's resolution command and report results.
-	// This is a standalone operation; it does not persist any changes to the milestone.
 	if cmd.Flags().Changed("resolve") {
 		return runMilestoneResolve(app, ms, w)
 	}
@@ -127,8 +152,8 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 
 		// Tag/untag operations after rename use the new milestone name.
 		name = newName
-	} else if cmd.Flags().Changed("due") {
-		// Persist due-date change (no rename, so write to the existing ref).
+	} else if cmd.Flags().Changed("due") || contentChanged {
+		// Persist field changes (no rename, so write to the existing ref).
 		data, err := milestone.MarshalMilestone(ms)
 		if err != nil {
 			return fmt.Errorf("marshal milestone: %w", err)
@@ -186,6 +211,117 @@ func runMilestoneResolve(app *App, ms *milestone.Milestone, w io.Writer) error {
 		return fmt.Errorf("resolution command failed: %w", err)
 	}
 	return nil
+}
+
+// clearSentinel is the value that clears a text field, matching --due none.
+const clearSentinel = "none"
+
+// readTextArg resolves a text-valued flag: "-" reads stdin, anything else is
+// used literally. Mirrors issue edit --body, so multi-line markdown never has
+// to survive shell quoting.
+//
+// ok is false when "-" produced nothing, which the caller must treat as "leave
+// the field alone". A generator that fails and emits an empty stream should not
+// erase the field it was meant to fill.
+func readTextArg(cmd *cobra.Command, value string) (text string, ok bool, err error) {
+	if value != "-" {
+		return strings.TrimSpace(value), true, nil
+	}
+	raw, readErr := io.ReadAll(cmd.InOrStdin())
+	if readErr != nil {
+		return "", false, fmt.Errorf("read from stdin: %w", readErr)
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	return trimmed, trimmed != "", nil
+}
+
+// stdinFlagCount reports how many of the named flags asked to read stdin.
+// Only one can: the first consumes the stream and the rest see EOF, which
+// combined with the empty-stdin rule would silently leave fields unset.
+func stdinFlagCount(cmd *cobra.Command, names ...string) int {
+	n := 0
+	for _, name := range names {
+		if v, _ := cmd.Flags().GetString(name); cmd.Flags().Changed(name) && v == "-" {
+			n++
+		}
+	}
+	return n
+}
+
+// applyMilestoneWrites applies --body, --resolution and --postmortem to ms,
+// reporting whether anything changed.
+func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writer) (bool, error) {
+	if n := stdinFlagCount(cmd, "body", "resolution", "postmortem"); n > 1 {
+		return false, fmt.Errorf("only one flag can read stdin with '-'; %d asked for it", n)
+	}
+
+	changed := false
+
+	if cmd.Flags().Changed("body") {
+		value, _ := cmd.Flags().GetString("body")
+		if value == "" {
+			// Empty value opens $EDITOR on the current body, matching issue edit.
+			edited, err := editBodyInEditor(ms.Body)
+			if err != nil {
+				return false, fmt.Errorf("--body: editor: %w", err)
+			}
+			if edited != ms.Body {
+				ms.Body = edited
+				fmt.Fprintf(w, "%s: body updated\n", ms.Name)
+				changed = true
+			}
+		} else {
+			body, ok, err := readTextArg(cmd, value)
+			if err != nil {
+				return false, fmt.Errorf("--body: %w", err)
+			}
+			if ok {
+				ms.Body = body
+				fmt.Fprintf(w, "%s: body updated\n", ms.Name)
+				changed = true
+			} else {
+				fmt.Fprintf(w, "%s: --body - read empty input; body left unchanged\n", ms.Name)
+			}
+		}
+	}
+
+	if cmd.Flags().Changed("resolution") {
+		value, _ := cmd.Flags().GetString("resolution")
+		if value == clearSentinel {
+			ms.Resolution = ""
+			fmt.Fprintf(w, "%s: resolution → (cleared)\n", ms.Name)
+			changed = true
+		} else {
+			resolution, ok, err := readTextArg(cmd, value)
+			if err != nil {
+				return false, fmt.Errorf("--resolution: %w", err)
+			}
+			if ok {
+				ms.Resolution = resolution
+				fmt.Fprintf(w, "%s: resolution → %s\n", ms.Name, resolution)
+				changed = true
+			} else {
+				fmt.Fprintf(w, "%s: --resolution - read empty input; resolution left unchanged\n", ms.Name)
+			}
+		}
+	}
+
+	if cmd.Flags().Changed("postmortem") {
+		value, _ := cmd.Flags().GetString("postmortem")
+		postmortem, ok, err := readTextArg(cmd, value)
+		if err != nil {
+			return false, fmt.Errorf("--postmortem: %w", err)
+		}
+		if ok {
+			ms.Postmortem = postmortem
+			fmt.Fprintf(w, "%s: postmortem attached\n", ms.Name)
+			changed = true
+		} else {
+			fmt.Fprintf(w, "%s: --postmortem - read empty input; postmortem left unchanged\n", ms.Name)
+		}
+	}
+
+	return changed, nil
 }
 
 // runMilestoneComplete enforces quality gates before marking a milestone as

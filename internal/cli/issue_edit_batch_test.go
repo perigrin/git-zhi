@@ -3,8 +3,8 @@
 package cli_test
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"testing"

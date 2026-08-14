@@ -19,10 +19,10 @@ import (
 
 // forecastPoint holds the estimated duration and context for a single worker count.
 type forecastPoint struct {
-	Workers     int     `json:"workers"`
-	WeeksEst    float64 `json:"weeks_est"`
-	CritIssues  int     `json:"critical_chain_issues"`
-	ParallelTracks int  `json:"parallel_tracks"`
+	Workers        int     `json:"workers"`
+	WeeksEst       float64 `json:"weeks_est"`
+	CritIssues     int     `json:"critical_chain_issues"`
+	ParallelTracks int     `json:"parallel_tracks"`
 }
 
 // workerCapacityEntry holds per-worker capacity information for the capacity summary.

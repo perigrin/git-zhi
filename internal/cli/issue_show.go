@@ -29,32 +29,32 @@ type LineageEntryJSON struct {
 // IssueJSON is the presentation struct for JSON output of a single issue.
 // It combines all Issue fields with parsed sections from the body.
 type IssueJSON struct {
-	ID                 uuid.UUID               `json:"id"`
-	Title              string                  `json:"title"`
-	State              issue.State             `json:"state"`
-	Urgency            issue.Urgency           `json:"urgency,omitempty"`
-	Milestone          string                  `json:"milestone"`
-	BlockedBy          []uuid.UUID             `json:"blocked_by,omitempty"`
-	Blocks             []uuid.UUID             `json:"blocks,omitempty"`
-	Created            time.Time               `json:"created"`
-	Updated            time.Time               `json:"updated"`
-	Sessions           []issue.Session         `json:"sessions,omitempty"`
-	Transitions        []issue.Transition      `json:"transitions,omitempty"`
-	ObservedPaths      []string                `json:"observed_paths,omitempty"`
-	Labels             []string                `json:"labels,omitempty"`
-	Assigned           string                  `json:"assigned,omitempty"`
-	Confidence         float64                 `json:"confidence,omitempty"`
-	Source             string                  `json:"source,omitempty"`
-	TrackerID          string                  `json:"tracker_id,omitempty"`
-	LastSyncedAt       *time.Time              `json:"last_synced_at,omitempty"`
-	Prerequisites      []issue.Checkbox        `json:"prerequisites,omitempty"`
+	ID                 uuid.UUID                `json:"id"`
+	Title              string                   `json:"title"`
+	State              issue.State              `json:"state"`
+	Urgency            issue.Urgency            `json:"urgency,omitempty"`
+	Milestone          string                   `json:"milestone"`
+	BlockedBy          []uuid.UUID              `json:"blocked_by,omitempty"`
+	Blocks             []uuid.UUID              `json:"blocks,omitempty"`
+	Created            time.Time                `json:"created"`
+	Updated            time.Time                `json:"updated"`
+	Sessions           []issue.Session          `json:"sessions,omitempty"`
+	Transitions        []issue.Transition       `json:"transitions,omitempty"`
+	ObservedPaths      []string                 `json:"observed_paths,omitempty"`
+	Labels             []string                 `json:"labels,omitempty"`
+	Assigned           string                   `json:"assigned,omitempty"`
+	Confidence         float64                  `json:"confidence,omitempty"`
+	Source             string                   `json:"source,omitempty"`
+	TrackerID          string                   `json:"tracker_id,omitempty"`
+	LastSyncedAt       *time.Time               `json:"last_synced_at,omitempty"`
+	Prerequisites      []issue.Checkbox         `json:"prerequisites,omitempty"`
 	Context            *issue.StructuredContext `json:"context,omitempty"`
-	Steps              []string                `json:"steps,omitempty"`
-	AcceptanceCriteria []issue.Checkbox        `json:"acceptance_criteria,omitempty"`
-	PositiveScenarios  []issue.Checkbox        `json:"positive_scenarios,omitempty"`
-	NegativeScenarios  []issue.Checkbox        `json:"negative_scenarios,omitempty"`
-	Description        string                  `json:"description,omitempty"`
-	Body               string                  `json:"body,omitempty"`
+	Steps              []string                 `json:"steps,omitempty"`
+	AcceptanceCriteria []issue.Checkbox         `json:"acceptance_criteria,omitempty"`
+	PositiveScenarios  []issue.Checkbox         `json:"positive_scenarios,omitempty"`
+	NegativeScenarios  []issue.Checkbox         `json:"negative_scenarios,omitempty"`
+	Description        string                   `json:"description,omitempty"`
+	Body               string                   `json:"body,omitempty"`
 	// MilestoneContext is the markdown body of the parent milestone, providing
 	// agents with the delivery context for this issue. Empty when no milestone
 	// is assigned or when the milestone cannot be loaded.

@@ -60,14 +60,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 // statusJSON is the JSON output structure for git zhi status.
 type statusJSON struct {
-	Message    string      `json:"message,omitempty"`
-	Head       string      `json:"head,omitempty"`
-	Title      string      `json:"title,omitempty"`
-	State      string      `json:"state,omitempty"`
-	Milestone  string      `json:"milestone,omitempty"`
+	Message    string       `json:"message,omitempty"`
+	Head       string       `json:"head,omitempty"`
+	Title      string       `json:"title,omitempty"`
+	State      string       `json:"state,omitempty"`
+	Milestone  string       `json:"milestone,omitempty"`
 	Session    *sessionJSON `json:"session,omitempty"`
-	ReadyCount int         `json:"ready_count"`
-	Next       string      `json:"next,omitempty"`
+	ReadyCount int          `json:"ready_count"`
+	Next       string       `json:"next,omitempty"`
 }
 
 type sessionJSON struct {

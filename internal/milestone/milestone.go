@@ -33,6 +33,9 @@ type Milestone struct {
 	// Completed is set to the timestamp when the milestone transitions to
 	// the "completed" state. Null for milestones that are still open.
 	Completed *time.Time `yaml:"completed,omitempty" json:"completed,omitempty"`
+	// Postmortem is the retrospective attached after completion. Kept out of
+	// Body so a milestone's plan and its retrospective stay distinguishable.
+	Postmortem string `yaml:"postmortem,omitempty" json:"postmortem,omitempty"`
 	// Body is the raw markdown content below the YAML frontmatter separator.
 	// Not stored in YAML; handled separately during Parse and Marshal.
 	Body string `yaml:"-" json:"body,omitempty"`
@@ -51,16 +54,20 @@ type Milestone struct {
 func Parse(raw []byte) (*Milestone, error) {
 	text := string(raw)
 
-	// Detect frontmatter+body format: a "---" line must appear as a separator
-	// ending the YAML block. We look for a line that is exactly "---" (or "---"
-	// with trailing whitespace) that is NOT at the very beginning of the file.
-	// In v0.2 format the YAML block is not wrapped in "---" delimiters; instead
-	// the content starts with YAML keys and a single "---" line separates the
-	// YAML from the markdown body.
+	// Detect frontmatter+body format: a "---" line ends the YAML block. In v0.2
+	// format the YAML is not wrapped in "---" delimiters; the content starts
+	// with YAML keys and a single "---" line separates it from the markdown.
+	//
+	// The match is anchored at column zero. A multi-line frontmatter value is
+	// emitted as an indented block scalar, so a markdown horizontal rule inside
+	// a postmortem or description arrives here as "  ---" — trimming leading
+	// space would treat it as the terminator, truncating the value and
+	// overwriting the body with its tail. Trailing whitespace is still
+	// tolerated, since existing milestones may carry it.
 	lines := strings.Split(text, "\n")
 	separatorIdx := -1
 	for i, line := range lines {
-		if strings.TrimSpace(line) == "---" {
+		if strings.TrimRight(line, " \t\r") == "---" {
 			separatorIdx = i
 			break
 		}

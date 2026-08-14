@@ -386,12 +386,12 @@ func createDoneIssueWithSession(t *testing.T, app *cli.App, title, startSHA, end
 	}
 	now := time.Now()
 	iss := &issue.Issue{
-		ID:       id,
-		Title:    title,
-		State:    issue.StateDone,
+		ID:        id,
+		Title:     title,
+		State:     issue.StateDone,
 		Milestone: "v0.1",
-		Created:  now,
-		Updated:  now,
+		Created:   now,
+		Updated:   now,
 		Sessions: []issue.Session{
 			{StartSHA: startSHA, EndSHA: endSHA, Commits: 1},
 		},
