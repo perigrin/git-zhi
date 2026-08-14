@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,7 +65,11 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 		stateVal, _ := cmd.Flags().GetString("state")
 		switch stateVal {
 		case "complete":
-			return runMilestoneComplete(app, ms, w)
+			verifyTimeout, _ := cmd.Flags().GetInt("timeout")
+			if verifyTimeout < 0 {
+				return fmt.Errorf("invalid --timeout %d: must be a positive number of seconds, or omit it for verify's default", verifyTimeout)
+			}
+			return runMilestoneComplete(app, ms, w, verifyTimeout)
 		case "reopen":
 			return runMilestoneReopen(app, ms, w)
 		default:
@@ -188,17 +193,29 @@ func runMilestoneResolve(app *App, ms *milestone.Milestone, w io.Writer) error {
 	return nil
 }
 
+// VerifyGateArgs builds the argument vector for the verify gate subprocess.
+// A zero timeout means "leave it to verify's own default" so the gate does not
+// hardcode a second copy of it.
+func VerifyGateArgs(milestoneName string, timeout int) []string {
+	args := []string{"verify", milestoneName}
+	if timeout > 0 {
+		args = append(args, "--timeout", strconv.Itoa(timeout))
+	}
+	return args
+}
+
 // runMilestoneComplete enforces quality gates before marking a milestone as
 // completed. Gates are applied in this order:
 //  1. Issue gate: all issues in the milestone must be done or cancelled.
 //  2. Resolution gate: the milestone's resolution command (if any) must pass.
-//  3. Verify gate: if git-zhi is on PATH, run `git-zhi verify`; if not, warn
+//  3. Verify gate: if git-zhi is on PATH, run `git-zhi verify`, forwarding
+//     verifyTimeout when non-zero; if not on PATH, warn
 //     and skip. The gate runs as a subprocess because internal/verify imports
 //     this package, so it cannot be called in-process.
 //
 // If all gates pass, the milestone State is set to "completed", the Completed
 // timestamp is recorded, and the milestone is written back to storage.
-func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer) error {
+func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer, verifyTimeout int) error {
 	// Gate 1: all issues in the milestone must be done or cancelled.
 	allIssues, err := issue.LoadAllIssues(app.Store)
 	if err != nil {
@@ -236,7 +253,13 @@ func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer) error 
 		}
 		repoRoot := wt.Filesystem.Root()
 
-		verifyCmd := exec.Command(zhiPath, "verify", ms.Name)
+		limit := "verify's default"
+		if verifyTimeout > 0 {
+			limit = fmt.Sprintf("%ds", verifyTimeout)
+		}
+		fmt.Fprintf(w, "Running verify gate over %s (per-criterion timeout: %s; every acceptance criterion re-runs, so this can take a while)...\n", ms.Name, limit)
+
+		verifyCmd := exec.Command(zhiPath, VerifyGateArgs(ms.Name, verifyTimeout)...)
 		verifyCmd.Dir = repoRoot
 		verifyCmd.Stdout = w
 		verifyCmd.Stderr = w

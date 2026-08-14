@@ -5,6 +5,7 @@ package verify
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"time"
@@ -72,7 +73,15 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 		RunE: func(cmd *cobra.Command, args []string) error {
 			milestoneName := args[0]
 
-			// Resolve per-command timeout.
+			// Guard the timeout here rather than at each caller: verify is
+			// invoked directly and by the milestone completion gate, and both
+			// need the same bounds. Above ~9.2e9 seconds the multiplication
+			// overflows int64 and wraps, which makes AfterFunc fire at once and
+			// reports every criterion as a regression.
+			const maxTimeoutSeconds = int(math.MaxInt64 / int64(time.Second))
+			if timeout <= 0 || timeout > maxTimeoutSeconds {
+				return fmt.Errorf("invalid --timeout %d: must be between 1 and %d seconds", timeout, maxTimeoutSeconds)
+			}
 			cmdTimeout := time.Duration(timeout) * time.Second
 
 			// Retrieve the repo App from context (injected by main or test harness).
@@ -163,7 +172,11 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 					}
 
 					if format != "json" {
-						fmt.Fprintf(cmd.OutOrStdout(), "    ")
+						// Name the criterion before running it, not after. A
+						// suite-length command otherwise emits four spaces and
+						// nothing else for minutes, which reads as a hang and
+						// does not say which criterion is responsible.
+						fmt.Fprintf(cmd.OutOrStdout(), "    %s ", c.Text)
 					}
 
 					repoRoot := repoRootFromApp(app)
@@ -172,9 +185,9 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 
 					if format != "json" {
 						if passed {
-							fmt.Fprintf(cmd.OutOrStdout(), "✓ %s\n", c.Text)
+							fmt.Fprintln(cmd.OutOrStdout(), "✓")
 						} else {
-							fmt.Fprintf(cmd.OutOrStdout(), "✗ %s          ← REGRESSION\n", c.Text)
+							fmt.Fprintln(cmd.OutOrStdout(), "✗          ← REGRESSION")
 						}
 					}
 
@@ -216,7 +229,11 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 					}
 
 					if format != "json" {
-						fmt.Fprintf(cmd.OutOrStdout(), "    ")
+						// Name the criterion before running it, not after. A
+						// suite-length command otherwise emits four spaces and
+						// nothing else for minutes, which reads as a hang and
+						// does not say which criterion is responsible.
+						fmt.Fprintf(cmd.OutOrStdout(), "    %s ", c.Text)
 					}
 
 					repoRoot := repoRootFromApp(app)
@@ -225,9 +242,9 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 
 					if format != "json" {
 						if passed {
-							fmt.Fprintf(cmd.OutOrStdout(), "✓ %s\n", c.Text)
+							fmt.Fprintln(cmd.OutOrStdout(), "✓")
 						} else {
-							fmt.Fprintf(cmd.OutOrStdout(), "✗ %s          ← REGRESSION\n", c.Text)
+							fmt.Fprintln(cmd.OutOrStdout(), "✗          ← REGRESSION")
 						}
 					}
 
@@ -406,4 +423,3 @@ func repoRootFromApp(app *cli.App) string {
 	}
 	return dir
 }
-

@@ -4,6 +4,8 @@ package cli_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -534,5 +536,85 @@ func TestMilestoneEdit_Reopen_RoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "New pending") {
 		t.Errorf("expected blocking issue title in error, got: %v", err)
+	}
+}
+
+// TestVerifyGateArgs verifies the argument vector handed to the verify gate.
+// The timeout must be forwarded: milestone edit --state complete re-runs every
+// acceptance criterion, and a suite-run criterion slower than the 300s default
+// is reported as a regression that never happened, which makes the whole gate
+// untrustworthy.
+func TestVerifyGateArgs(t *testing.T) {
+	cases := []struct {
+		name      string
+		milestone string
+		timeout   int
+		want      []string
+	}{
+		{"default timeout is not forwarded", "v0.1", 0, []string{"verify", "v0.1"}},
+		{"explicit timeout is forwarded", "v0.1", 4000, []string{"verify", "v0.1", "--timeout", "4000"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := cli.VerifyGateArgs(tc.milestone, tc.timeout)
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("got %v, want %v", got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// TestMilestoneComplete_ForwardsTimeoutToVerify covers the wiring the branch
+// exists for: flag definition → GetInt → runMilestoneComplete → argv. GetInt's
+// error is discarded, so renaming the flag would silently revert the gate to
+// verify's 300s default with every other test still green. A fake git-zhi on
+// PATH records the argv it was called with; no mocks, a real subprocess.
+func TestMilestoneComplete_ForwardsTimeoutToVerify(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantArg bool
+	}{
+		{"explicit timeout is forwarded", []string{"--timeout", "7"}, true},
+		{"omitted timeout leaves verify's default", nil, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app, run := setupMilestoneTest(t)
+			createMilestoneWithResolution(t, app, "release", "echo ok")
+			createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+
+			dir := t.TempDir()
+			argvLog := filepath.Join(dir, "argv")
+			fake := "#!/bin/sh\nprintf '%s\\n' \"$@\" >> " + argvLog + "\n"
+			if err := os.WriteFile(filepath.Join(dir, "git-zhi"), []byte(fake), 0o755); err != nil {
+				t.Fatalf("write fake git-zhi: %v", err)
+			}
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+"/usr/bin:/bin")
+
+			args := append([]string{"milestone", "edit", "release", "--state", "complete"}, tc.args...)
+			if _, err := run(args...); err != nil {
+				t.Fatalf("complete: %v", err)
+			}
+
+			recorded, err := os.ReadFile(argvLog)
+			if err != nil {
+				t.Fatalf("verify gate never ran: %v", err)
+			}
+			got := string(recorded)
+			if !strings.Contains(got, "verify\nrelease\n") {
+				t.Errorf("gate argv missing the verify invocation:\n%s", got)
+			}
+			if hasTimeout := strings.Contains(got, "--timeout\n7\n"); hasTimeout != tc.wantArg {
+				t.Errorf("--timeout forwarded = %v, want %v; argv:\n%s", hasTimeout, tc.wantArg, got)
+			}
+		})
 	}
 }
