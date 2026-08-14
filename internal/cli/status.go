@@ -82,10 +82,10 @@ func printStatusJSON(cmd *cobra.Command, head *issue.Issue, headErr error, app *
 		out.Message = "No issue in progress"
 		ready := g.ReadySet()
 		if len(ready) > 0 {
-			out.Next = ready[0].ID.String()[:8]
+			out.Next = ready[0].ID.String()
 		}
 	} else {
-		out.Head = head.ID.String()[:8]
+		out.Head = head.ID.String()
 		out.Title = head.Title
 		out.State = string(head.State)
 		out.Milestone = head.Milestone

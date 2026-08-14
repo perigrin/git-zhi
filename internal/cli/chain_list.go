@@ -140,12 +140,12 @@ func runChainList(cmd *cobra.Command, args []string) error {
 				CriticalChain: chain,
 			}
 			if len(chain) > 0 {
-				out.CurrentConstraint = chain[0].ID.String()[:8]
+				out.CurrentConstraint = chain[0].ID.String()
 			}
 			if len(parallel) > 0 {
 				ids := make([]string, len(parallel))
 				for i, iss := range parallel {
-					ids[i] = iss.ID.String()[:8]
+					ids[i] = iss.ID.String()
 				}
 				out.ParallelWork = ids
 			}
@@ -314,7 +314,7 @@ func runChainListReady(cmd *cobra.Command, g *graph.Graph, filtered []*issue.Iss
 		items := make([]readySetIssueJSON, len(readyWithPaths))
 		for i, item := range readyWithPaths {
 			items[i] = readySetIssueJSON{
-				ID:    item.iss.ID.String()[:8],
+				ID:    item.iss.ID.String(),
 				Title: item.iss.Title,
 				Paths: item.paths,
 			}
