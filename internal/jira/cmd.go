@@ -36,7 +36,7 @@ func NewJiraCommand() *cobra.Command {
 	var jiraURL string
 
 	root := &cobra.Command{
-		Use:   "git-zhi-jira [ticket-key]",
+		Use:   "jira [ticket-key]",
 		Short: "Jira Cloud sync and ticket import for git-zhi",
 		// DisableFlagParsing is not needed; Args: cobra.ArbitraryArgs prevents
 		// Cobra from treating the first positional argument as a subcommand name

@@ -399,3 +399,26 @@ Second block's title is the empty string.
 		t.Errorf("original title should be unchanged after rejected split, got %q", updIss.Title)
 	}
 }
+
+// TestIssueEdit_DestructiveFlagsMutuallyExclusive verifies that cobra rejects
+// any two of --split, --merge and --purge in the same invocation.
+func TestIssueEdit_DestructiveFlagsMutuallyExclusive(t *testing.T) {
+	_, run := setupSplitTest(t)
+
+	pairs := [][]string{
+		{"--split", "--purge"},
+		{"--split", "--merge", "other"},
+		{"--purge", "--merge", "other"},
+	}
+	for _, flags := range pairs {
+		args := append([]string{"issue", "edit", "HEAD"}, flags...)
+		_, _, err := run("", args...)
+		if err == nil {
+			t.Errorf("expected error for %v, got nil", flags)
+			continue
+		}
+		if !strings.Contains(err.Error(), "none of the others can be") {
+			t.Errorf("expected mutual-exclusion error for %v, got: %v", flags, err)
+		}
+	}
+}

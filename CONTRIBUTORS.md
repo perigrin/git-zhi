@@ -6,13 +6,13 @@ Requires **Go 1.24+** and **git**.
 
 ```bash
 go build -o git-zhi ./cmd/git-zhi/    # single unified binary
-git zhi setup                           # create companion symlinks
 go install github.com/perigrin/git-zhi@latest
 ```
 
-All commands ship as one binary. Companion commands (historian, jira, mermaid,
-project, verify, sanbao, docs) are symlinks created by `git zhi setup`. The
-binary checks `os.Args[0]` to determine which command tree to run.
+All commands ship as one binary. The plugin command trees (historian, jira,
+mermaid, project, verify, sanbao, docs) are registered as subcommands in
+`cmd/git-zhi/main.go`; they import `internal/cli` for the `App` struct, so
+`cli.NewRootCommand` cannot register them itself.
 
 ## Testing
 
@@ -32,9 +32,8 @@ mocks. This catches issues that in-memory testing misses.
 ### Package Structure
 
 ```
-cmd/git-zhi/           unified entry point (busybox dispatch)
+cmd/git-zhi/           unified entry point, plugin subcommand wiring
 internal/
-  dispatch/            argv[0] name resolution, companion symlink setup
   cli/                 Cobra commands, App struct, test helpers
   storage/             git ref CRUD (blob/tree/commit/ref operations)
   issue/               Issue domain model, parse/marshal, sections, loader, label indexes
@@ -43,7 +42,6 @@ internal/
   telemetry/           MPG, speed, buffer, fever chart, time-in-chain
   config/              Chain configuration
   resolve/             Ref argument resolution (HEAD, tag, UUID prefix, title)
-  uuids/               Shared UUID slice utilities
   actor/               Worker identity (human/agent type, parsing)
   verify/              AC command extraction, execution, prioritization, CLI
   sanbao/              Observatory plugin (report, cmd)
@@ -53,7 +51,6 @@ internal/
     sentiment/         VADER commit sentiment analysis
     difficulty/        Composite issue difficulty scoring
     complexity/        Language-agnostic code complexity (churn, coupling)
-    lsp/               LSP JSON-RPC client for language-specific metrics
     report/            Report aggregation
   docs/                Documentation scaffolding, validation, health checks, CLI
   lineage/             Blame-to-issue mapping, observed coupling graph
@@ -64,13 +61,10 @@ internal/
   jira/                Jira sync plugin domain logic
     client/            Jira REST API client (HTTP, auth, pagination)
     sync/              Bidirectional sync, conflict detection, snapshots
-    identity/          Actor-to-Jira user mapping
     credentials/       Env var and git config credential resolution
   project/             Cross-repo aggregation, CCPM buffers, capacity
   mermaid/             Gantt and DAG chart generation from JSON
-  download/            Binary download utilities
-  version/             Version information
-  updater/             Auto-update manager
+  version/             Build-time version information (ldflags)
 ```
 
 ### Storage Model

@@ -53,33 +53,3 @@ func PathsOverlap(a, b []string) bool {
 	return false
 }
 
-// PathDirectories extracts unique parent directories from a set of file paths.
-// For a file at "internal/parser/signature.go", the parent directory is
-// "internal/parser". Root-level files (no "/" separator) yield an empty string.
-// Paths ending in "/" are treated as directories themselves and returned as-is
-// (without the trailing slash).
-func PathDirectories(paths []string) []string {
-	if len(paths) == 0 {
-		return nil
-	}
-	seen := make(map[string]bool, len(paths))
-	result := make([]string, 0, len(paths))
-	for _, p := range paths {
-		var dir string
-		if strings.HasSuffix(p, "/") {
-			dir = strings.TrimSuffix(p, "/")
-		} else {
-			dir = path.Dir(p)
-			// path.Dir returns "." for a bare filename; normalise to empty string
-			// to represent the repository root.
-			if dir == "." {
-				dir = ""
-			}
-		}
-		if !seen[dir] {
-			seen[dir] = true
-			result = append(result, dir)
-		}
-	}
-	return result
-}

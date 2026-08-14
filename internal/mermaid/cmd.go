@@ -1,4 +1,4 @@
-// ABOUTME: Cobra command definitions for the git-zhi-mermaid binary.
+// ABOUTME: Cobra command definitions for the mermaid subcommand.
 // ABOUTME: Dispatches to RenderGantt or RenderDAG after reading JSON from stdin or --file.
 package mermaid
 
@@ -34,12 +34,12 @@ func readInput(cmd *cobra.Command, filePath string) ([]IssueInput, error) {
 }
 
 // NewMermaidCommand creates and returns the root Cobra command for the
-// git-zhi-mermaid binary. It provides two subcommands: gantt and dag.
+// mermaid subcommand. It provides two subcommands: gantt and dag.
 func NewMermaidCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "git-zhi-mermaid",
+		Use:   "mermaid",
 		Short: "Render Mermaid charts from git-zhi JSON output",
-		Long: `git-zhi-mermaid reads a JSON array of issues (from stdin or --file)
+		Long: `mermaid reads a JSON array of issues (from stdin or --file)
 and renders a Mermaid chart to stdout.
 
 Two chart types are supported:

@@ -58,22 +58,19 @@ No external services required.`,
 		NewNextCommand(),
 		NewVersionCommand(),
 		NewUpdateCommand(),
-		NewSetupCommand(),
 		NewStatusCommand(),
 		NewSyncCommand(),
 	)
 
-	// Discover and register external git-zhi-* subcommands
-	for _, extCmd := range DiscoverExternalCommands() {
-		root.AddCommand(extCmd)
-	}
-
 	return root
 }
 
-// Execute runs the root command. Called from main.
-func Execute() {
+// Execute runs the root command with any additional plugin subcommands
+// appended. The plugin packages import this one for App access, so main wires
+// them in rather than NewRootCommand doing it directly.
+func Execute(plugins ...*cobra.Command) {
 	cmd := NewRootCommand()
+	cmd.AddCommand(plugins...)
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "git-zhi: %s\n", err)
 		os.Exit(1)

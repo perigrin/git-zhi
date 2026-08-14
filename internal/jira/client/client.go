@@ -117,55 +117,6 @@ func (c *Client) GetIssue(key string) (*Issue, error) {
 	return raw.toIssue(), nil
 }
 
-// SearchIssues executes a JQL query and returns all matching issues, fetching
-// additional pages automatically until the result set is exhausted.
-// maxResults controls the page size for each individual request.
-func (c *Client) SearchIssues(jql string, maxResults int) ([]Issue, error) {
-	url := fmt.Sprintf("%s/rest/api/3/search", c.BaseURL)
-	var all []Issue
-	startAt := 0
-
-	for {
-		payload := map[string]interface{}{
-			"jql":        jql,
-			"startAt":    startAt,
-			"maxResults": maxResults,
-		}
-		buf, err := json.Marshal(payload)
-		if err != nil {
-			return nil, fmt.Errorf("marshal search request: %w", err)
-		}
-
-		resp, err := c.doRequest(http.MethodPost, url, bytes.NewReader(buf))
-		if err != nil {
-			return nil, err
-		}
-
-		if err := checkStatus(resp, ""); err != nil {
-			resp.Body.Close()
-			return nil, err
-		}
-
-		var page jiraSearchResponse
-		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-			resp.Body.Close()
-			return nil, fmt.Errorf("decode search response: %w", err)
-		}
-		resp.Body.Close()
-
-		for _, raw := range page.Issues {
-			all = append(all, *raw.toIssue())
-		}
-
-		startAt += len(page.Issues)
-		if startAt >= page.Total || len(page.Issues) == 0 {
-			break
-		}
-	}
-
-	return all, nil
-}
-
 // GetTransitions returns the workflow transitions available for the given issue key.
 func (c *Client) GetTransitions(key string) ([]TransitionOption, error) {
 	url := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", c.BaseURL, url.PathEscape(key))
@@ -211,24 +162,6 @@ func (c *Client) DoTransition(key string, transitionID string) error {
 	}
 
 	resp, err := c.doRequest(http.MethodPost, url, bytes.NewReader(buf))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return checkStatus(resp, key)
-}
-
-// UpdateIssue sends a partial update for the given issue using the Jira
-// update-fields syntax (e.g., {"summary": {"set": "new title"}}).
-func (c *Client) UpdateIssue(key string, fields map[string]interface{}) error {
-	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, url.PathEscape(key))
-	payload := map[string]interface{}{"update": fields}
-	buf, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal update payload: %w", err)
-	}
-
-	resp, err := c.doRequest(http.MethodPut, url, bytes.NewReader(buf))
 	if err != nil {
 		return err
 	}

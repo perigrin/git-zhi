@@ -1,4 +1,4 @@
-// ABOUTME: Cobra command definition and main logic for the git-zhi-verify binary.
+// ABOUTME: Cobra command definition and main logic for the verify subcommand.
 // ABOUTME: Loads a milestone, runs AC commands for done issues, and reports pass/fail results.
 package verify
 
@@ -58,9 +58,9 @@ func NewVerifyCommand() *cobra.Command {
 	var timeout int
 
 	cmd := &cobra.Command{
-		Use:   "git-zhi-verify <milestone>",
+		Use:   "verify <milestone>",
 		Short: "Run acceptance-criteria commands for all done issues in a milestone",
-		Long: `git-zhi-verify loads the named milestone, finds all done issues,
+		Long: `verify loads the named milestone, finds all done issues,
 extracts backtick-delimited commands from their Acceptance Criteria sections,
 and executes each command in priority order (recently-changed paths first).
 

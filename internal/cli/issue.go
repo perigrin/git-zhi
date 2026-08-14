@@ -277,5 +277,6 @@ func newIssueEditCommand() *cobra.Command {
 	cmd.Flags().Bool("batch", false, "read a stream of JSON edit operations from stdin and apply them in bulk")
 	cmd.Flags().String("body", "", "replace the issue body: inline text, '-' to read from stdin, or '' to open $EDITOR")
 	cmd.Flags().Bool("force", false, "override safety checks (e.g. allow --state done with zero commits)")
+	cmd.MarkFlagsMutuallyExclusive("split", "merge", "purge")
 	return cmd
 }

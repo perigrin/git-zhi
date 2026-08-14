@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
 
 	"github.com/perigrin/git-zhi/internal/config"
@@ -37,7 +38,8 @@ func displayChainConfig(cmd *cobra.Command, app *App) error {
 		return fmt.Errorf("read config: %w", err)
 	}
 
-	cfg, err := config.UnmarshalConfig(data)
+	var cfg config.Config
+	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
 		return fmt.Errorf("parse config: %w", err)
 	}
@@ -62,7 +64,8 @@ func setChainConfig(cmd *cobra.Command, app *App, key, value string) error {
 		return fmt.Errorf("read config: %w", err)
 	}
 
-	cfg, err := config.UnmarshalConfig(data)
+	var cfg config.Config
+	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
 		return fmt.Errorf("parse config: %w", err)
 	}
@@ -74,7 +77,7 @@ func setChainConfig(cmd *cobra.Command, app *App, key, value string) error {
 		return fmt.Errorf("unknown config key %q: supported keys are default_milestone", key)
 	}
 
-	newData, err := config.MarshalConfig(cfg)
+	newData, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}

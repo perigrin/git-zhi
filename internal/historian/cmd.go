@@ -1,4 +1,4 @@
-// ABOUTME: Cobra command definitions for the git-zhi-historian binary.
+// ABOUTME: Cobra command definitions for the historian subcommand.
 // ABOUTME: Wires the extract→cluster→enrich pipeline with progress tracking, dry-run, and subcommands.
 package historian
 
@@ -32,9 +32,9 @@ func NewHistorianCommand() *cobra.Command {
 	var incremental bool
 
 	cmd := &cobra.Command{
-		Use:   "git-zhi-historian",
+		Use:   "historian",
 		Short: "Reconstruct issue history from git commit log",
-		Long: `git-zhi-historian walks the git log, clusters related commits into
+		Long: `historian walks the git log, clusters related commits into
 issue candidates, enriches them with confidence scores and actor identity,
 and writes them as retrospective done issues into refs/zhi/_/issues/.
 

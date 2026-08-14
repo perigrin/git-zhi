@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,7 +22,6 @@ import (
 	"github.com/perigrin/git-zhi/internal/issue"
 	"github.com/perigrin/git-zhi/internal/milestone"
 	"github.com/perigrin/git-zhi/internal/resolve"
-	"github.com/perigrin/git-zhi/internal/uuids"
 )
 
 // knownEditFlags lists all flags that trigger edit behaviour. Used to detect
@@ -36,6 +36,29 @@ var knownEditFlags = []string{
 }
 
 // runIssueEdit handles 'issue edit [ref] [flags]'.
+// stateExclusiveFlags are the flags that cannot be combined with --state.
+var stateExclusiveFlags = []string{
+	"block", "unblock", "milestone", "tag", "untag",
+	"label", "unlabel", "assign", "unassign", "before", "after",
+}
+
+// issueMutatingFlags are the flags that modify the primary issue itself, so
+// setting any of them means the issue must be written back.
+var issueMutatingFlags = []string{
+	"milestone", "block", "unblock", "before", "after",
+	"label", "unlabel", "assign", "unassign",
+}
+
+// anyChanged reports whether the user set any of the named flags.
+func anyChanged(cmd *cobra.Command, names ...string) bool {
+	for _, name := range names {
+		if cmd.Flags().Changed(name) {
+			return true
+		}
+	}
+	return false
+}
+
 func runIssueEdit(cmd *cobra.Command, args []string) error {
 	app := GetApp(cmd.Context())
 	if app == nil {
@@ -48,18 +71,8 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		refInput = args[0]
 	}
 
-	// --split, --merge, --purge are mutually exclusive with each other and with
-	// --state and all other modification flags. Handle them first and return.
-	destructiveCount := 0
-	for _, name := range []string{"split", "merge", "purge"} {
-		if cmd.Flags().Changed(name) {
-			destructiveCount++
-		}
-	}
-	if destructiveCount > 1 {
-		return fmt.Errorf("--split, --merge, and --purge are mutually exclusive")
-	}
-
+	// --split, --merge and --purge are mutually exclusive with each other;
+	// cobra enforces that at parse time. Handle them first and return.
 	if cmd.Flags().Changed("split") {
 		return runIssueEditSplit(cmd, app, refInput)
 	}
@@ -124,14 +137,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	// If no known flag is set, this is the bare interactive edit ($EDITOR).
-	anyFlagSet := false
-	for _, name := range knownEditFlags {
-		if cmd.Flags().Changed(name) {
-			anyFlagSet = true
-			break
-		}
-	}
-	if !anyFlagSet {
+	if !anyChanged(cmd, knownEditFlags...) {
 		cmd.Println("edit without flags: not yet implemented (use $EDITOR)")
 		return nil
 	}
@@ -139,7 +145,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --state: handled separately because it needs RepoHEAD and outputs a
 	// formatted result. refInput was already set above.
 	if cmd.Flags().Changed("state") {
-		for _, name := range []string{"block", "unblock", "milestone", "tag", "untag", "label", "unlabel", "assign", "unassign", "before", "after"} {
+		for _, name := range stateExclusiveFlags {
 			if cmd.Flags().Changed(name) {
 				return fmt.Errorf("--%s cannot be combined with --state; run them as separate commands", name)
 			}
@@ -436,16 +442,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 
 	// Write the (potentially modified) primary issue back only if one of the
 	// flags that modifies it directly was set.
-	issueDirty := cmd.Flags().Changed("milestone") ||
-		cmd.Flags().Changed("block") ||
-		cmd.Flags().Changed("unblock") ||
-		cmd.Flags().Changed("before") ||
-		cmd.Flags().Changed("after") ||
-		cmd.Flags().Changed("label") ||
-		cmd.Flags().Changed("unlabel") ||
-		cmd.Flags().Changed("assign") ||
-		cmd.Flags().Changed("unassign") ||
-		bodyChanged
+	issueDirty := anyChanged(cmd, issueMutatingFlags...) || bodyChanged
 
 	if issueDirty {
 		iss.Updated = time.Now()
@@ -495,7 +492,7 @@ func addBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string) er
 	}
 
 	// Add target to this.Blocks (deduplicated).
-	if !uuids.ContainsUUID(iss.Blocks, targetUUID) {
+	if !slices.Contains(iss.Blocks, targetUUID) {
 		iss.Blocks = append(iss.Blocks, targetUUID)
 	}
 
@@ -511,7 +508,7 @@ func addBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string) er
 	if tIss.State == issue.StateDone || tIss.State == issue.StateCancelled {
 		return fmt.Errorf("cannot add dependency: target issue %s is %s (done/cancelled issues cannot gain dependencies)", targetUUIDStr[:8], tIss.State)
 	}
-	if !uuids.ContainsUUID(tIss.BlockedBy, issUUID) {
+	if !slices.Contains(tIss.BlockedBy, issUUID) {
 		tIss.BlockedBy = append(tIss.BlockedBy, issUUID)
 	}
 	tIss.Updated = time.Now()
@@ -564,7 +561,7 @@ func addBlockedByEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string
 	}
 
 	// Add target to this.BlockedBy (deduplicated).
-	if !uuids.ContainsUUID(iss.BlockedBy, targetUUID) {
+	if !slices.Contains(iss.BlockedBy, targetUUID) {
 		iss.BlockedBy = append(iss.BlockedBy, targetUUID)
 	}
 
@@ -577,7 +574,7 @@ func addBlockedByEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string
 	if err != nil {
 		return fmt.Errorf("parse target issue: %w", err)
 	}
-	if !uuids.ContainsUUID(tIss.Blocks, issUUID) {
+	if !slices.Contains(tIss.Blocks, issUUID) {
 		tIss.Blocks = append(tIss.Blocks, issUUID)
 	}
 	tIss.Updated = time.Now()
@@ -610,8 +607,8 @@ func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string)
 	}
 
 	// Remove target from this.Blocks and this.BlockedBy (direction-agnostic).
-	iss.Blocks = uuids.RemoveUUID(iss.Blocks, targetUUID)
-	iss.BlockedBy = uuids.RemoveUUID(iss.BlockedBy, targetUUID)
+	iss.Blocks = slices.DeleteFunc(iss.Blocks, func(u uuid.UUID) bool { return u == targetUUID })
+	iss.BlockedBy = slices.DeleteFunc(iss.BlockedBy, func(u uuid.UUID) bool { return u == targetUUID })
 
 	// Load target and remove this from both directions on the target side.
 	tData, err := app.Store.ReadEntity(targetRef, "issue.md")
@@ -622,8 +619,8 @@ func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string)
 	if err != nil {
 		return fmt.Errorf("parse target issue: %w", err)
 	}
-	tIss.BlockedBy = uuids.RemoveUUID(tIss.BlockedBy, issUUID)
-	tIss.Blocks = uuids.RemoveUUID(tIss.Blocks, issUUID)
+	tIss.BlockedBy = slices.DeleteFunc(tIss.BlockedBy, func(u uuid.UUID) bool { return u == issUUID })
+	tIss.Blocks = slices.DeleteFunc(tIss.Blocks, func(u uuid.UUID) bool { return u == issUUID })
 	tIss.Updated = time.Now()
 	tOut, err := issue.Marshal(tIss)
 	if err != nil {
@@ -882,7 +879,7 @@ func runIssueEditSplit(cmd *cobra.Command, app *App, refInput string) error {
 	// Transfer original downstream deps to the last new issue.
 	lastNew := newIssues[len(newIssues)-1]
 	for _, downUUID := range origDownstream {
-		if !uuids.ContainsUUID(lastNew.Blocks, downUUID) {
+		if !slices.Contains(lastNew.Blocks, downUUID) {
 			lastNew.Blocks = append(lastNew.Blocks, downUUID)
 		}
 	}
@@ -898,8 +895,8 @@ func runIssueEditSplit(cmd *cobra.Command, app *App, refInput string) error {
 		if parseErr != nil {
 			continue
 		}
-		downIss.BlockedBy = uuids.RemoveUUID(downIss.BlockedBy, origUUID)
-		if !uuids.ContainsUUID(downIss.BlockedBy, lastNew.ID) {
+		downIss.BlockedBy = slices.DeleteFunc(downIss.BlockedBy, func(u uuid.UUID) bool { return u == origUUID })
+		if !slices.Contains(downIss.BlockedBy, lastNew.ID) {
 			downIss.BlockedBy = append(downIss.BlockedBy, lastNew.ID)
 		}
 		downIss.Updated = now
@@ -1018,14 +1015,14 @@ func runIssueEditMerge(cmd *cobra.Command, app *App, refInput string) error {
 	iss.Sessions = append(iss.Sessions, mergeIss.Sessions...)
 
 	// Remove the merge issue from iss.BlockedBy (if it was blocking iss).
-	iss.BlockedBy = uuids.RemoveUUID(iss.BlockedBy, mergeUUID)
+	iss.BlockedBy = slices.DeleteFunc(iss.BlockedBy, func(u uuid.UUID) bool { return u == mergeUUID })
 
 	// Transfer mergeIss.Blocks to iss.Blocks (avoid duplicates, skip self-refs).
 	for _, u := range mergeIss.Blocks {
 		if u == issUUID {
 			continue // skip self-reference
 		}
-		if !uuids.ContainsUUID(iss.Blocks, u) {
+		if !slices.Contains(iss.Blocks, u) {
 			iss.Blocks = append(iss.Blocks, u)
 		}
 	}
@@ -1035,7 +1032,7 @@ func runIssueEditMerge(cmd *cobra.Command, app *App, refInput string) error {
 		if u == issUUID {
 			continue // skip self-reference
 		}
-		if !uuids.ContainsUUID(iss.BlockedBy, u) {
+		if !slices.Contains(iss.BlockedBy, u) {
 			iss.BlockedBy = append(iss.BlockedBy, u)
 		}
 	}
@@ -1054,8 +1051,8 @@ func runIssueEditMerge(cmd *cobra.Command, app *App, refInput string) error {
 		if parseErr != nil {
 			continue
 		}
-		downIss.BlockedBy = uuids.RemoveUUID(downIss.BlockedBy, mergeUUID)
-		if !uuids.ContainsUUID(downIss.BlockedBy, issUUID) {
+		downIss.BlockedBy = slices.DeleteFunc(downIss.BlockedBy, func(u uuid.UUID) bool { return u == mergeUUID })
+		if !slices.Contains(downIss.BlockedBy, issUUID) {
 			downIss.BlockedBy = append(downIss.BlockedBy, issUUID)
 		}
 		downIss.Updated = now
@@ -1082,8 +1079,8 @@ func runIssueEditMerge(cmd *cobra.Command, app *App, refInput string) error {
 		if parseErr != nil {
 			continue
 		}
-		upIss.Blocks = uuids.RemoveUUID(upIss.Blocks, mergeUUID)
-		if !uuids.ContainsUUID(upIss.Blocks, issUUID) {
+		upIss.Blocks = slices.DeleteFunc(upIss.Blocks, func(u uuid.UUID) bool { return u == mergeUUID })
+		if !slices.Contains(upIss.Blocks, issUUID) {
 			upIss.Blocks = append(upIss.Blocks, issUUID)
 		}
 		upIss.Updated = now
@@ -1227,7 +1224,7 @@ func runIssueEditPurge(cmd *cobra.Command, app *App, refInput string) error {
 		if dep.iss == nil {
 			continue
 		}
-		dep.iss.Blocks = uuids.RemoveUUID(dep.iss.Blocks, issUUID)
+		dep.iss.Blocks = slices.DeleteFunc(dep.iss.Blocks, func(u uuid.UUID) bool { return u == issUUID })
 		dep.iss.Updated = now
 		upOut, marshalErr := issue.Marshal(dep.iss)
 		if marshalErr != nil {
@@ -1244,7 +1241,7 @@ func runIssueEditPurge(cmd *cobra.Command, app *App, refInput string) error {
 		if dep.iss == nil {
 			continue
 		}
-		dep.iss.BlockedBy = uuids.RemoveUUID(dep.iss.BlockedBy, issUUID)
+		dep.iss.BlockedBy = slices.DeleteFunc(dep.iss.BlockedBy, func(u uuid.UUID) bool { return u == issUUID })
 		dep.iss.Updated = now
 		downOut, marshalErr := issue.Marshal(dep.iss)
 		if marshalErr != nil {
@@ -1503,26 +1500,17 @@ func editBodyInEditor(currentBody string) (string, error) {
 	return strings.TrimSpace(string(edited)), nil
 }
 
-// resolveGitEditor resolves the editor using `git var GIT_EDITOR`.
-// Falls back to $EDITOR, $VISUAL, then vi if git var fails.
+// resolveGitEditor resolves the editor using `git var GIT_EDITOR`, which
+// already walks $GIT_EDITOR, core.editor, $VISUAL, $EDITOR, and falls back to
+// vi — the same chain git itself uses.
 func resolveGitEditor() (string, error) {
 	out, err := exec.Command("git", "var", "GIT_EDITOR").Output()
-	if err == nil {
-		editor := strings.TrimSpace(string(out))
-		if editor != "" {
-			return editor, nil
-		}
+	if err != nil {
+		return "", fmt.Errorf("resolve GIT_EDITOR: %w", err)
 	}
-	// Fallback chain
-	if editor := os.Getenv("GIT_EDITOR"); editor != "" {
-		return editor, nil
+	editor := strings.TrimSpace(string(out))
+	if editor == "" {
+		return "", fmt.Errorf("git var GIT_EDITOR returned no editor")
 	}
-	if editor := os.Getenv("VISUAL"); editor != "" {
-		return editor, nil
-	}
-	if editor := os.Getenv("EDITOR"); editor != "" {
-		return editor, nil
-	}
-	return "vi", nil
+	return editor, nil
 }
-

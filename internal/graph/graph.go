@@ -5,12 +5,12 @@ package graph
 import (
 	"fmt"
 	"log"
+	"slices"
 	"sort"
 
 	"github.com/gofrs/uuid/v5"
 
 	"github.com/perigrin/git-zhi/internal/issue"
-	"github.com/perigrin/git-zhi/internal/uuids"
 )
 
 // Graph represents the issue dependency DAG.
@@ -82,7 +82,7 @@ func Build(issues []*issue.Issue) (*Graph, error) {
 				continue
 			}
 			// Only add if not already present (Blocks may have added it).
-			if !uuids.ContainsUUID(g.forward[upID], iss.ID) {
+			if !slices.Contains(g.forward[upID], iss.ID) {
 				g.forward[upID] = append(g.forward[upID], iss.ID)
 				g.backward[iss.ID] = append(g.backward[iss.ID], upID)
 			}
@@ -180,12 +180,6 @@ func (g *Graph) AddEdge(from, to uuid.UUID) error {
 	g.forward[from] = append(g.forward[from], to)
 	g.backward[to] = append(g.backward[to], from)
 	return nil
-}
-
-// RemoveEdge removes the dependency edge from→to if it exists.
-func (g *Graph) RemoveEdge(from, to uuid.UUID) {
-	g.forward[from] = uuids.RemoveUUID(g.forward[from], to)
-	g.backward[to] = uuids.RemoveUUID(g.backward[to], from)
 }
 
 // TopologicalSort returns a topological ordering of non-done/non-cancelled
@@ -475,7 +469,7 @@ func (g *Graph) Cancel(id uuid.UUID) error {
 	// Reconnect: each upstream now blocks each downstream directly.
 	for _, upID := range upstream {
 		for _, downID := range downstream {
-			if !uuids.ContainsUUID(g.forward[upID], downID) {
+			if !slices.Contains(g.forward[upID], downID) {
 				g.forward[upID] = append(g.forward[upID], downID)
 				g.backward[downID] = append(g.backward[downID], upID)
 			}
@@ -484,10 +478,10 @@ func (g *Graph) Cancel(id uuid.UUID) error {
 
 	// Remove all edges involving the cancelled issue.
 	for _, upID := range upstream {
-		g.forward[upID] = uuids.RemoveUUID(g.forward[upID], id)
+		g.forward[upID] = slices.DeleteFunc(g.forward[upID], func(u uuid.UUID) bool { return u == id })
 	}
 	for _, downID := range downstream {
-		g.backward[downID] = uuids.RemoveUUID(g.backward[downID], id)
+		g.backward[downID] = slices.DeleteFunc(g.backward[downID], func(u uuid.UUID) bool { return u == id })
 	}
 	g.forward[id] = []uuid.UUID{}
 	g.backward[id] = []uuid.UUID{}

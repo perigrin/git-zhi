@@ -1,4 +1,4 @@
-// ABOUTME: Cobra commands for the git-zhi-docs plugin: init, check, and health.
+// ABOUTME: Cobra commands for the docs subcommand: init, check, and health.
 // ABOUTME: All three subcommands support --format json; check and health lazy-init docs/.
 package docs
 
@@ -24,7 +24,7 @@ func NewDocsCommand(repoRoot string, repo *git.Repository) *cobra.Command {
 	var format string
 
 	root := &cobra.Command{
-		Use:   "git-zhi-docs",
+		Use:   "docs",
 		Short: "Manage documentation health for a git-zhi repository",
 		// SilenceUsage prevents Cobra from printing usage text on every error.
 		SilenceUsage:  true,

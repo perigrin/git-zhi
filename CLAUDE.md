@@ -12,14 +12,13 @@ git-zhi is a git-native task graph that manages development work as a dependency
 
 ```bash
 go build -o git-zhi ./cmd/git-zhi/    # single unified binary
-git zhi setup                           # create companion symlinks
 go test ./...
 go test -race ./...
 ```
 
-The unified binary uses busybox-style argv[0] dispatch. Companion commands
-(historian, jira, mermaid, etc.) are symlinks to the same binary. Run
-`git zhi setup` after building to create them.
+All commands ship in one binary. The plugin command trees (historian, jira,
+mermaid, etc.) are registered as subcommands in `cmd/git-zhi/main.go` — they
+import `internal/cli`, so `cli.NewRootCommand` cannot register them itself.
 
 ## Claude-Specific Guidance
 
@@ -31,7 +30,7 @@ The unified binary uses busybox-style argv[0] dispatch. Companion commands
 - The ref namespace is `refs/zhi/_/` — issue refs at `refs/zhi/_/issues/<uuid>`, milestones at `refs/zhi/_/milestones/<name>`.
 - `issue.RefPrefix` and `milestone.RefPrefix` constants exist — use them instead of string literals.
 - `--format` is a persistent flag on the root command. Read it via `cmd.Root().PersistentFlags().GetString("format")`.
-- `uuids.ContainsUUID` and `uuids.RemoveUUID` are shared utilities — don't duplicate them.
+- Use `slices.Contains` and `slices.DeleteFunc` for UUID slice work — don't hand-roll loops.
 - `issue.LoadAllIssues(store)` is the shared loader — don't reimplement issue scanning.
 - `actor.TypeHuman` and `actor.TypeAgent` constants — use them instead of string literals for actor types.
 - `Store.AuthorInfo()` returns git author name/email — use with `actor.DeriveActor()`.
