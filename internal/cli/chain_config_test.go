@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/goccy/go-yaml"
 	"strings"
 	"testing"
 
@@ -106,7 +107,8 @@ func TestChainConfig_Set(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadEntity config: %v", err)
 	}
-	cfg, err := config.UnmarshalConfig(data)
+	var cfg config.Config
+	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
 		t.Fatalf("UnmarshalConfig: %v", err)
 	}

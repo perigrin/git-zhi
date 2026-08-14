@@ -36,6 +36,29 @@ var knownEditFlags = []string{
 }
 
 // runIssueEdit handles 'issue edit [ref] [flags]'.
+// stateExclusiveFlags are the flags that cannot be combined with --state.
+var stateExclusiveFlags = []string{
+	"block", "unblock", "milestone", "tag", "untag",
+	"label", "unlabel", "assign", "unassign", "before", "after",
+}
+
+// issueMutatingFlags are the flags that modify the primary issue itself, so
+// setting any of them means the issue must be written back.
+var issueMutatingFlags = []string{
+	"milestone", "block", "unblock", "before", "after",
+	"label", "unlabel", "assign", "unassign",
+}
+
+// anyChanged reports whether the user set any of the named flags.
+func anyChanged(cmd *cobra.Command, names ...string) bool {
+	for _, name := range names {
+		if cmd.Flags().Changed(name) {
+			return true
+		}
+	}
+	return false
+}
+
 func runIssueEdit(cmd *cobra.Command, args []string) error {
 	app := GetApp(cmd.Context())
 	if app == nil {
@@ -48,18 +71,8 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		refInput = args[0]
 	}
 
-	// --split, --merge, --purge are mutually exclusive with each other and with
-	// --state and all other modification flags. Handle them first and return.
-	destructiveCount := 0
-	for _, name := range []string{"split", "merge", "purge"} {
-		if cmd.Flags().Changed(name) {
-			destructiveCount++
-		}
-	}
-	if destructiveCount > 1 {
-		return fmt.Errorf("--split, --merge, and --purge are mutually exclusive")
-	}
-
+	// --split, --merge and --purge are mutually exclusive with each other;
+	// cobra enforces that at parse time. Handle them first and return.
 	if cmd.Flags().Changed("split") {
 		return runIssueEditSplit(cmd, app, refInput)
 	}
@@ -124,14 +137,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	// If no known flag is set, this is the bare interactive edit ($EDITOR).
-	anyFlagSet := false
-	for _, name := range knownEditFlags {
-		if cmd.Flags().Changed(name) {
-			anyFlagSet = true
-			break
-		}
-	}
-	if !anyFlagSet {
+	if !anyChanged(cmd, knownEditFlags...) {
 		cmd.Println("edit without flags: not yet implemented (use $EDITOR)")
 		return nil
 	}
@@ -139,7 +145,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	// --state: handled separately because it needs RepoHEAD and outputs a
 	// formatted result. refInput was already set above.
 	if cmd.Flags().Changed("state") {
-		for _, name := range []string{"block", "unblock", "milestone", "tag", "untag", "label", "unlabel", "assign", "unassign", "before", "after"} {
+		for _, name := range stateExclusiveFlags {
 			if cmd.Flags().Changed(name) {
 				return fmt.Errorf("--%s cannot be combined with --state; run them as separate commands", name)
 			}
@@ -436,16 +442,7 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 
 	// Write the (potentially modified) primary issue back only if one of the
 	// flags that modifies it directly was set.
-	issueDirty := cmd.Flags().Changed("milestone") ||
-		cmd.Flags().Changed("block") ||
-		cmd.Flags().Changed("unblock") ||
-		cmd.Flags().Changed("before") ||
-		cmd.Flags().Changed("after") ||
-		cmd.Flags().Changed("label") ||
-		cmd.Flags().Changed("unlabel") ||
-		cmd.Flags().Changed("assign") ||
-		cmd.Flags().Changed("unassign") ||
-		bodyChanged
+	issueDirty := anyChanged(cmd, issueMutatingFlags...) || bodyChanged
 
 	if issueDirty {
 		iss.Updated = time.Now()
@@ -1503,25 +1500,17 @@ func editBodyInEditor(currentBody string) (string, error) {
 	return strings.TrimSpace(string(edited)), nil
 }
 
-// resolveGitEditor resolves the editor using `git var GIT_EDITOR`.
-// Falls back to $EDITOR, $VISUAL, then vi if git var fails.
+// resolveGitEditor resolves the editor using `git var GIT_EDITOR`, which
+// already walks $GIT_EDITOR, core.editor, $VISUAL, $EDITOR, and falls back to
+// vi — the same chain git itself uses.
 func resolveGitEditor() (string, error) {
 	out, err := exec.Command("git", "var", "GIT_EDITOR").Output()
-	if err == nil {
-		editor := strings.TrimSpace(string(out))
-		if editor != "" {
-			return editor, nil
-		}
+	if err != nil {
+		return "", fmt.Errorf("resolve GIT_EDITOR: %w", err)
 	}
-	// Fallback chain
-	if editor := os.Getenv("GIT_EDITOR"); editor != "" {
-		return editor, nil
+	editor := strings.TrimSpace(string(out))
+	if editor == "" {
+		return "", fmt.Errorf("git var GIT_EDITOR returned no editor")
 	}
-	if editor := os.Getenv("VISUAL"); editor != "" {
-		return editor, nil
-	}
-	if editor := os.Getenv("EDITOR"); editor != "" {
-		return editor, nil
-	}
-	return "vi", nil
+	return editor, nil
 }

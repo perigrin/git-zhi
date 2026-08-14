@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -212,7 +213,7 @@ func renderHuman(cmd *cobra.Command, rpt *report.Report, domain string) error {
 // formatDuration renders a time.Duration in a concise human-readable form.
 // Durations over 24 hours are shown as days; otherwise as hours with one
 // decimal place.
-func formatDuration(d interface{ Hours() float64 }) string {
+func formatDuration(d time.Duration) string {
 	h := d.Hours()
 	if h == 0 {
 		return "n/a"

@@ -3,6 +3,7 @@
 package config_test
 
 import (
+	"github.com/goccy/go-yaml"
 	"strings"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestMarshal_Default(t *testing.T) {
 	cfg := config.Default()
-	data, err := config.MarshalConfig(cfg)
+	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		t.Fatalf("MarshalConfig failed: %v", err)
 	}

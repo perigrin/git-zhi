@@ -13,6 +13,7 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 	gitconfig "github.com/go-git/go-git/v5/config"
+	"github.com/goccy/go-yaml"
 
 	"github.com/perigrin/git-zhi/internal/config"
 	"github.com/perigrin/git-zhi/internal/milestone"
@@ -162,7 +163,7 @@ func (a *App) EnsureInitializedWithOutput(w io.Writer) error {
 	}
 
 	if !configExists {
-		cfgData, err := config.MarshalConfig(cfg)
+		cfgData, err := yaml.Marshal(cfg)
 		if err != nil {
 			return fmt.Errorf("marshal config: %w", err)
 		}
