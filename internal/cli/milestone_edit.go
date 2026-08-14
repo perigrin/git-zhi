@@ -192,7 +192,9 @@ func runMilestoneResolve(app *App, ms *milestone.Milestone, w io.Writer) error {
 // completed. Gates are applied in this order:
 //  1. Issue gate: all issues in the milestone must be done or cancelled.
 //  2. Resolution gate: the milestone's resolution command (if any) must pass.
-//  3. Verify gate: if git-zhi-verify is on PATH, run it; if not, warn and skip.
+//  3. Verify gate: if git-zhi is on PATH, run `git-zhi verify`; if not, warn
+//     and skip. The gate runs as a subprocess because internal/verify imports
+//     this package, so it cannot be called in-process.
 //
 // If all gates pass, the milestone State is set to "completed", the Completed
 // timestamp is recorded, and the milestone is written back to storage.
@@ -223,10 +225,10 @@ func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer) error 
 		}
 	}
 
-	// Gate 3: run git-zhi-verify if it is on PATH; warn and skip if not found.
-	verifyPath, lookErr := exec.LookPath("git-zhi-verify")
+	// Gate 3: run `git-zhi verify` if git-zhi is on PATH; warn and skip if not.
+	zhiPath, lookErr := exec.LookPath("git-zhi")
 	if lookErr != nil {
-		fmt.Fprintf(w, "warning: git-zhi-verify not found on PATH; skipping verify gate\n")
+		fmt.Fprintf(w, "warning: git-zhi not found on PATH; skipping verify gate\n")
 	} else {
 		wt, wtErr := app.Repo.Worktree()
 		if wtErr != nil {
@@ -234,7 +236,7 @@ func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer) error 
 		}
 		repoRoot := wt.Filesystem.Root()
 
-		verifyCmd := exec.Command(verifyPath, ms.Name)
+		verifyCmd := exec.Command(zhiPath, "verify", ms.Name)
 		verifyCmd.Dir = repoRoot
 		verifyCmd.Stdout = w
 		verifyCmd.Stderr = w

@@ -1,4 +1,4 @@
-// ABOUTME: Cobra command definition for the git-zhi-sanbao binary.
+// ABOUTME: Cobra command definition for the sanbao subcommand.
 // ABOUTME: Loads a milestone, generates a sanbao report, and formats it for humans or JSON consumers.
 package sanbao
 
@@ -31,9 +31,9 @@ func NewSanbaoCommand() *cobra.Command {
 	var domain string
 
 	cmd := &cobra.Command{
-		Use:   "git-zhi-sanbao <milestone>",
+		Use:   "sanbao <milestone>",
 		Short: "Generate a sanbao (三宝) observability report for a milestone",
-		Long: `git-zhi-sanbao loads the named milestone, computes DORA, SPACE, CALMS,
+		Long: `sanbao loads the named milestone, computes DORA, SPACE, CALMS,
 sentiment, complexity, and issue difficulty metrics, and renders a
 human-readable or JSON report.
 

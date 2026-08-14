@@ -77,13 +77,11 @@ Or build from source:
 git clone https://github.com/perigrin/git-zhi.git
 cd git-zhi
 go build -o git-zhi ./cmd/git-zhi/
-git zhi setup    # create companion symlinks for plugin discovery
 ```
 
 Place `git-zhi` on your `$PATH`. Git discovers it automatically — `git zhi`
-just works. All companion commands (historian, jira, verify, sanbao, docs,
-mermaid, project) ship inside the same binary. `git zhi setup` creates
-symlinks so git discovers them as subcommands.
+just works. The plugin commands (historian, jira, verify, sanbao, docs,
+mermaid, project) are subcommands of the same binary.
 
 ## Commands
 
@@ -230,18 +228,15 @@ Nobody enters estimates. The tool watches what happens and projects forward.
 
 ## Extending
 
-Any executable named `git-zhi-<name>` on `$PATH` is invocable as
-`git zhi <name>`. Write plugins in any language. Seven bundled companions
-ship inside the unified binary and are exposed via symlinks created by
-`git zhi setup`:
+Seven plugin command trees ship inside the binary:
 
-- `git-zhi-verify` — acceptance criteria extraction and execution
-- `git-zhi-sanbao` — DORA/SPACE/CALMS metrics, sentiment, complexity
-- `git-zhi-docs` — documentation scaffolding and health checks
-- `git-zhi-historian` — retrospective issue reconstruction from git history
-- `git-zhi-jira` — Jira Cloud bidirectional sync
-- `git-zhi-project` — cross-repo project aggregation with CCPM buffers
-- `git-zhi-mermaid` — Gantt and DAG chart generation
+- `git zhi verify` — acceptance criteria extraction and execution
+- `git zhi sanbao` — DORA/SPACE/CALMS metrics, sentiment, complexity
+- `git zhi docs` — documentation scaffolding and health checks
+- `git zhi historian` — retrospective issue reconstruction from git history
+- `git zhi jira` — Jira Cloud bidirectional sync
+- `git zhi project` — cross-repo project aggregation with CCPM buffers
+- `git zhi mermaid` — Gantt and DAG chart generation
 
 ## Design
 

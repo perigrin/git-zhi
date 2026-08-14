@@ -346,18 +346,18 @@ func TestMilestoneComplete_ResolutionFails(t *testing.T) {
 }
 
 // TestMilestoneComplete_VerifySkippedWithWarning verifies that --state complete
-// skips the verify gate (with a warning) when git-zhi-verify is not on PATH,
-// and still succeeds when all other gates pass.
+// skips the verify gate (with a warning) when git-zhi is not on PATH, and
+// still succeeds when all other gates pass.
 func TestMilestoneComplete_VerifySkippedWithWarning(t *testing.T) {
 	app, run := setupMilestoneTest(t)
 
 	createMilestoneWithResolution(t, app, "release", "echo ok")
 	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
 
-	// Hide git-zhi-verify by restricting PATH to system directories only.
-	// This ensures exec.LookPath("git-zhi-verify") fails, triggering
-	// the warning path. We keep /usr/bin and /bin so the resolution
-	// command ("echo ok") still works.
+	// Hide git-zhi by restricting PATH to system directories only. This
+	// ensures exec.LookPath("git-zhi") fails, triggering the warning path.
+	// We keep /usr/bin and /bin so the resolution command ("echo ok") still
+	// works.
 	t.Setenv("PATH", "/usr/bin:/bin")
 
 	stdout, err := run("milestone", "edit", "release", "--state", "complete")
@@ -367,8 +367,8 @@ func TestMilestoneComplete_VerifySkippedWithWarning(t *testing.T) {
 
 	// The warning about skipping the verify gate should appear in output.
 	output := stdout.String()
-	if !strings.Contains(output, "git-zhi-verify") {
-		t.Errorf("expected warning about git-zhi-verify not found in output: %q", output)
+	if !strings.Contains(output, "skipping verify gate") {
+		t.Errorf("expected warning about skipping the verify gate in output: %q", output)
 	}
 }
 

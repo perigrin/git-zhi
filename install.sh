@@ -1,6 +1,6 @@
 #!/bin/sh
 # ABOUTME: Platform-detecting installer for git-zhi. Downloads the correct
-# ABOUTME: binary from GitHub releases, installs it, and creates companion symlinks.
+# ABOUTME: binary from GitHub releases and installs it to the user bin directory.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/perigrin/git-zhi/pu/install.sh | sh
@@ -21,7 +21,7 @@ while [ $# -gt 0 ]; do
         --help)
             echo "Usage: install.sh [--version VERSION] [--install-dir DIR]"
             echo ""
-            echo "Downloads and installs the git-zhi binary and creates companion symlinks."
+            echo "Downloads and installs the git-zhi binary."
             echo ""
             echo "Options:"
             echo "  --version      Specific version to install (default: latest)"
@@ -101,9 +101,6 @@ cp "${TMPDIR}/${BINARY_NAME}" "${INSTALL_DIR}/git-zhi"
 chmod +x "${INSTALL_DIR}/git-zhi"
 
 echo "Installed git-zhi to ${INSTALL_DIR}/git-zhi"
-
-# Create companion symlinks.
-"${INSTALL_DIR}/git-zhi" setup
 
 # Check PATH.
 case ":${PATH}:" in

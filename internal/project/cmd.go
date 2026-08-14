@@ -15,7 +15,7 @@ func NewProjectCommand() *cobra.Command {
 	var format string
 
 	root := &cobra.Command{
-		Use:   "git-zhi-project",
+		Use:   "project",
 		Short: "Cross-repo project aggregation and CCPM buffer tracking",
 		Long: `git-zhi-project reads a project definition YAML file describing multiple
 git-zhi repos and computes cross-repo critical chain, CCPM buffers, and
