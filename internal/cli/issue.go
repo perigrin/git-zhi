@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -46,6 +47,8 @@ func newIssueAddCommand() *cobra.Command {
 	cmd.Flags().String("after", "", "issue ref that this issue depends on (not yet implemented)")
 	cmd.Flags().String("before", "", "issue ref that depends on this issue (not yet implemented)")
 	cmd.Flags().String("body", "", "issue body text (used with positional title arg; overrides stdin)")
+	cmd.Flags().String("body-file", "", "read the issue body from a file (mirrors git commit -F)")
+	cmd.MarkFlagsMutuallyExclusive("body", "body-file")
 
 	return cmd
 }
@@ -75,8 +78,23 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 		defaultMilestone = ms
 	}
 
-	// Determine input source: --body flag takes precedence over stdin.
+	// Determine input source: --body / --body-file take precedence over stdin.
 	bodyFlag, _ := cmd.Flags().GetString("body")
+	bodyFile, _ := cmd.Flags().GetString("body-file")
+	if bodyFile != "" {
+		raw, readErr := os.ReadFile(bodyFile)
+		if readErr != nil {
+			return fmt.Errorf("--body-file: %w", readErr)
+		}
+		bodyFlag = strings.TrimSpace(string(raw))
+		if bodyFlag == "" {
+			return fmt.Errorf("--body-file %s is empty", bodyFile)
+		}
+	}
+	if bodyFlag != "" && len(args) == 0 {
+		return fmt.Errorf("a title argument is required when the body comes from a flag: git zhi issue add \"Title\" --body-file <path>")
+	}
+
 	var blocks [][]byte
 	if bodyFlag != "" && len(args) > 0 {
 		// Build a synthetic frontmatter block from args (title) and --body flag.
@@ -232,13 +250,33 @@ func newIssueListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List issues",
-		RunE:  runIssueList,
+		Long: `List issues in the chain.
+
+By default only pending and in-progress issues are shown; pass --all (or
+--state all) to include done, cancelled and reopened ones. This is why a
+completed milestone lists nothing while milestone show still reports its
+issues.
+
+--ready narrows the list to work that can be picked up now: pending or
+reopened issues whose blockers are all done or cancelled. It spans every
+milestone unless --milestone scopes it, and readiness is computed over the
+whole graph, so a blocker excluded by a filter still counts.
+
+JSON output (--format json) names dependency edges:
+
+  blocks      issues this one blocks (forward edges)
+  blocked_by  issues that block this one (reverse edges)
+
+Both are arrays of full 36-character UUIDs, and both are omitted when empty —
+so an issue with no blockers has no blocked_by key at all.`,
+		RunE: runIssueList,
 	}
 	cmd.Flags().Bool("all", false, "include done and cancelled issues")
 	cmd.Flags().String("milestone", "", "filter by milestone")
-	cmd.Flags().String("state", "", "filter by state (pending, in-progress, done, cancelled)")
+	cmd.Flags().String("state", "", "filter by state (pending, in-progress, done, cancelled, reopened)")
 	cmd.Flags().String("label", "", "filter by label")
 	cmd.Flags().String("assigned", "", "filter by assigned worker")
+	cmd.Flags().Bool("ready", false, "only issues whose blockers are all done or cancelled")
 	return cmd
 }
 
@@ -276,7 +314,9 @@ func newIssueEditCommand() *cobra.Command {
 	cmd.Flags().Bool("yes", false, "confirm destructive operations (required for --purge)")
 	cmd.Flags().Bool("batch", false, "read a stream of JSON edit operations from stdin and apply them in bulk")
 	cmd.Flags().String("body", "", "replace the issue body: inline text, '-' to read from stdin, or '' to open $EDITOR")
+	cmd.Flags().String("body-file", "", "replace the issue body with a file's contents (mirrors git commit -F)")
 	cmd.Flags().Bool("force", false, "override safety checks (e.g. allow --state done with zero commits)")
 	cmd.MarkFlagsMutuallyExclusive("split", "merge", "purge")
+	cmd.MarkFlagsMutuallyExclusive("body", "body-file")
 	return cmd
 }

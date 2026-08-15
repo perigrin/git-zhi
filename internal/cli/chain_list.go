@@ -81,12 +81,16 @@ func runChainList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load issues: %w", err)
 	}
 
-	// Apply state and milestone filters for graph building. The label filter
-	// is applied AFTER graph construction so that blocking relationships
-	// through unlabeled issues are respected (same pattern as chain_next.go).
+	// Build the graph from every issue. Filtering first would drop blockers
+	// that live outside the filter, turning their edges into dangling
+	// references that Build discards — which reports a blocked issue as ready.
+	// The milestone and label filters apply to the display set only, after
+	// construction (the same pattern as chain_next.go).
+	g, _ := graph.Build(allIssues)
+
 	var graphIssues []*issue.Issue
 	for _, iss := range allIssues {
-		if !includeAll && iss.State != issue.StatePending && iss.State != issue.StateInProgress {
+		if !includeAll && iss.State != issue.StatePending && iss.State != issue.StateInProgress && iss.State != issue.StateReopened {
 			continue
 		}
 		if milestoneFilter != "" && iss.Milestone != milestoneFilter {
@@ -94,8 +98,6 @@ func runChainList(cmd *cobra.Command, args []string) error {
 		}
 		graphIssues = append(graphIssues, iss)
 	}
-
-	g, _ := graph.Build(graphIssues)
 
 	// Apply label filter to the display set only, after graph construction.
 	var filtered []*issue.Issue

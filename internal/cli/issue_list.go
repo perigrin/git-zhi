@@ -11,6 +11,7 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"
 
+	"github.com/perigrin/git-zhi/internal/graph"
 	"github.com/perigrin/git-zhi/internal/issue"
 )
 
@@ -20,6 +21,35 @@ var stateIcon = map[issue.State]string{
 	issue.StatePending:    "○",
 	issue.StateDone:       "✓",
 	issue.StateCancelled:  "✗",
+	issue.StateReopened:   "↻",
+}
+
+// filterReady narrows issues to those in the chain-wide ready set: pending or
+// reopened, with every blocker done or cancelled. Readiness is a property of
+// the whole graph, so it is computed over all issues and then intersected with
+// the caller's filtered selection.
+func filterReady(app *App, issues []*issue.Issue) ([]*issue.Issue, error) {
+	all, err := issue.LoadAllIssues(app.Store)
+	if err != nil {
+		return nil, fmt.Errorf("load issues for --ready: %w", err)
+	}
+	g, err := graph.Build(all)
+	if err != nil {
+		return nil, fmt.Errorf("build graph for --ready: %w", err)
+	}
+
+	ready := make(map[uuid.UUID]bool)
+	for _, iss := range g.ReadySet() {
+		ready[iss.ID] = true
+	}
+
+	filtered := issues[:0:0]
+	for _, iss := range issues {
+		if ready[iss.ID] {
+			filtered = append(filtered, iss)
+		}
+	}
+	return filtered, nil
 }
 
 // runIssueList loads all issues from storage, applies the active filters, and
@@ -35,6 +65,7 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 	stateFilter, _ := cmd.Flags().GetString("state")
 	labelFilter, _ := cmd.Flags().GetString("label")
 	assignedFilter, _ := cmd.Flags().GetString("assigned")
+	readyOnly, _ := cmd.Flags().GetBool("ready")
 
 	// Treat --state all as equivalent to --all.
 	if stateFilter == "all" {
@@ -99,8 +130,11 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 			if string(iss.State) != stateFilter {
 				continue
 			}
-		} else if !includeAll {
-			// Default: show only active states.
+		} else if !includeAll && !readyOnly {
+			// Default: show only active states. Skipped under --ready, which
+			// has its own notion of what counts (pending or reopened, all
+			// blockers resolved) — applying this first dropped reopened issues
+			// before the ready filter could consider them.
 			if iss.State != issue.StatePending && iss.State != issue.StateInProgress {
 				continue
 			}
@@ -133,6 +167,16 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 		issues = append(issues, iss)
 	}
 
+	// Apply --ready: keep only issues whose blockers are all resolved. The
+	// graph is built from every issue, not the filtered set, so a blocker
+	// excluded by --milestone or --state still counts against readiness.
+	if readyOnly {
+		issues, err = filterReady(app, issues)
+		if err != nil {
+			return err
+		}
+	}
+
 	format, _ := cmd.Root().PersistentFlags().GetString("format")
 	if format == "json" {
 		// list returns the Issue struct directly (summary view) while show
@@ -146,11 +190,11 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 		return enc.Encode(issues)
 	}
 
-	return listHuman(cmd, issues)
+	return listHuman(cmd, issues, readyOnly)
 }
 
 // listHuman renders the issue list as a human-readable table with state icons.
-func listHuman(cmd *cobra.Command, issues []*issue.Issue) error {
+func listHuman(cmd *cobra.Command, issues []*issue.Issue, readyOnly bool) error {
 	w := cmd.OutOrStdout()
 	for _, iss := range issues {
 		icon := stateIcon[iss.State]
@@ -163,7 +207,9 @@ func listHuman(cmd *cobra.Command, issues []*issue.Issue) error {
 			icon,
 			string(iss.State),
 		)
-		if len(iss.BlockedBy) > 0 {
+		// Under --ready every blocker is done or cancelled, so the annotation
+		// would contradict the flag on every line.
+		if len(iss.BlockedBy) > 0 && !readyOnly {
 			prefixes := make([]string, len(iss.BlockedBy))
 			for i, id := range iss.BlockedBy {
 				prefixes[i] = id.String()[:8]

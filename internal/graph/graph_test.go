@@ -572,3 +572,31 @@ func TestParallelAssignment_CriticalChainPriority(t *testing.T) {
 		t.Errorf("expected first group to contain A (critical chain issue), got %v", groups[0][0])
 	}
 }
+
+// TestReadySet_IncludesReopened verifies reopened issues are treated as work
+// that can be picked up. `--state start` is legal from reopened, so leaving
+// them out hid available work from every caller asking what is next.
+func TestReadySet_IncludesReopened(t *testing.T) {
+	pending := &issue.Issue{ID: uuid.Must(uuid.NewV7()), Title: "pending", State: issue.StatePending}
+	reopened := &issue.Issue{ID: uuid.Must(uuid.NewV7()), Title: "reopened", State: issue.StateReopened}
+	done := &issue.Issue{ID: uuid.Must(uuid.NewV7()), Title: "done", State: issue.StateDone}
+
+	g, err := graph.Build([]*issue.Issue{pending, reopened, done})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	titles := map[string]bool{}
+	for _, iss := range g.ReadySet() {
+		titles[iss.Title] = true
+	}
+	if !titles["reopened"] {
+		t.Error("reopened issue missing from the ready set; --state start is legal from it")
+	}
+	if !titles["pending"] {
+		t.Error("pending issue missing from the ready set")
+	}
+	if titles["done"] {
+		t.Error("done issue should not be ready")
+	}
+}
