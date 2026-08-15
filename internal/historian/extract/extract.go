@@ -30,7 +30,7 @@ type CommitData struct {
 	Email       string
 	Timestamp   time.Time
 	Message     string
-	TicketRefs  []string       // extracted ticket references sorted and deduped
+	TicketRefs  []string // extracted ticket references sorted and deduped
 	Fingerprint DiffFingerprint
 }
 
@@ -47,7 +47,6 @@ var githubRefRE = regexp.MustCompile(`(?:^|[^a-zA-Z0-9])(#\d+)`)
 // message (e.g. "feat(infer): ..." → "infer"). The scope acts as a
 // lightweight ticket ref for grouping related commits by subsystem.
 var conventionalCommitRE = regexp.MustCompile(`^(?:feat|fix|docs|test|refactor|chore|style|perf|ci|build|revert)\(([a-zA-Z0-9_-]+)\):`)
-
 
 // ExtractTicketRefs parses commit message and returns a sorted, deduplicated
 // slice of ticket references. Recognised patterns:

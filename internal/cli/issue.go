@@ -23,6 +23,12 @@ func NewIssueCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "issue",
 		Short: "Manage issues in the chain",
+		// NoArgs turns a mistyped subcommand into an error naming it,
+		// instead of help text and a zero exit that a script reads as success.
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
 	}
 
 	cmd.AddCommand(

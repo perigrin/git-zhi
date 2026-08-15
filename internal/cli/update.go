@@ -20,7 +20,10 @@ const installCommand = "curl -fsSL https://raw.githubusercontent.com/perigrin/gi
 // download, replacement, and rollback in the binary itself.
 func NewUpdateCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "update",
+		Use: "update",
+		// Takes no positional arguments; without NoArgs cobra discards them
+		// silently, so `git zhi sync push` runs the default and exits 0.
+		Args:  cobra.NoArgs,
 		Short: "Show how to update git-zhi to the latest release",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()

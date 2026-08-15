@@ -208,4 +208,3 @@ func collectPaths(c *cluster.Cluster) []string {
 	sort.Strings(paths)
 	return paths
 }
-

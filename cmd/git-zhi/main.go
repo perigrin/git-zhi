@@ -19,7 +19,15 @@ import (
 )
 
 func main() {
-	cli.Execute(
+	cli.Execute(plugins()...)
+}
+
+// plugins returns the plugin command trees wired into the root. Exported to
+// the test binary so a single walk can cover every command the real CLI has,
+// including nested groups — enumerating them by hand is how a broken group
+// goes unnoticed.
+func plugins() []*cobra.Command {
+	return []*cobra.Command{
 		historian.NewHistorianCommand(),
 		jira.NewJiraCommand(),
 		verify.NewVerifyCommand(),
@@ -27,7 +35,7 @@ func main() {
 		mermaid.NewMermaidCommand(),
 		project.NewProjectCommand(),
 		docsCommand(),
-	)
+	}
 }
 
 // docsCommand builds the docs subcommand. Unlike the other plugins, docs needs

@@ -62,7 +62,7 @@ type Centroid struct {
 
 // Cluster is a group of related commits that form a single issue candidate.
 type Cluster struct {
-	ID        string              // generated identifier (format: cluster-N)
+	ID        string // generated identifier (format: cluster-N)
 	Commits   []extract.CommitData
 	Centroid  Centroid
 	TicketRef string // primary ticket reference, if any commit carried one

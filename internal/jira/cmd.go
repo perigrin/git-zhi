@@ -41,7 +41,9 @@ func NewJiraCommand() *cobra.Command {
 		// DisableFlagParsing is not needed; Args: cobra.ArbitraryArgs prevents
 		// Cobra from treating the first positional argument as a subcommand name
 		// when it does not match any registered subcommand.
-		Args:          cobra.ArbitraryArgs,
+		// One ticket key. ArbitraryArgs silently dropped the rest, so a
+		// batch import script read two fetched when only one ran.
+		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// RunE handles the positional 'git zhi jira <ticket-key>' form.
@@ -166,15 +168,15 @@ func runFetchTicket(cmd *cobra.Command, key, jiraURLOverride string) error {
 
 	now := time.Now()
 	iss := &issue.Issue{
-		Title:       ji.Summary,
-		State:       issue.StatePending,
-		Urgency:     mapJiraPriorityToUrgency(ji.Priority),
-		Source:      "tracker-match",
-		TrackerID:   "jira:" + ji.Key,
-		Labels:      ji.Labels,
-		Created:     now,
-		Updated:     now,
-		Transitions: []issue.Transition{},
+		Title:         ji.Summary,
+		State:         issue.StatePending,
+		Urgency:       mapJiraPriorityToUrgency(ji.Priority),
+		Source:        "tracker-match",
+		TrackerID:     "jira:" + ji.Key,
+		Labels:        ji.Labels,
+		Created:       now,
+		Updated:       now,
+		Transitions:   []issue.Transition{},
 		ObservedPaths: []string{},
 	}
 	if iss.Labels == nil {
@@ -215,6 +217,10 @@ func newSyncCommand(snapshotDir *string, jiraURL *string) *cobra.Command {
 		Short:         "Bidirectional sync between Jira and git-zhi",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// sync takes no positional arguments; without NoArgs a mistyped
+		// subcommand falls through to RunE, prints help and exits 0, so a
+		// sync that never ran reads as success to the calling script.
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// 'jira sync' alone (without pull/push) runs --dry-run preview if
 			// that flag is set, or prints help otherwise.

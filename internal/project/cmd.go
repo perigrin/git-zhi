@@ -17,6 +17,10 @@ func NewProjectCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "project",
 		Short: "Cross-repo project aggregation and CCPM buffer tracking",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
 		Long: `git-zhi-project reads a project definition YAML file describing multiple
 git-zhi repos and computes cross-repo critical chain, CCPM buffers, and
 per-worker recommendations.`,

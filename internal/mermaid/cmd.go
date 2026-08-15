@@ -39,6 +39,10 @@ func NewMermaidCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "mermaid",
 		Short: "Render Mermaid charts from git-zhi JSON output",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
 		Long: `mermaid reads a JSON array of issues (from stdin or --file)
 and renders a Mermaid chart to stdout.
 

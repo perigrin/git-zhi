@@ -40,7 +40,16 @@ human-readable or JSON report.
 
 Use --domain to filter to a single metric domain.
 Use --format json for machine-readable output.`,
-		Args:          cobra.ExactArgs(1),
+		// sanbao takes a bare milestone name. Cobra routes a real subcommand
+		// before Args runs, so a second argument means the first word was not
+		// one — say that, rather than reporting an argument count.
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 1 {
+				return fmt.Errorf("unknown subcommand %q for %q; usage: %s <milestone>",
+					args[0], cmd.CommandPath(), cmd.CommandPath())
+			}
+			return cobra.ExactArgs(1)(cmd, args)
+		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

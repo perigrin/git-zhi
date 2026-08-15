@@ -26,6 +26,10 @@ func NewDocsCommand(repoRoot string, repo *git.Repository) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "docs",
 		Short: "Manage documentation health for a git-zhi repository",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
 		// SilenceUsage prevents Cobra from printing usage text on every error.
 		SilenceUsage:  true,
 		SilenceErrors: true,
