@@ -4,3 +4,6 @@
 *.test
 build/
 git-chain
+
+# Linked worktrees live inside the repo; never commit them as gitlinks.
+.claude/worktrees/

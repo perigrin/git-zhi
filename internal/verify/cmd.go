@@ -25,6 +25,7 @@ type JSONResultEntry struct {
 	Subsection string `json:"subsection"`
 	Command    string `json:"command"`
 	Passed     bool   `json:"passed"`
+	NoTestsRan bool   `json:"no_tests_ran,omitempty"`
 	ExitCode   int    `json:"exit_code"`
 	Stdout     string `json:"stdout"`
 	Stderr     string `json:"stderr"`
@@ -44,10 +45,19 @@ type JSONReport struct {
 	Milestone         string                  `json:"milestone"`
 	Total             int                     `json:"total"`
 	Passed            int                     `json:"passed"`
+	NoTestsRan        int                     `json:"no_tests_ran"`
 	Failed            int                     `json:"failed"`
 	Unverifiable      int                     `json:"unverifiable"`
 	Results           []JSONResultEntry       `json:"results"`
 	UnverifiableItems []JSONUnverifiableEntry `json:"unverifiable_items"`
+}
+
+// classify decides how a completed criterion counts. A run that exited clean
+// without executing any test verified nothing, so it is neither a pass nor a
+// regression — the distinction matters when reading a red gate, and stating
+// the rule once keeps the positive and negative loops from drifting apart.
+func classify(r Result) (passed, vacuous bool) {
+	return r.ExitCode == 0 && !r.TimedOut && !r.NoTestsRan, r.NoTestsRan
 }
 
 // NewVerifyCommand creates and returns the top-level verify Cobra command.
@@ -65,7 +75,9 @@ func NewVerifyCommand() *cobra.Command {
 extracts backtick-delimited commands from their Acceptance Criteria sections,
 and executes each command in priority order (recently-changed paths first).
 
-Exit code 0 means all commands passed. Exit code 1 means at least one regression.`,
+Exit code 0 means every acceptance criterion was verified and passed. Exit code
+1 means at least one regression, unverifiable criterion, or criterion that ran
+no tests.`,
 		Args: cobra.ExactArgs(1),
 		// SilenceUsage prevents Cobra from printing usage on every error.
 		SilenceUsage:  true,
@@ -129,6 +141,7 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 			totalCount := 0
 			passedCount := 0
 			failedCount := 0
+			vacuousCount := 0
 			unverifiableCount := 0
 			earlyStop := false
 
@@ -181,19 +194,27 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 
 					repoRoot := repoRootFromApp(app)
 					result := Execute(c.Text, repoRoot, cmdTimeout)
-					passed := result.ExitCode == 0 && !result.TimedOut
+					passed, vacuous := classify(result)
 
 					if format != "json" {
-						if passed {
+						// The criterion text was printed before the run, so only
+						// the mark goes here.
+						switch {
+						case passed:
 							fmt.Fprintln(cmd.OutOrStdout(), "✓")
-						} else {
-							fmt.Fprintln(cmd.OutOrStdout(), "✗          ← REGRESSION")
+						case vacuous:
+							fmt.Fprintln(cmd.OutOrStdout(), "⚠  ← NO TESTS RAN")
+						default:
+							fmt.Fprintln(cmd.OutOrStdout(), "✗  ← REGRESSION")
 						}
 					}
 
-					if passed {
+					switch {
+					case passed:
 						passedCount++
-					} else {
+					case vacuous:
+						vacuousCount++
+					default:
 						failedCount++
 					}
 
@@ -203,6 +224,7 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 						Subsection: c.Subsection,
 						Command:    c.Text,
 						Passed:     passed,
+						NoTestsRan: result.NoTestsRan,
 						ExitCode:   result.ExitCode,
 						Stdout:     result.Stdout,
 						Stderr:     result.Stderr,
@@ -238,19 +260,27 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 
 					repoRoot := repoRootFromApp(app)
 					result := Execute(c.Text, repoRoot, cmdTimeout)
-					passed := result.ExitCode == 0 && !result.TimedOut
+					passed, vacuous := classify(result)
 
 					if format != "json" {
-						if passed {
+						// The criterion text was printed before the run, so only
+						// the mark goes here.
+						switch {
+						case passed:
 							fmt.Fprintln(cmd.OutOrStdout(), "✓")
-						} else {
-							fmt.Fprintln(cmd.OutOrStdout(), "✗          ← REGRESSION")
+						case vacuous:
+							fmt.Fprintln(cmd.OutOrStdout(), "⚠  ← NO TESTS RAN")
+						default:
+							fmt.Fprintln(cmd.OutOrStdout(), "✗  ← REGRESSION")
 						}
 					}
 
-					if passed {
+					switch {
+					case passed:
 						passedCount++
-					} else {
+					case vacuous:
+						vacuousCount++
+					default:
 						failedCount++
 					}
 
@@ -260,6 +290,7 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 						Subsection: c.Subsection,
 						Command:    c.Text,
 						Passed:     passed,
+						NoTestsRan: result.NoTestsRan,
 						ExitCode:   result.ExitCode,
 						Stdout:     result.Stdout,
 						Stderr:     result.Stderr,
@@ -315,6 +346,7 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 					Total:             totalCount,
 					Passed:            passedCount,
 					Failed:            failedCount,
+					NoTestsRan:        vacuousCount,
 					Unverifiable:      unverifiableCount,
 					Results:           jsonResults,
 					UnverifiableItems: jsonUnverifiable,
@@ -331,14 +363,17 @@ Exit code 0 means all commands passed. Exit code 1 means at least one regression
 				if unverifiableCount > 0 {
 					fmt.Fprintf(cmd.OutOrStdout(), "      %d unverifiable acceptance criterion(s)\n", unverifiableCount)
 				}
+				if vacuousCount > 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "      %d criterion(s) ran no tests\n", vacuousCount)
+				}
 				if failedCount > 0 {
 					fmt.Fprintf(cmd.OutOrStdout(), "      %d regression(s) detected\n", failedCount)
 				}
 			}
 
-			if failedCount > 0 || unverifiableCount > 0 {
-				return fmt.Errorf("milestone %s: %d regression(s), %d unverifiable acceptance criterion(s)",
-					milestoneName, failedCount, unverifiableCount)
+			if failedCount > 0 || unverifiableCount > 0 || vacuousCount > 0 {
+				return fmt.Errorf("milestone %s: %d regression(s), %d unverifiable acceptance criterion(s), %d that ran no tests",
+					milestoneName, failedCount, unverifiableCount, vacuousCount)
 			}
 			return nil
 		},
