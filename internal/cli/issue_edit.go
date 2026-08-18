@@ -827,15 +827,22 @@ func runIssueEditSplit(cmd *cobra.Command, app *App, refInput string) error {
 	// Preserve the original downstream deps — they transfer to the last issue.
 	origDownstream := origIss.Blocks
 
-	// Block 0 updates the original issue in place.
+	// Block 0 updates the original issue in place. Blocks is deliberately left
+	// as it is: on the single-block path the issue keeps its identity and its
+	// outgoing edges, so every downstream BlockedBy still points at it. The
+	// multi-block path overwrites Blocks below, where the edges move to the
+	// new chain.
 	now := time.Now()
 	origIss.Title = parsed[0].iss.Title
 	origIss.Body = parsed[0].iss.Body
 	origIss.Updated = now
-	origIss.Blocks = nil
 
 	if len(blocks) == 1 {
-		// Single block: content replacement only, no new issues.
+		// Single block: content replacement only, no new issues, so there is
+		// no last-in-chain issue to transfer downstream deps to. Severing them
+		// here would be silent and, once a downstream issue is done or
+		// cancelled, permanent — addBlockEdge refuses to give a done target
+		// new dependencies, so the edge could not be re-added by hand.
 		out, marshalErr := issue.Marshal(origIss)
 		if marshalErr != nil {
 			return fmt.Errorf("marshal issue: %w", marshalErr)
