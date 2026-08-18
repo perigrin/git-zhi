@@ -40,4 +40,3 @@ func SaveConfig(store *storage.Store, cfg cluster.Config) error {
 	}
 	return store.WriteEntity(configRef, "config.yaml", data, "historian: update config")
 }
-

@@ -2,12 +2,19 @@
 // ABOUTME: and next (alias for 'issue show HEAD' — what should I work on?).
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+)
 
 // NewListCommand creates the top-level 'list' command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "list",
+		Use: "list",
+		// Takes no positional arguments; without NoArgs cobra discards them
+		// silently, so `git zhi sync push` runs the default and exits 0.
+		Args:  cobra.NoArgs,
 		Short: "Show the full chain",
 		RunE:  runChainList,
 	}
@@ -26,9 +33,19 @@ func NewListCommand() *cobra.Command {
 // label indexes.
 func NewConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "config [key] [value]",
+		Use: "config [key] [value]",
+		// A single positional is never meaningful: config takes a key and a
+		// value, or nothing. Left to MaximumNArgs it would fall through to the
+		// display path, so `config reindx` printed the config and exited 0
+		// while the index went un-rebuilt.
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				return fmt.Errorf("unknown command %q for %q; usage: %s <key> <value>",
+					args[0], cmd.CommandPath(), cmd.CommandPath())
+			}
+			return cobra.MaximumNArgs(2)(cmd, args)
+		},
 		Short: "Manage git-zhi settings",
-		Args:  cobra.MaximumNArgs(2),
 		RunE:  runChainConfig,
 	}
 	cmd.AddCommand(newConfigReindexCommand())
@@ -38,7 +55,10 @@ func NewConfigCommand() *cobra.Command {
 // NewNextCommand creates the top-level 'next' command.
 func NewNextCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "next",
+		Use: "next",
+		// Takes no positional arguments; without NoArgs cobra discards them
+		// silently, so `git zhi sync push` runs the default and exits 0.
+		Args:  cobra.NoArgs,
 		Short: "Show the next issue to work on (alias for 'issue show HEAD')",
 		RunE:  runChainNext,
 	}

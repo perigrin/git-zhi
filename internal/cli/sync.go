@@ -25,7 +25,10 @@ func NewSyncCommand() *cobra.Command {
 	var remote string
 
 	cmd := &cobra.Command{
-		Use:   "sync",
+		Use: "sync",
+		// Takes no positional arguments; without NoArgs cobra discards them
+		// silently, so `git zhi sync push` runs the default and exits 0.
+		Args:  cobra.NoArgs,
 		Short: "Push and pull chain state (refs/zhi/*) and the working branch",
 		Long: `Moves git-zhi chain state and the working branch between this repo and a
 remote. Chain state lives in refs/zhi/* and does not ride default git

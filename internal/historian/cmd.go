@@ -45,6 +45,9 @@ Use --title-match to filter commits by ticket ref pattern before clustering.
 Use --since to restrict extraction to commits after a given date.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// historian takes no positional arguments; NoArgs turns a mistyped
+		// subcommand into an error instead of a silently ignored word.
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := cli.GetApp(cmd.Context())
 			if app == nil {
@@ -182,7 +185,10 @@ Use --since to restrict extraction to commits after a given date.`,
 // newStatusCommand returns the "status" subcommand that prints a coverage report.
 func newStatusCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:           "status",
+		Use: "status",
+		// Takes no positional arguments; NoArgs turns a stray word into an
+		// error rather than discarding it silently.
+		Args:          cobra.NoArgs,
 		Short:         "Show historian coverage: mapped vs unmapped commits",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -241,7 +247,10 @@ func newStatusCommand() *cobra.Command {
 // newReindexCommand returns the "reindex" subcommand that rebuilds label indexes.
 func newReindexCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:           "reindex",
+		Use: "reindex",
+		// Takes no positional arguments; NoArgs turns a stray word into an
+		// error rather than discarding it silently.
+		Args:          cobra.NoArgs,
 		Short:         "Rebuild label indexes for all existing issues",
 		SilenceUsage:  true,
 		SilenceErrors: true,

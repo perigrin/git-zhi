@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -16,6 +17,7 @@ import (
 	"github.com/perigrin/git-zhi/internal/cli"
 	"github.com/perigrin/git-zhi/internal/issue"
 	"github.com/perigrin/git-zhi/internal/milestone"
+	"github.com/perigrin/git-zhi/internal/storage"
 )
 
 // JSONResultEntry is a single command execution result for JSON output.
@@ -60,6 +62,30 @@ func classify(r Result) (passed, vacuous bool) {
 	return r.ExitCode == 0 && !r.TimedOut && !r.NoTestsRan, r.NoTestsRan
 }
 
+// milestoneHint explains a failed milestone lookup by naming what is actually
+// available, and calls out HEAD specifically because it resolves elsewhere in
+// the CLI and reads as though it should work here too.
+func milestoneHint(store *storage.Store, name string) string {
+	var hint string
+	if name == "HEAD" {
+		hint = "HEAD resolves an issue, not a milestone; pass a milestone name. "
+	}
+
+	all, err := milestone.LoadAllMilestones(store)
+	if err != nil {
+		return hint + fmt.Sprintf("could not list milestones: %v", err)
+	}
+	if len(all) == 0 {
+		return hint + "no milestones exist in this chain"
+	}
+	names := make([]string, len(all))
+	for i, ms := range all {
+		names[i] = ms.Name
+	}
+	sort.Strings(names)
+	return hint + "known milestones: " + strings.Join(names, ", ")
+}
+
 // NewVerifyCommand creates and returns the top-level verify Cobra command.
 // It requires a milestone name as the sole positional argument.
 func NewVerifyCommand() *cobra.Command {
@@ -102,10 +128,16 @@ no tests.`,
 				return fmt.Errorf("not in a git repository")
 			}
 
-			// Load milestone to validate it exists.
-			_, err := milestone.LoadMilestone(app.Store, milestoneName)
-			if err != nil {
-				return fmt.Errorf("load milestone %q: %w", milestoneName, err)
+			// Load milestone to validate it exists. verify takes a milestone
+			// name, not the issue refs (HEAD, a UUID prefix, a title) that most
+			// other commands accept, so a wrong argument here needs to say what
+			// kind of name it wanted.
+			if _, err := milestone.LoadMilestone(app.Store, milestoneName); err != nil {
+				// Keep the underlying error: LoadMilestone also fails on a
+				// milestone that exists but will not parse, and reporting that
+				// as "no milestone" sends the user looking for something they
+				// never deleted.
+				return fmt.Errorf("%w (%s)", err, milestoneHint(app.Store, milestoneName))
 			}
 
 			// Load all issues and filter to done issues in this milestone.

@@ -16,7 +16,10 @@ import (
 // NewStatusCommand creates the top-level "status" subcommand.
 func NewStatusCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
+		Use: "status",
+		// Takes no positional arguments; without NoArgs cobra discards them
+		// silently, so `git zhi sync push` runs the default and exits 0.
+		Args:  cobra.NoArgs,
 		Short: "Show current work state at a glance",
 		Long: `Displays the current HEAD issue (if any), its state, milestone, session
 info, and how many issues are ready to start.`,
@@ -60,14 +63,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 // statusJSON is the JSON output structure for git zhi status.
 type statusJSON struct {
-	Message    string      `json:"message,omitempty"`
-	Head       string      `json:"head,omitempty"`
-	Title      string      `json:"title,omitempty"`
-	State      string      `json:"state,omitempty"`
-	Milestone  string      `json:"milestone,omitempty"`
+	Message    string       `json:"message,omitempty"`
+	Head       string       `json:"head,omitempty"`
+	Title      string       `json:"title,omitempty"`
+	State      string       `json:"state,omitempty"`
+	Milestone  string       `json:"milestone,omitempty"`
 	Session    *sessionJSON `json:"session,omitempty"`
-	ReadyCount int         `json:"ready_count"`
-	Next       string      `json:"next,omitempty"`
+	ReadyCount int          `json:"ready_count"`
+	Next       string       `json:"next,omitempty"`
 }
 
 type sessionJSON struct {

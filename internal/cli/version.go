@@ -13,7 +13,10 @@ import (
 // NewVersionCommand creates the 'version' command.
 func NewVersionCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "version",
+		Use: "version",
+		// Takes no positional arguments; without NoArgs cobra discards them
+		// silently, so `git zhi sync push` runs the default and exits 0.
+		Args:  cobra.NoArgs,
 		Short: "Print git-zhi version and build information",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			format, _ := cmd.Root().PersistentFlags().GetString("format")
