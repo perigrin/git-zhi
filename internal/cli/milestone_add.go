@@ -1,5 +1,5 @@
-// ABOUTME: Implementation of the milestone add command: creates a new milestone
-// ABOUTME: ref with optional due date, erroring on duplicates.
+// ABOUTME: Implementation of the milestone add command: creates a new
+// ABOUTME: milestone ref with optional due date, body and resolution command.
 package cli
 
 import (
@@ -41,6 +41,38 @@ func runMilestoneAdd(cmd *cobra.Command, args []string) error {
 	ms := &milestone.Milestone{
 		Name:    name,
 		Created: time.Now(),
+	}
+
+	if n := stdinFlagCount(cmd, "body", "resolution"); n > 1 {
+		return fmt.Errorf("only one flag can read stdin with '-'; %d asked for it", n)
+	}
+
+	// Both route through readTextArg so add and edit agree on the '-' stdin
+	// sentinel. A new milestone has nothing to clear, so "none" is stored
+	// literally here rather than treated as the clear sentinel.
+	if cmd.Flags().Changed("body") {
+		bodyValue, _ := cmd.Flags().GetString("body")
+		body, ok, readErr := readTextArg(cmd, bodyValue)
+		if readErr != nil {
+			return fmt.Errorf("--body: %w", readErr)
+		}
+		if ok {
+			ms.Body = body
+		} else {
+			fmt.Fprintf(cmd.OutOrStdout(), "%s: --body - read empty input; body left unset\n", name)
+		}
+	}
+	if cmd.Flags().Changed("resolution") {
+		resolutionValue, _ := cmd.Flags().GetString("resolution")
+		resolution, ok, readErr := readTextArg(cmd, resolutionValue)
+		if readErr != nil {
+			return fmt.Errorf("--resolution: %w", readErr)
+		}
+		if ok {
+			ms.Resolution = resolution
+		} else {
+			fmt.Fprintf(cmd.OutOrStdout(), "%s: --resolution - read empty input; resolution left unset\n", name)
+		}
 	}
 
 	dueStr, _ := cmd.Flags().GetString("due")

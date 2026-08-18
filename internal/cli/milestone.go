@@ -35,6 +35,8 @@ func newMilestoneAddCommand() *cobra.Command {
 		RunE:  runMilestoneAdd,
 	}
 	cmd.Flags().String("due", "", "due date in YYYY-MM-DD format")
+	cmd.Flags().String("body", "", "milestone body markdown ('-' reads stdin)")
+	cmd.Flags().String("resolution", "", "command run by --resolve and the completion gate")
 	return cmd
 }
 
@@ -72,5 +74,8 @@ func newMilestoneEditCommand() *cobra.Command {
 	cmd.Flags().Bool("resolve", false, "execute the milestone's resolution command")
 	cmd.Flags().String("state", "", "transition milestone state (only 'complete' is supported)")
 	cmd.Flags().Int("timeout", 0, "per-criterion timeout in seconds for the --state complete verify gate (0 = verify's default)")
+	cmd.Flags().String("body", "", "replace the body: inline text, '-' for stdin, or '' to open $EDITOR")
+	cmd.Flags().String("resolution", "", "set the resolution command ('none' clears it)")
+	cmd.Flags().String("postmortem", "", "attach a retrospective: inline text or '-' for stdin")
 	return cmd
 }
