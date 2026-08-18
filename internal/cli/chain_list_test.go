@@ -436,3 +436,110 @@ func createTestIssueWithBody(t *testing.T, app *cli.App, title string, state iss
 	}
 	return id
 }
+
+// TestChainListJSON_EmitsFullUUIDs verifies every id in list JSON output is a
+// full 36-char UUID. Truncated ids collide: the first 8 hex characters are the
+// top 32 bits of a UUIDv7's 48-bit millisecond timestamp, so the prefix only
+// changes every 2^16 ms — roughly a minute. Any issues created within about a
+// minute of each other share it, which makes truncated JSON unusable for
+// selecting an issue to act on.
+func TestChainListJSON_EmitsFullUUIDs(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	createTestMilestone(t, app, "v0.1", nil)
+	for _, title := range []string{"alpha", "beta", "gamma"} {
+		createTestIssueWithDeps(t, app, title, issue.StatePending, "v0.1", nil)
+	}
+
+	t.Run("ready_set", func(t *testing.T) {
+		stdout, err := run("list", "--ready", "--format", "json")
+		if err != nil {
+			t.Fatalf("list --ready --format json: %v", err)
+		}
+		var out struct {
+			ReadySet []struct {
+				ID string `json:"id"`
+			} `json:"ready_set"`
+		}
+		if err := json.Unmarshal([]byte(stdout.String()), &out); err != nil {
+			t.Fatalf("unmarshal: %v\n%s", err, stdout.String())
+		}
+		if len(out.ReadySet) == 0 {
+			t.Fatal("expected a non-empty ready set")
+		}
+		seen := map[string]bool{}
+		for _, item := range out.ReadySet {
+			if len(item.ID) != 36 {
+				t.Errorf("ready_set id %q has length %d, want 36", item.ID, len(item.ID))
+			}
+			if seen[item.ID] {
+				t.Errorf("ready_set contains duplicate id %q", item.ID)
+			}
+			seen[item.ID] = true
+		}
+	})
+
+	t.Run("current_constraint and parallel_work", func(t *testing.T) {
+		// These fields are only populated under --critical; without it the
+		// assertions below read zero values and pass no matter what.
+		stdout, err := run("list", "--critical", "--format", "json")
+		if err != nil {
+			t.Fatalf("list --critical --format json: %v", err)
+		}
+		var out struct {
+			CurrentConstraint string   `json:"current_constraint"`
+			ParallelWork      []string `json:"parallel_work"`
+		}
+		if err := json.Unmarshal([]byte(stdout.String()), &out); err != nil {
+			t.Fatalf("unmarshal: %v\n%s", err, stdout.String())
+		}
+		if len(out.CurrentConstraint) != 36 {
+			t.Errorf("current_constraint %q has length %d, want 36",
+				out.CurrentConstraint, len(out.CurrentConstraint))
+		}
+		// Assert the count first: ranging over an empty slice checks nothing,
+		// which is the same vacuity that hid the current_constraint bug. Three
+		// unblocked issues, one on the critical chain, leaves two parallel.
+		if len(out.ParallelWork) != 2 {
+			t.Fatalf("expected 2 parallel_work ids (3 ready, 1 on chain), got %d: %v",
+				len(out.ParallelWork), out.ParallelWork)
+		}
+		for _, id := range out.ParallelWork {
+			if len(id) != 36 {
+				t.Errorf("parallel_work id %q has length %d, want 36", id, len(id))
+			}
+		}
+	})
+}
+
+// TestStatusJSON_EmitsFullUUIDs verifies status, typically the first call an
+// orchestrator makes, reports head and next as full UUIDs. Truncated ids there
+// are as unmappable as they were in the ready set.
+func TestStatusJSON_EmitsFullUUIDs(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	createTestMilestone(t, app, "v0.1", nil)
+	for _, title := range []string{"alpha", "beta"} {
+		createTestIssueWithDeps(t, app, title, issue.StatePending, "v0.1", nil)
+	}
+
+	stdout, err := run("status", "--format", "json")
+	if err != nil {
+		t.Fatalf("status --format json: %v", err)
+	}
+	var out struct {
+		Head string `json:"head"`
+		Next string `json:"next"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &out); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, stdout.String())
+	}
+	for name, id := range map[string]string{"head": out.Head, "next": out.Next} {
+		if id != "" && len(id) != 36 {
+			t.Errorf("%s = %q has length %d, want a full 36-char UUID", name, id, len(id))
+		}
+	}
+	if out.Head == "" && out.Next == "" {
+		t.Fatal("expected status to report either a head or a next issue")
+	}
+}

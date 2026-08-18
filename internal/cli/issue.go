@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 
 	"github.com/perigrin/git-zhi/internal/config"
 	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/resolve"
 )
 
 // NewIssueCommand creates the 'issue' command group.
@@ -214,18 +216,35 @@ func resolveBatchDep(ref string, titleIndex map[string]*issue.Issue, app *App) (
 	// duplicate detection, they should check before calling us. For now,
 	// exact match is sufficient — the PRD says "exact title match."
 
-	// 3. Try resolving as existing issue ref (UUID prefix)
+	// 3. Try resolving as an existing issue ref (UUID prefix). Collect every
+	// match rather than taking the first: the 8-char prefix is the top 32 bits
+	// of a UUIDv7 millisecond timestamp, so issues created within about a
+	// minute of each other share it. Returning the first would wire a
+	// dependency edge to an arbitrary issue, which is worse than refusing.
 	allIssues, err := issue.LoadAllIssues(app.Store)
 	if err != nil {
 		return nil, fmt.Errorf("load existing issues: %w", err)
 	}
+	var matches []*issue.Issue
 	for _, existing := range allIssues {
 		if strings.HasPrefix(existing.ID.String(), ref) {
-			return existing, nil
+			matches = append(matches, existing)
 		}
 	}
-
-	return nil, fmt.Errorf("no issue found matching %q (not in batch, not an existing ref)", ref)
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("no issue found matching %q (not in batch, not an existing ref)", ref)
+	case 1:
+		return matches[0], nil
+	default:
+		ids := make([]string, len(matches))
+		for i, m := range matches {
+			ids[i] = m.ID.String()
+		}
+		sort.Strings(ids)
+		return nil, fmt.Errorf("%w: prefix %q matches %d issues: %s",
+			resolve.ErrAmbiguous, ref, len(matches), strings.Join(ids, ", "))
+	}
 }
 
 func newIssueListCommand() *cobra.Command {

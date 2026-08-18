@@ -3,6 +3,7 @@
 package resolve
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +12,12 @@ import (
 	"github.com/perigrin/git-zhi/internal/issue"
 	"github.com/perigrin/git-zhi/internal/storage"
 )
+
+// ErrAmbiguous marks a resolution failure caused by more than one match rather
+// than none. Callers must not fall through to a broader strategy on it: the
+// input was specific enough to be understood, just not unique, and retrying it
+// as something else reports a misleading "not found".
+var ErrAmbiguous = errors.New("ambiguous reference")
 
 // IsHead returns true if the input resolves to the HEAD reference.
 // An empty ref argument means the caller passed no explicit target,
@@ -32,9 +39,15 @@ func ResolveRef(store *storage.Store, input string) (string, error) {
 	if ref, err := resolveTag(store, input); err == nil {
 		return ref, nil
 	}
-	// Try UUID prefix resolution before title substring.
-	if ref, err := resolveUUIDPrefix(store, input); err == nil {
+	// Try UUID prefix resolution before title substring. An ambiguous prefix is
+	// terminal — falling through would report "no issue found" for input that
+	// actually matched several issues.
+	ref, err := resolveUUIDPrefix(store, input)
+	if err == nil {
 		return ref, nil
+	}
+	if errors.Is(err, ErrAmbiguous) {
+		return "", err
 	}
 	return resolveTitleSubstring(store, input)
 }
@@ -103,7 +116,7 @@ func resolveUUIDPrefix(store *storage.Store, prefix string) (string, error) {
 		return matches[0], nil
 	default:
 		sort.Strings(matches)
-		return "", fmt.Errorf("ambiguous prefix %q matches %d issues: %s", prefix, len(matches), strings.Join(matches, ", "))
+		return "", fmt.Errorf("%w: prefix %q matches %d issues: %s", ErrAmbiguous, prefix, len(matches), strings.Join(matches, ", "))
 	}
 }
 
@@ -135,6 +148,6 @@ func resolveTitleSubstring(store *storage.Store, input string) (string, error) {
 			candidates[i] = iss.ID.String()[:8] + " " + iss.Title
 		}
 		sort.Strings(candidates)
-		return "", fmt.Errorf("ambiguous title %q matches %d issues: %s", input, len(matches), strings.Join(candidates, "; "))
+		return "", fmt.Errorf("%w: title %q matches %d issues: %s", ErrAmbiguous, input, len(matches), strings.Join(candidates, "; "))
 	}
 }

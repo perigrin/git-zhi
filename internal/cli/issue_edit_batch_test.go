@@ -3,8 +3,8 @@
 package cli_test
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -557,4 +557,30 @@ func nonEmptyLines(s string) []string {
 		}
 	}
 	return out
+}
+
+// TestBatchDep_AmbiguousPrefixIsRefused verifies an `after:` reference in an
+// issue add batch that matches several issues errors instead of silently
+// picking the first. A wrong DAG edge written without complaint is worse than
+// a refusal, and the 8-char prefix collides for anything created within about
+// a minute.
+func TestBatchDep_AmbiguousPrefixIsRefused(t *testing.T) {
+	app, _ := setupEditTest(t)
+
+	a := createEditTestIssue(t, app, "first")
+	b := createEditTestIssue(t, app, "second")
+
+	shared := a[:8]
+	if b[:8] != shared {
+		t.Skipf("test issues did not share a prefix window (%s vs %s)", a[:8], b[:8])
+	}
+
+	stdin := fmt.Sprintf("---\ntitle: \"dependent\"\nafter: %s\n---\nbody\n", shared)
+	_, _, err := runWithStdin(app, stdin, "issue", "add")
+	if err == nil {
+		t.Fatal("expected an ambiguous after: reference to be refused")
+	}
+	if !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("expected an ambiguity error, got: %v", err)
+	}
 }

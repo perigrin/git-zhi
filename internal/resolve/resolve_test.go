@@ -319,3 +319,46 @@ func TestResolveRef_TitleSubstring(t *testing.T) {
 		t.Fatalf("expected 'ambiguous' in error, got: %v", err4)
 	}
 }
+
+// TestResolveRef_AmbiguousPrefixReportsAmbiguity verifies that a prefix
+// matching several issues reports the ambiguity rather than falling through to
+// a title scan and reporting "no issue found". The 8-char prefix is the top 32
+// bits of a UUIDv7's 48-bit ms timestamp, so it only changes every ~65 seconds:
+// issues created in the same minute collide, which is the normal case.
+func TestResolveRef_AmbiguousPrefixReportsAmbiguity(t *testing.T) {
+	store := initTestStore(t)
+
+	a := uuid.Must(uuid.FromString("01a0011c-d16a-7747-b8f4-e3b68079edbf"))
+	b := uuid.Must(uuid.FromString("01a0011c-d18d-7ded-81e8-c83976e7a083"))
+	writeTestIssue(t, store, a, issue.StatePending, "first")
+	writeTestIssue(t, store, b, issue.StatePending, "second")
+
+	_, err := resolve.ResolveRef(store, "01a0011c")
+	if err == nil {
+		t.Fatal("expected an error for a prefix matching two issues")
+	}
+	if !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("expected an ambiguity error, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "no issue found") {
+		t.Errorf("ambiguity was masked by the title-scan fallback: %v", err)
+	}
+}
+
+// TestResolveRef_UnknownPrefixStillFallsThroughToTitle verifies the fallback
+// survives: a prefix matching nothing must still be tried as a title
+// substring, which is how title lookup works at all.
+func TestResolveRef_UnknownPrefixStillFallsThroughToTitle(t *testing.T) {
+	store := initTestStore(t)
+
+	id := uuid.Must(uuid.NewV7())
+	writeTestIssue(t, store, id, issue.StatePending, "parser rewrite")
+
+	ref, err := resolve.ResolveRef(store, "parser")
+	if err != nil {
+		t.Fatalf("title substring resolution failed: %v", err)
+	}
+	if !strings.Contains(ref, id.String()) {
+		t.Errorf("resolved to %q, expected the issue with id %s", ref, id)
+	}
+}
