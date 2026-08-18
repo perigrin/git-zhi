@@ -1,10 +1,11 @@
 // ABOUTME: Implementation of the chain config command: reads and displays current
-// ABOUTME: chain configuration, and sets supported keys (default_milestone).
+// ABOUTME: chain configuration, and sets supported keys (default_milestone, wip_limit).
 package cli
 
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
@@ -54,6 +55,11 @@ func displayChainConfig(cmd *cobra.Command, app *App) error {
 	w := cmd.OutOrStdout()
 	fmt.Fprintf(w, "version: %d\n", cfg.Version)
 	fmt.Fprintf(w, "default_milestone: %s\n", cfg.DefaultMilestone)
+	if cfg.WIPLimit > 0 {
+		fmt.Fprintf(w, "wip_limit: %d\n", cfg.WIPLimit)
+	} else {
+		fmt.Fprintln(w, "wip_limit: 0 (no limit)")
+	}
 	return nil
 }
 
@@ -73,8 +79,14 @@ func setChainConfig(cmd *cobra.Command, app *App, key, value string) error {
 	switch key {
 	case "default_milestone":
 		cfg.DefaultMilestone = value
+	case "wip_limit":
+		limit, convErr := strconv.Atoi(value)
+		if convErr != nil || limit < 0 {
+			return fmt.Errorf("invalid wip_limit %q: expected a non-negative integer (0 disables the limit)", value)
+		}
+		cfg.WIPLimit = limit
 	default:
-		return fmt.Errorf("unknown config key %q: supported keys are default_milestone", key)
+		return fmt.Errorf("unknown config key %q: supported keys are default_milestone, wip_limit", key)
 	}
 
 	newData, err := yaml.Marshal(cfg)
