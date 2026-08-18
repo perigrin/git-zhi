@@ -304,11 +304,14 @@ func (g *Graph) CriticalChain() []*issue.Issue {
 	return result
 }
 
-// ReadySet returns pending issues where every blocker is done or cancelled.
+// ReadySet returns issues that can be picked up now: pending or reopened, with
+// every blocker done or cancelled. Reopened counts because `--state start` is
+// legal from it, so excluding it hid genuinely available work from every
+// caller that asks what to work on next.
 func (g *Graph) ReadySet() []*issue.Issue {
 	var ready []*issue.Issue
 	for _, iss := range g.issues {
-		if iss.State != issue.StatePending {
+		if iss.State != issue.StatePending && iss.State != issue.StateReopened {
 			continue
 		}
 		allDone := true

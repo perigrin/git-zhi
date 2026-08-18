@@ -35,7 +35,7 @@ var knownEditFlags = []string{
 	"state", "block", "unblock", "milestone", "tag", "untag",
 	"label", "unlabel",
 	"assign", "unassign",
-	"before", "after", "split", "merge", "purge", "batch", "body",
+	"before", "after", "split", "merge", "purge", "batch", "body", "body-file",
 }
 
 // runIssueEdit handles 'issue edit [ref] [flags]'.
@@ -89,9 +89,29 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		return runIssueEditBatch(cmd, app)
 	}
 
-	// --body: inline value, '-' sentinel for stdin, or '' to open editor.
+	// --body-file reads the replacement body from a path, keeping multi-line
+	// markdown out of the shell and leaving stdin free. It resolves into a
+	// local rather than back into --body: that flag's value space has two
+	// sentinels ("" opens $EDITOR, "-" reads stdin) and a file's contents must
+	// not be able to trip either. An empty file did exactly that, opening an
+	// editor on a path meant for scripted use.
 	var newBody string
 	var bodyChanged bool
+	if cmd.Flags().Changed("body-file") {
+		path, _ := cmd.Flags().GetString("body-file")
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return fmt.Errorf("--body-file: %w", readErr)
+		}
+		trimmed := strings.TrimSpace(string(raw))
+		if trimmed == "" {
+			return fmt.Errorf("--body-file %s is empty; pass --body '' to edit interactively", path)
+		}
+		newBody = trimmed
+		bodyChanged = true
+	}
+
+	// --body: inline value, '-' sentinel for stdin, or '' to open editor.
 	if cmd.Flags().Changed("body") {
 		bodyValue, _ := cmd.Flags().GetString("body")
 		switch {
