@@ -57,9 +57,11 @@ func escapeMermaid(s string) string {
 	return s
 }
 
-// nodeID returns the first 8 characters of an issue ID for use as a Mermaid
-// node identifier.
-func nodeID(id string) string {
+// shortID returns the first 8 characters of an issue ID, the display form
+// used in node labels. It is not unique — a UUIDv7's leading 8 hex characters
+// are the top 32 bits of its 48-bit millisecond timestamp, so they change only
+// about once a minute — and must never be used as a node identifier.
+func shortID(id string) string {
 	if len(id) >= 8 {
 		return id[:8]
 	}
@@ -137,8 +139,9 @@ func RenderGantt(issues []IssueInput, title string) string {
 //
 // Each issue becomes a node with label "<short-id> <title> <icon>". Edges are
 // generated from BlockedBy relationships: for each issue B that is blocked by
-// A, an edge A --> B is emitted. Node IDs use the first 8 characters of the
-// issue UUID.
+// A, an edge A --> B is emitted. Node identifiers are the full issue UUID, so
+// that issues sharing a short-ID prefix stay distinct; the short form appears
+// only in the label.
 func RenderDAG(issues []IssueInput) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "graph TD\n")
@@ -155,21 +158,16 @@ func RenderDAG(issues []IssueInput) string {
 	})
 
 	for _, iss := range sorted {
-		nid := nodeID(iss.ID)
 		icon := statusIcon(iss.State)
-		fmt.Fprintf(&b, "    %s[\"%s %s %s\"]\n", nid, nid, escapeMermaid(iss.Title), icon)
+		fmt.Fprintf(&b, "    %s[\"%s %s %s\"]\n",
+			iss.ID, shortID(iss.ID), escapeMermaid(iss.Title), icon)
 	}
 
 	// Emit edges from blocked_by relationships. For each blocked issue, emit
 	// one edge per blocker: blocker --> blocked.
 	for _, iss := range sorted {
-		if len(iss.BlockedBy) == 0 {
-			continue
-		}
-		blockedNID := nodeID(iss.ID)
 		for _, blockerID := range iss.BlockedBy {
-			blockerNID := nodeID(blockerID)
-			fmt.Fprintf(&b, "    %s --> %s\n", blockerNID, blockedNID)
+			fmt.Fprintf(&b, "    %s --> %s\n", blockerID, iss.ID)
 		}
 	}
 
