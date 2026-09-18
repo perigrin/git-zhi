@@ -513,3 +513,102 @@ func equalStrings(got, want []string) bool {
 	}
 	return true
 }
+
+// --------------------------------------------------------------------------
+// ADR numbering base — the gap scan starts at the lowest number present,
+// clamped to 1, so neither the 0-based nor the 1-based convention is assumed.
+// --------------------------------------------------------------------------
+
+// TestCheck_ADRZeroBased_GapReported — a 0000 meta-document is part of the
+// sequence, not invisible to the check. The hole at 3 is still reported.
+func TestCheck_ADRZeroBased_GapReported(t *testing.T) {
+	root := t.TempDir()
+
+	writeFile(t, root, "CONTRIBUTING.md", "# Contributing\n")
+	writeFile(t, root, "docs/decisions/0000-meta.md", "# Meta\n")
+	writeFile(t, root, "docs/decisions/0001-first.md", "# First\n")
+	writeFile(t, root, "docs/decisions/0002-second.md", "# Second\n")
+	// 0003 is missing — gap.
+	writeFile(t, root, "docs/decisions/0004-fourth.md", "# Fourth\n")
+
+	result, err := docs.Check(root)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if want := []int{3}; !equalInts(result.ADRGaps, want) {
+		t.Errorf("expected ADRGaps %v with a 0000 document present, got %v", want, result.ADRGaps)
+	}
+}
+
+// TestCheck_ADRZeroBasedSequential_NoGap — a complete 0-based run reports
+// nothing: 0 is present, so it is not missing.
+func TestCheck_ADRZeroBasedSequential_NoGap(t *testing.T) {
+	root := t.TempDir()
+
+	writeFile(t, root, "CONTRIBUTING.md", "# Contributing\n")
+	writeFile(t, root, "docs/decisions/0000-meta.md", "# Meta\n")
+	writeFile(t, root, "docs/decisions/0001-first.md", "# First\n")
+	writeFile(t, root, "docs/decisions/0002-second.md", "# Second\n")
+
+	result, err := docs.Check(root)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if len(result.ADRGaps) != 0 {
+		t.Errorf("expected no ADR gaps for a complete 0-based sequence, got %v", result.ADRGaps)
+	}
+}
+
+// TestCheck_ADROneBased_ZeroNotReported — the 1-based convention must not
+// grow a permanent false gap at 0.
+func TestCheck_ADROneBased_ZeroNotReported(t *testing.T) {
+	root := t.TempDir()
+
+	writeFile(t, root, "CONTRIBUTING.md", "# Contributing\n")
+	writeFile(t, root, "docs/decisions/0001-first.md", "# First\n")
+	writeFile(t, root, "docs/decisions/0002-second.md", "# Second\n")
+	writeFile(t, root, "docs/decisions/0003-third.md", "# Third\n")
+
+	result, err := docs.Check(root)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if len(result.ADRGaps) != 0 {
+		t.Errorf("expected no ADR gaps for a 1-based sequence, got %v", result.ADRGaps)
+	}
+}
+
+// TestCheck_ADRStartsAboveOne_LowNumbersMissing — decisions are superseded,
+// never deleted, so a sequence that begins at 0007 is missing 1 through 6.
+func TestCheck_ADRStartsAboveOne_LowNumbersMissing(t *testing.T) {
+	root := t.TempDir()
+
+	writeFile(t, root, "CONTRIBUTING.md", "# Contributing\n")
+	writeFile(t, root, "docs/decisions/0007-seventh.md", "# Seventh\n")
+	writeFile(t, root, "docs/decisions/0008-eighth.md", "# Eighth\n")
+
+	result, err := docs.Check(root)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if want := []int{1, 2, 3, 4, 5, 6}; !equalInts(result.ADRGaps, want) {
+		t.Errorf("expected ADRGaps %v for a sequence starting at 0007, got %v", want, result.ADRGaps)
+	}
+}
+
+// equalInts reports whether two int slices hold the same values in order.
+func equalInts(got, want []int) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}

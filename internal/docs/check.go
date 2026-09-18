@@ -27,7 +27,9 @@ type CheckResult struct {
 	DeadLinks []string `json:"dead_links"`
 
 	// ADRGaps lists the missing ADR numbers (e.g. [2, 4]) when
-	// docs/decisions/ filenames are not sequential starting from 1.
+	// docs/decisions/ filenames are not sequential. The sequence may start at
+	// 0000 or 0001; numbers above the first expected one are always required,
+	// since decisions are superseded rather than deleted.
 	ADRGaps []int `json:"adr_gaps"`
 
 	// InvalidCovers lists "file: path" descriptions of covers: frontmatter
@@ -306,7 +308,9 @@ func extractRelativeLinks(raw []byte) []string {
 
 // checkADRGaps lists the ADR numbers that are missing from the sequential
 // sequence expected in docs/decisions/. Files that do not match the ADR
-// naming pattern (NNNN-title.md) are ignored.
+// naming pattern (NNNN-title.md) are ignored. The base of the sequence is
+// taken from the files themselves rather than assumed, so both the 0-based
+// and the 1-based numbering convention are accepted.
 func checkADRGaps(repoRoot string) ([]int, error) {
 	decisionsDir := filepath.Join(repoRoot, "docs", "decisions")
 	if _, err := os.Stat(decisionsDir); os.IsNotExist(err) {
@@ -340,8 +344,14 @@ func checkADRGaps(repoRoot string) ([]int, error) {
 
 	sort.Ints(numbers)
 
+	// Scan from the lowest number present, so a repository whose meta-document
+	// is 0000 has that document inside the checked range. The start is clamped
+	// to 1 so a repository that numbers from 0001 — the ADR convention this
+	// tool implements — is never told it is missing a 0000.
+	start := min(numbers[0], 1)
+
 	var gaps []int
-	for i := 1; i <= numbers[len(numbers)-1]; i++ {
+	for i := start; i <= numbers[len(numbers)-1]; i++ {
 		found := false
 		for _, n := range numbers {
 			if n == i {
