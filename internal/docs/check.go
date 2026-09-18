@@ -182,6 +182,13 @@ func reachableFromContributing(repoRoot string) (map[string]struct{}, error) {
 		}
 		visited[current] = struct{}{}
 
+		if info, err := os.Stat(current); err == nil && info.IsDir() {
+			if err := enqueueDirEntries(repoRoot, current, reachable, &queue); err != nil {
+				return nil, err
+			}
+			continue
+		}
+
 		raw, err := os.ReadFile(current)
 		if err != nil {
 			// If the file doesn't exist (dead link target), just skip.
@@ -203,6 +210,32 @@ func reachableFromContributing(repoRoot string) (map[string]struct{}, error) {
 	}
 
 	return reachable, nil
+}
+
+// enqueueDirEntries marks every entry of dir as reachable and queues it for
+// traversal. Queueing rather than only marking is what makes nesting work
+// without a special case, and it lets links inside those files keep
+// propagating exactly as links in a directly linked file do.
+//
+// Symlinks are marked reachable but not traversed, matching the filepath.Walk
+// in checkReachability, which does not follow them either.
+func enqueueDirEntries(repoRoot, dir string, reachable map[string]struct{}, queue *[]string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("read linked directory %s: %w", dir, err)
+	}
+	for _, entry := range entries {
+		child := filepath.Join(dir, entry.Name())
+		rel, relErr := filepath.Rel(repoRoot, child)
+		if relErr != nil {
+			continue
+		}
+		reachable[filepath.ToSlash(rel)] = struct{}{}
+		if entry.IsDir() || entry.Type().IsRegular() {
+			*queue = append(*queue, child)
+		}
+	}
+	return nil
 }
 
 // --------------------------------------------------------------------------
