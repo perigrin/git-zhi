@@ -387,3 +387,129 @@ func TestCheck_Combined(t *testing.T) {
 		t.Errorf("expected at least one ADR gap")
 	}
 }
+
+// --------------------------------------------------------------------------
+// Directory links — a link to a directory makes the files inside it
+// reachable, the same way a link to an index file would.
+// --------------------------------------------------------------------------
+
+// TestCheck_ScaffoldedTreePasses — the index Scaffold generates must satisfy
+// the checker that reads it. Scaffold's Short Links section links directories,
+// and the two living documents it writes live inside one of them.
+func TestCheck_ScaffoldedTreePasses(t *testing.T) {
+	root := t.TempDir()
+
+	if err := docs.Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+
+	result, err := docs.Check(root)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if len(result.UnreachableFiles) != 0 {
+		t.Errorf("a freshly scaffolded tree should have no unreachable files, got %v",
+			result.UnreachableFiles)
+	}
+	if !result.OK {
+		t.Errorf("expected OK=true for a freshly scaffolded tree; deadLinks=%v adrGaps=%v invalidCovers=%v",
+			result.DeadLinks, result.ADRGaps, result.InvalidCovers)
+	}
+}
+
+// TestCheck_DirectoryLink_ReachesContents — the general case, independent of
+// Scaffold. docs/guides/ is not an archive directory and is not exempt, so it
+// proves directory links work rather than that something was exempted.
+func TestCheck_DirectoryLink_ReachesContents(t *testing.T) {
+	root := t.TempDir()
+
+	writeFile(t, root, "CONTRIBUTING.md",
+		"# Contributing\n\n- [Plans](docs/plans)\n- [Guides](docs/guides)\n")
+	writeFile(t, root, "docs/plans/2026-q1-roadmap.md", "# Roadmap\n")
+	writeFile(t, root, "docs/guides/how-to-release.md", "# Release\n")
+
+	result, err := docs.Check(root)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if len(result.UnreachableFiles) != 0 {
+		t.Errorf("files under a linked directory should be reachable, got %v",
+			result.UnreachableFiles)
+	}
+}
+
+// TestCheck_DirectoryLink_Nested — a linked directory is walked all the way
+// down, so nesting needs no separate handling.
+func TestCheck_DirectoryLink_Nested(t *testing.T) {
+	root := t.TempDir()
+
+	writeFile(t, root, "CONTRIBUTING.md", "# Contributing\n\n- [Guides](docs/guides)\n")
+	writeFile(t, root, "docs/guides/deploy/staging.md", "# Staging\n")
+	writeFile(t, root, "docs/guides/deploy/rollback/steps.md", "# Rollback\n")
+
+	result, err := docs.Check(root)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if len(result.UnreachableFiles) != 0 {
+		t.Errorf("nested files under a linked directory should be reachable, got %v",
+			result.UnreachableFiles)
+	}
+}
+
+// TestCheck_DirectoryLink_FollowsLinksInside — files inside a linked directory
+// keep propagating reachability through their own links, so a doc linked only
+// from inside a linked directory is reachable too.
+func TestCheck_DirectoryLink_FollowsLinksInside(t *testing.T) {
+	root := t.TempDir()
+
+	writeFile(t, root, "CONTRIBUTING.md", "# Contributing\n\n- [Guides](docs/guides)\n")
+	writeFile(t, root, "docs/guides/index.md", "# Guides\n\nSee [the runbook](../reference/runbook.md).\n")
+	writeFile(t, root, "docs/reference/runbook.md", "# Runbook\n")
+
+	result, err := docs.Check(root)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if len(result.UnreachableFiles) != 0 {
+		t.Errorf("a doc linked from inside a linked directory should be reachable, got %v",
+			result.UnreachableFiles)
+	}
+}
+
+// TestCheck_UnlinkedDirectory_StillUnreachable — the fix must not make the
+// reachability check vacuous. A directory nobody links stays unreachable.
+func TestCheck_UnlinkedDirectory_StillUnreachable(t *testing.T) {
+	root := t.TempDir()
+
+	writeFile(t, root, "CONTRIBUTING.md", "# Contributing\n\n- [Guides](docs/guides)\n")
+	writeFile(t, root, "docs/guides/how-to-release.md", "# Release\n")
+	writeFile(t, root, "docs/orphans/nobody-links-me.md", "# Orphan\n")
+
+	result, err := docs.Check(root)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	want := []string{"docs/orphans/nobody-links-me.md"}
+	if !equalStrings(result.UnreachableFiles, want) {
+		t.Errorf("expected UnreachableFiles %v, got %v", want, result.UnreachableFiles)
+	}
+}
+
+// equalStrings reports whether two string slices hold the same values in order.
+func equalStrings(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if filepath.ToSlash(got[i]) != want[i] {
+			return false
+		}
+	}
+	return true
+}
