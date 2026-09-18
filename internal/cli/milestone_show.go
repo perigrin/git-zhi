@@ -378,6 +378,20 @@ func showMilestoneHuman(cmd *cobra.Command, ms *milestone.Milestone, issues []*i
 		}
 	}
 
+	// The milestone's own prose, last. Each of these is written to be read by
+	// a person and was previously reachable only through --format json. They
+	// trail the dashboard because a plan or a retrospective can run long, and
+	// a reader scanning progress should not have to page past one.
+	if ms.Resolution != "" {
+		fmt.Fprintf(w, "\nResolution: %s\n", ms.Resolution)
+	}
+	if ms.Body != "" {
+		fmt.Fprintf(w, "\nBody:\n\n%s\n", ms.Body)
+	}
+	if ms.Postmortem != "" {
+		fmt.Fprintf(w, "\nPostmortem:\n\n%s\n", ms.Postmortem)
+	}
+
 	return nil
 }
 
