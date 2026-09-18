@@ -226,6 +226,68 @@ func TestRenderDAG_EmptyInput(t *testing.T) {
 	}
 }
 
+// dagEdges extracts the from/to pairs from RenderDAG output.
+func dagEdges(out string) [][2]string {
+	var edges [][2]string
+	for _, line := range strings.Split(out, "\n") {
+		from, to, ok := strings.Cut(strings.TrimSpace(line), " --> ")
+		if !ok {
+			continue
+		}
+		edges = append(edges, [2]string{from, to})
+	}
+	return edges
+}
+
+// TestRenderDAG_SharedPrefixRendersDistinctNodes — issues whose IDs share
+// their first 8 characters must render as separate nodes with a real edge
+// between them. A UUIDv7's leading 8 hex characters are the top 32 bits of
+// its 48-bit millisecond timestamp, so they only change about once a minute
+// and every issue from a single decomposition run shares them.
+func TestRenderDAG_SharedPrefixRendersDistinctNodes(t *testing.T) {
+	upstream := "019444a100000000000000000001"
+	downstream := "019444a100000000000000000002"
+
+	issues := []IssueInput{
+		{ID: upstream, Title: "upstream", State: "done"},
+		{ID: downstream, Title: "downstream", State: "pending", BlockedBy: []string{upstream}},
+	}
+
+	got := RenderDAG(issues)
+
+	if !strings.Contains(got, upstream+"[") {
+		t.Errorf("expected a node declared with the full ID %s, got:\n%s", upstream, got)
+	}
+	if !strings.Contains(got, downstream+"[") {
+		t.Errorf("expected a node declared with the full ID %s, got:\n%s", downstream, got)
+	}
+
+	if want := upstream + " --> " + downstream; !strings.Contains(got, want) {
+		t.Errorf("expected edge %q, got:\n%s", want, got)
+	}
+
+	for _, edge := range dagEdges(got) {
+		if edge[0] == edge[1] {
+			t.Errorf("self-loop %s --> %s, distinct issues collapsed into one node:\n%s",
+				edge[0], edge[1], got)
+		}
+	}
+}
+
+// TestRenderDAG_LabelKeepsShortID — the full ID is the identifier, but the
+// label a human reads still carries the 8-character short form.
+func TestRenderDAG_LabelKeepsShortID(t *testing.T) {
+	issues := []IssueInput{
+		{ID: "019444a100000000000000000001", Title: "Implement lexer", State: "done"},
+	}
+
+	got := RenderDAG(issues)
+
+	if !strings.Contains(got, `["019444a1 Implement lexer`) {
+		t.Errorf("expected label to open with the short ID and title, got:\n%s", got)
+	}
+}
+
 func TestRenderDAG_NodeLabels(t *testing.T) {
 	issues := []IssueInput{
 		{
@@ -315,9 +377,12 @@ func TestRenderDAG_BlockedByEdges(t *testing.T) {
 		},
 	}
 	got := RenderDAG(issues)
-	// Edge: blocker --> blocked
-	if !strings.Contains(got, "-->") {
-		t.Errorf("expected '-->' edge, got:\n%s", got)
+	// Edge: blocker --> blocked, named by both endpoints. Asserting only that
+	// "-->" appears would pass on output where the two issues collapsed into
+	// one self-pointing node.
+	want := "019444a100000000000000000001 --> 019444a200000000000000000002"
+	if !strings.Contains(got, want) {
+		t.Errorf("expected edge %q, got:\n%s", want, got)
 	}
 }
 
