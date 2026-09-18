@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -52,8 +53,9 @@ func newIssueAddCommand() *cobra.Command {
 	}
 
 	cmd.Flags().String("milestone", "", "milestone to assign (overrides config default)")
-	cmd.Flags().String("after", "", "issue ref that this issue depends on (not yet implemented)")
-	cmd.Flags().String("before", "", "issue ref that depends on this issue (not yet implemented)")
+	cmd.Flags().String("after", "", "issue ref that this issue depends on")
+	cmd.Flags().String("before", "", "issue ref that depends on this issue")
+	cmd.Flags().StringSlice("label", nil, "add a label to the new issue (repeatable)")
 	cmd.Flags().String("body", "", "issue body text (used with positional title arg; overrides stdin)")
 	cmd.Flags().String("body-file", "", "read the issue body from a file (mirrors git commit -F)")
 	cmd.MarkFlagsMutuallyExclusive("body", "body-file")
@@ -85,6 +87,20 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 	if ms, _ := cmd.Flags().GetString("milestone"); ms != "" {
 		defaultMilestone = ms
 	}
+
+	// --label may be repeated. Validate every name before anything is written,
+	// so a bad label leaves no half-created issue behind.
+	flagLabels, _ := cmd.Flags().GetStringSlice("label")
+	for _, label := range flagLabels {
+		if err := issue.ValidateLabelName(label); err != nil {
+			return err
+		}
+	}
+
+	// --after / --before supply a dependency for issues that do not name one
+	// themselves, the same way --milestone yields to a frontmatter milestone.
+	afterFlag, _ := cmd.Flags().GetString("after")
+	beforeFlag, _ := cmd.Flags().GetString("before")
 
 	// Determine input source: --body / --body-file take precedence over stdin.
 	bodyFlag, _ := cmd.Flags().GetString("body")
@@ -147,6 +163,17 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 		if iss.Milestone == "" {
 			iss.Milestone = defaultMilestone
 		}
+		if iss.After == "" {
+			iss.After = afterFlag
+		}
+		if iss.Before == "" {
+			iss.Before = beforeFlag
+		}
+		for _, label := range flagLabels {
+			if !slices.Contains(iss.Labels, label) {
+				iss.Labels = append(iss.Labels, label)
+			}
+		}
 		iss.Created = now
 		iss.Updated = now
 
@@ -156,13 +183,37 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 	// Resolve explicit dependencies from After/Before frontmatter fields.
 	// Build a title→issue index for intra-batch resolution.
 	titleIndex := make(map[string]*issue.Issue)
+	createdIDs := make(map[uuid.UUID]struct{}, len(created))
 	for _, iss := range created {
 		titleIndex[iss.Title] = iss
+		createdIDs[iss.ID] = struct{}{}
+	}
+
+	// An After/Before target may be an issue that already exists rather than
+	// one in this batch. Such a target gains a reverse edge and so must be
+	// written back, and every reference to it has to reach the same in-memory
+	// issue — resolveBatchDep reloads from storage on each call, so two new
+	// issues pointing at one existing target would otherwise each hold a copy
+	// carrying only their own edge, and persisting them would lose one.
+	existingTargets := make(map[uuid.UUID]*issue.Issue)
+	resolveDep := func(ref string) (*issue.Issue, error) {
+		target, err := resolveBatchDep(ref, titleIndex, app)
+		if err != nil {
+			return nil, err
+		}
+		if _, inBatch := createdIDs[target.ID]; inBatch {
+			return target, nil
+		}
+		if cached, ok := existingTargets[target.ID]; ok {
+			return cached, nil
+		}
+		existingTargets[target.ID] = target
+		return target, nil
 	}
 
 	for _, iss := range created {
 		if iss.After != "" {
-			target, resolveErr := resolveBatchDep(iss.After, titleIndex, app)
+			target, resolveErr := resolveDep(iss.After)
 			if resolveErr != nil {
 				return fmt.Errorf("issue %q: after: %w", iss.Title, resolveErr)
 			}
@@ -170,7 +221,7 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 			iss.BlockedBy = append(iss.BlockedBy, target.ID)
 		}
 		if iss.Before != "" {
-			target, resolveErr := resolveBatchDep(iss.Before, titleIndex, app)
+			target, resolveErr := resolveDep(iss.Before)
 			if resolveErr != nil {
 				return fmt.Errorf("issue %q: before: %w", iss.Title, resolveErr)
 			}
@@ -198,6 +249,21 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 		refPath := issue.RefPrefix + iss.ID.String()
 		if writeErr := app.Store.WriteEntity(refPath, "issue.md", data, "Add issue: "+iss.Title); writeErr != nil {
 			return fmt.Errorf("write issue %s: %w", iss.ID, writeErr)
+		}
+	}
+
+	// Persist the pre-existing issues that gained an edge. Without this the
+	// graph is half-wired: the new issue records its blocker, while the
+	// blocker never records what it now blocks.
+	for _, target := range existingTargets {
+		data, marshalErr := issue.Marshal(target)
+		if marshalErr != nil {
+			return fmt.Errorf("marshal issue %s: %w", target.ID, marshalErr)
+		}
+		refPath := issue.RefPrefix + target.ID.String()
+		if writeErr := app.Store.WriteEntity(refPath, "issue.md", data,
+			"Add dependency edge: "+target.Title); writeErr != nil {
+			return fmt.Errorf("write issue %s: %w", target.ID, writeErr)
 		}
 	}
 
