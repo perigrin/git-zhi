@@ -4,6 +4,7 @@ package docs
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -68,14 +69,37 @@ type HealthReport struct {
 	// repoRoot) that have no corresponding file in docs/architecture/.
 	CoverageGaps []string `json:"coverage_gaps"`
 
+	// Unmonitored lists docs that declare a covers field but leave it empty.
+	// Such a doc claims to track code and tracks none, so it can never drift
+	// and never appears in Documents — it is a hole in the report rather than
+	// a clean result. A doc with no covers field at all is not listed here;
+	// it never claimed to be monitored.
+	Unmonitored []string `json:"unmonitored"`
+
 	// Summary is a human-readable one-line summary of the report.
 	Summary string `json:"summary"`
 }
 
+// errEmptyCovers signals that a doc declared covers and left it empty. It is a
+// finding carried back to Health, not a failure to read the doc.
+var errEmptyCovers = errors.New("covers is declared but empty")
+
 // healthFrontmatter holds the fields Health reads from a doc's YAML frontmatter.
+// Covers is a pointer so that an absent field is distinguishable from one
+// written as an empty list; the two mean different things.
 type healthFrontmatter struct {
-	Covers    []string `yaml:"covers"`
-	Stability *int     `yaml:"stability"`
+	Covers    *[]string `yaml:"covers"`
+	Stability *int      `yaml:"stability"`
+}
+
+// derefCovers returns the declared covers paths, or nil when the field was
+// absent. Callers that only need the paths, and not whether the field was
+// written, use this.
+func derefCovers(covers *[]string) []string {
+	if covers == nil {
+		return nil
+	}
+	return *covers
 }
 
 // healthExemptPrefixes lists the doc subdirectories that are exempt from
@@ -149,6 +173,10 @@ func Health(repoRoot string, repo *git.Repository) (*HealthReport, error) {
 
 	for _, d := range docs {
 		health, err := computeDocHealth(repoRoot, d, repo)
+		if errors.Is(err, errEmptyCovers) {
+			report.Unmonitored = append(report.Unmonitored, d)
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("compute health for %s: %w", d, err)
 		}
@@ -217,9 +245,15 @@ func computeDocHealth(repoRoot, slashRel string, repo *git.Repository) (*DocHeal
 		return nil, nil
 	}
 
-	if len(fm.Covers) == 0 {
-		// No covers field — skip.
+	if fm.Covers == nil {
+		// No covers field — this doc never claimed to track code. Skip.
 		return nil, nil
+	}
+	if len(*fm.Covers) == 0 {
+		// The field is present and empty: the doc claims to track code and
+		// tracks none. Report it rather than skip it, so an empty observed
+		// set cannot be mistaken for a healthy one.
+		return nil, errEmptyCovers
 	}
 
 	stability := 2 // default: stable
@@ -229,7 +263,7 @@ func computeDocHealth(repoRoot, slashRel string, repo *git.Repository) (*DocHeal
 
 	health := &DocHealth{
 		File:      slashRel,
-		Covers:    fm.Covers,
+		Covers:    *fm.Covers,
 		Stability: stability,
 	}
 
@@ -248,7 +282,7 @@ func computeDocHealth(repoRoot, slashRel string, repo *git.Repository) (*DocHeal
 	health.DocModified = docModified
 
 	// Count commits touching covered paths after docModified.
-	churn, err := countChurnSince(repo, fm.Covers, docModified)
+	churn, err := countChurnSince(repo, *fm.Covers, docModified)
 	if err != nil {
 		return nil, fmt.Errorf("count churn for %s: %w", slashRel, err)
 	}
@@ -379,7 +413,7 @@ func detectCoverageGaps(repoRoot string, docs []DocHealth) ([]string, error) {
 			}
 			var fm healthFrontmatter
 			if _, parseErr := frontmatter.Parse(bytes.NewReader(raw), &fm, frontmatter.NewFormat("---", "---", yaml.Unmarshal)); parseErr == nil {
-				for _, cp := range fm.Covers {
+				for _, cp := range derefCovers(fm.Covers) {
 					coveredPkgs[cp] = struct{}{}
 				}
 			}
@@ -415,12 +449,16 @@ func buildSummary(report *HealthReport) string {
 		}
 	}
 	gapCount := len(report.CoverageGaps)
+	unmonitored := len(report.Unmonitored)
 
-	if total == 0 && gapCount == 0 {
+	if total == 0 && gapCount == 0 && unmonitored == 0 {
 		return "no docs with covers frontmatter found"
 	}
 
 	parts := []string{fmt.Sprintf("%d docs checked", total)}
+	if unmonitored > 0 {
+		parts = append(parts, fmt.Sprintf("%d with empty covers", unmonitored))
+	}
 	if highCount > 0 {
 		parts = append(parts, fmt.Sprintf("%d HIGH drift", highCount))
 	}
@@ -430,7 +468,7 @@ func buildSummary(report *HealthReport) string {
 	if gapCount > 0 {
 		parts = append(parts, fmt.Sprintf("%d coverage gap(s)", gapCount))
 	}
-	if highCount == 0 && lowCount == 0 && gapCount == 0 {
+	if highCount == 0 && lowCount == 0 && gapCount == 0 && unmonitored == 0 {
 		parts = append(parts, "all current")
 	}
 	return strings.Join(parts, ", ")

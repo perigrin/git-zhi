@@ -334,16 +334,17 @@ func printHealthReport(cmd *cobra.Command, report *HealthReport) {
 		fmt.Fprintln(w)
 	}
 
-	highCount, lowCount := 0, 0
-	for _, d := range report.Documents {
-		switch d.Drift {
-		case DriftHigh:
-			highCount++
-		case DriftLow:
-			lowCount++
+	if len(report.Unmonitored) > 0 {
+		fmt.Fprintln(w, "Declared covers but empty (nothing is being watched):")
+		for _, f := range report.Unmonitored {
+			fmt.Fprintf(w, "  %s\n", f)
 		}
+		fmt.Fprintln(w)
 	}
-	gapCount := len(report.CoverageGaps)
-	fmt.Fprintf(w, "Summary: %d high drift, %d low drift, %d coverage gap(s)\n",
-		highCount, lowCount, gapCount)
+
+	// Print the summary the report already carries rather than recomputing a
+	// second one here. The recomputed version counted only drift and gaps, so
+	// a report observing no documents at all rendered as three zeros — which
+	// reads as a clean bill of health rather than as an empty one.
+	fmt.Fprintf(w, "Summary: %s\n", report.Summary)
 }
