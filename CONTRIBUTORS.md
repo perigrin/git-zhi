@@ -5,9 +5,17 @@
 Requires **Go 1.24+** and **git**.
 
 ```bash
-go build -o git-zhi ./cmd/git-zhi/    # single unified binary
-go install github.com/perigrin/git-zhi@latest
+make build              # single unified binary, version stamped from git
+make install            # build, then install to $PREFIX/bin (default ~/.local)
+make cross-compile      # all four release platforms
 ```
+
+Build with `make`, not `go build` directly. The Makefile is the only place
+version, commit and build time are defined, and the release workflow calls it
+too — so every binary reports a version derived the same way. A binary built
+with bare `go build` carries no ldflags and reports
+`unknown (built without make)`, which is deliberate: a plausible-looking
+version number there cannot be told apart from a real release.
 
 All commands ship as one binary. The plugin command trees (historian, jira,
 mermaid, project, verify, sanbao, docs) are registered as subcommands in
