@@ -102,6 +102,21 @@ func derefCovers(covers *[]string) []string {
 	return *covers
 }
 
+// declaresKey reports whether the document's frontmatter contains the named
+// key, whatever its value. Unmarshalling cannot answer this: YAML maps both an
+// absent key and one written with no value to the same zero value, and the two
+// mean different things here — a doc that never mentioned covers is not the
+// same as one that mentions it and names nothing.
+func declaresKey(raw []byte, key string) bool {
+	var fields map[string]any
+	if _, err := frontmatter.Parse(bytes.NewReader(raw), &fields,
+		frontmatter.NewFormat("---", "---", yaml.Unmarshal)); err != nil {
+		return false
+	}
+	_, declared := fields[key]
+	return declared
+}
+
 // healthExemptPrefixes lists the doc subdirectories that are exempt from
 // staleness checking. ADRs and postmortems are append-only records and should
 // never be flagged for updates.
@@ -245,14 +260,18 @@ func computeDocHealth(repoRoot, slashRel string, repo *git.Repository) (*DocHeal
 		return nil, nil
 	}
 
-	if fm.Covers == nil {
+	// Whether the key was written cannot be read off the unmarshalled struct.
+	// A bare `covers:` is an explicit YAML null and produces the same nil
+	// pointer as an absent key, so ask the document itself.
+	if !declaresKey(raw, "covers") {
 		// No covers field — this doc never claimed to track code. Skip.
 		return nil, nil
 	}
-	if len(*fm.Covers) == 0 {
-		// The field is present and empty: the doc claims to track code and
-		// tracks none. Report it rather than skip it, so an empty observed
-		// set cannot be mistaken for a healthy one.
+	if fm.Covers == nil || len(*fm.Covers) == 0 {
+		// The field is written and names nothing — either `covers:` or
+		// `covers: []`. The doc claims to track code and tracks none. Report
+		// it rather than skip it, so an empty observed set cannot be mistaken
+		// for a healthy one.
 		return nil, errEmptyCovers
 	}
 

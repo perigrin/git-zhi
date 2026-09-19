@@ -30,6 +30,48 @@ func TestHealth_EmptyCoversIsReported(t *testing.T) {
 	}
 }
 
+// TestHealth_BareCoversKeyIsReported — `covers:` with nothing after it is an
+// explicit YAML null, and unmarshals to the same nil as an absent key. It is
+// the form a person writes: you type the key, then go looking for the paths.
+// Interrupted there, the doc must be flagged, not silently unwatched.
+func TestHealth_BareCoversKeyIsReported(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "docs/guides/half-written.md",
+		"---\nstability: 1\ncovers:\n---\n\n# Half written\n")
+
+	report, err := docs.Health(root, nil)
+	if err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+
+	if len(report.Unmonitored) != 1 {
+		t.Fatalf("expected the bare covers key to be reported, got %v", report.Unmonitored)
+	}
+	if got := report.Unmonitored[0]; got != "docs/guides/half-written.md" {
+		t.Errorf("expected the file to be named, got %q", got)
+	}
+}
+
+// TestHealth_BareCoversKeyCountedInSummary — and it must reach the summary, so
+// the blind state cannot read as a clean one.
+func TestHealth_BareCoversKeyCountedInSummary(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "docs/guides/half-written.md",
+		"---\nstability: 1\ncovers:\n---\n\n# Half written\n")
+
+	report, err := docs.Health(root, nil)
+	if err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+
+	if strings.Contains(report.Summary, "no docs with covers frontmatter found") {
+		t.Errorf("a declared-but-null covers field is not an absent one, got %q", report.Summary)
+	}
+	if !strings.Contains(report.Summary, "1 with empty covers") {
+		t.Errorf("expected the summary to count it, got %q", report.Summary)
+	}
+}
+
 // TestHealth_AbsentCoversIsNotReported — a doc that never declares covers is
 // not claiming to track code, so it is not a finding.
 func TestHealth_AbsentCoversIsNotReported(t *testing.T) {
