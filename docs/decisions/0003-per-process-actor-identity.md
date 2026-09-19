@@ -4,14 +4,58 @@ Date: 2026-09-19
 
 ## Status
 
-Proposed
+Proposed — nothing here is built.
 
 ## Context
 
-`Graph.headForActor` already implements what multi-worker execution needs: an
+`Graph.headForActor` is where multi-worker execution is supposed to live. An
 actor holding an in-progress issue gets it back, work held by a different actor
 is excluded, and an issue assigned to this actor is preferred over an
-unassigned one. None of it is reachable.
+unassigned one. None of it is reachable, and one of the three is also wrong.
+
+### The exclusion is not correct
+
+Step 2 implements "work held by a different actor is excluded" by rebuilding
+the graph without those issues — `sub, _ := Build(filtered)`. The held issue's
+edges leave with it, so its downstream has a dangling upstream in the
+sub-graph, and `ReadySet` reads a dangling upstream as a satisfied one:
+
+    up, ok := g.issues[upID]
+    if !ok {
+        continue
+    }
+
+So a downstream issue becomes "ready" in a graph that no longer contains the
+thing blocking it. Reproduced on 0.5.2: with A in progress under one actor and
+B depending on A, `next --actor agent:other` returns B while printing
+`Blocked by: A` and logging `references nonexistent upstream ... (skipped)`.
+
+The mechanism that provides mutual exclusion is the mechanism that destroys
+dependency isolation. They are not two features that happen to conflict; they
+are one filtering step used for two purposes with opposite requirements.
+
+`docs/contributing/coding-conventions.md` already states the rule this breaks:
+the graph is built from every issue on purpose, and anything derived from it
+has to be filtered after the fact rather than by filtering the input. The
+convention is in the repository and this code predates it.
+
+### Two claims in the surrounding material are also wrong
+
+`graph.go` documents a three-tier preference above `headForActor` — assigned to
+the actor, then unassigned, then assigned elsewhere. Only the first tier
+exists: `headForActor` reads `Assigned` once, and `headGlobal`, which resolves
+everything after that check, never reads it at all. Unassigned work and work
+assigned to someone else are treated identically.
+
+An earlier draft of this document asserted that reachability was the only
+defect. That was wrong when it was written, and it was wrong in the direction
+that mattered: it described a mechanism with a correctness bug as complete,
+in a document arguing for exposing it.
+
+Both errors have the same source. A comment asserted behaviour its own function
+did not implement, and two decision documents repeated it — this one, and
+crochet's 0002. That is the failure this series exists to catch, arriving four
+lines above the code that contradicts it.
 
 Every state change records `actor.DeriveActor(Store.AuthorInfo())` — git's
 `user.name` and `user.email`. Two sites do this, `issue_edit.go:300` and
@@ -82,6 +126,15 @@ commit authors it is reconstructing, which is correct — it is recovering who
 did something in the past, not declaring who is acting now, and an ambient
 `ZHI_ACTOR` must not rewrite history into the current worker's name.
 
+### Prerequisite
+
+The exclusion defect above is fixed first. This is a sequencing constraint, not
+a preference: single-actor use never exercises the filtered sub-graph, so the
+defect is unreachable today for the same reason `headForActor` is. Shipping
+this decision without the fix does not introduce the bug — it makes it
+reachable, and the first thing to reach it is a second worker being dispatched
+onto an issue whose dependency is mid-flight in someone else's worktree.
+
 ### Contract
 
 Three observable behaviours, which are the acceptance criteria:
@@ -119,6 +172,7 @@ accepted exactly as given. That is appropriate for a coordination mechanism and
 would not be for an authorization one; nothing here should ever become an
 access control decision.
 
-This decision is proposed. It is accepted by being asked for — an
-implementation request is the acceptance, and the ADR is superseded rather than
-edited if the mechanism changes after use.
+This decision is proposed, and stays proposed until the resolver exists and
+the three contract behaviours can be demonstrated. Until then it is a draft and
+is corrected in place; once it is accepted, code depends on its reasoning and
+it is superseded rather than edited.
