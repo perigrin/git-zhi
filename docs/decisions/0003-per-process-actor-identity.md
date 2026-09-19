@@ -1,3 +1,9 @@
+---
+supersedes: []
+superseded-by: []
+amended-by: [0004]
+---
+
 # 0003. Actor identity is declared by the process, not derived from the commit author
 
 Date: 2026-09-19
@@ -91,7 +97,8 @@ So whatever carries this identity must not be the commit author.
 
 An actor identity is resolved once, from the first of these that is set:
 
-1. an explicit `--actor` flag, where a command has one;
+1. an explicit `--actor` flag, on the commands that have one — `next` and
+   `project next`, and no write command; see 0004;
 2. the `ZHI_ACTOR` environment variable;
 3. `DeriveActor(AuthorInfo())` — today's behaviour.
 
