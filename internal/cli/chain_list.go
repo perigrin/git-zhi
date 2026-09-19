@@ -117,7 +117,7 @@ func runChainList(cmd *cobra.Command, args []string) error {
 	format, _ := cmd.Root().PersistentFlags().GetString("format")
 
 	if showReady {
-		return runChainListReady(cmd, g, filtered, format, labelFilter)
+		return runChainListReady(cmd, g, filtered, format, milestoneFilter, labelFilter)
 	}
 
 	if showCritical {
@@ -166,20 +166,14 @@ func runChainList(cmd *cobra.Command, args []string) error {
 
 	sorted := g.TopologicalSort()
 
-	// When a label filter is active, restrict the display to only the labeled
-	// issues while preserving the topological order from the full graph.
-	if labelFilter != "" {
-		filteredSet := make(map[uuid.UUID]bool, len(filtered))
-		for _, iss := range filtered {
-			filteredSet[iss.ID] = true
-		}
-		var labelSorted []*issue.Issue
-		for _, iss := range sorted {
-			if filteredSet[iss.ID] {
-				labelSorted = append(labelSorted, iss)
-			}
-		}
-		sorted = labelSorted
+	// Restrict the display to the filtered set while preserving the
+	// topological order from the full graph. Every display filter has to be
+	// applied here: the sort comes from the graph, which was deliberately
+	// built from every issue so that blockers outside the filter still
+	// constrain readiness, so anything not re-applied to the sort is silently
+	// ignored.
+	if milestoneFilter != "" || labelFilter != "" {
+		sorted = restrictToSet(sorted, filtered)
 	}
 
 	if format == "json" {
@@ -193,6 +187,23 @@ func runChainList(cmd *cobra.Command, args []string) error {
 	}
 
 	return chainListGroupedHuman(cmd, app, sorted, milestoneFilter)
+}
+
+// restrictToSet returns the members of ordered that appear in keep, preserving
+// the order of ordered. Used to apply display filters to a list derived from
+// the full graph without disturbing its topological ordering.
+func restrictToSet(ordered, keep []*issue.Issue) []*issue.Issue {
+	keepIDs := make(map[uuid.UUID]bool, len(keep))
+	for _, iss := range keep {
+		keepIDs[iss.ID] = true
+	}
+	var result []*issue.Issue
+	for _, iss := range ordered {
+		if keepIDs[iss.ID] {
+			result = append(result, iss)
+		}
+	}
+	return result
 }
 
 // chainListGroupedHuman renders the issue list grouped by milestone in topo order.
@@ -276,22 +287,14 @@ func chainListGroupedHuman(cmd *cobra.Command, app *App, issues []*issue.Issue, 
 
 // runChainListReady handles the --ready flag: computes the ready set, performs
 // path overlap analysis, and renders output in human or JSON format.
-func runChainListReady(cmd *cobra.Command, g *graph.Graph, filtered []*issue.Issue, format string, labelFilter string) error {
+func runChainListReady(cmd *cobra.Command, g *graph.Graph, filtered []*issue.Issue, format string, milestoneFilter, labelFilter string) error {
 	ready := g.ReadySet()
 
-	// When a label filter is active, restrict the ready set to labeled issues.
-	if labelFilter != "" {
-		filteredSet := make(map[uuid.UUID]bool, len(filtered))
-		for _, iss := range filtered {
-			filteredSet[iss.ID] = true
-		}
-		var labelReady []*issue.Issue
-		for _, iss := range ready {
-			if filteredSet[iss.ID] {
-				labelReady = append(labelReady, iss)
-			}
-		}
-		ready = labelReady
+	// Narrow the ready set to the display filters. ReadySet comes from the
+	// full graph, so a filter not re-applied here does nothing — which handed
+	// a caller asking for one milestone the ready work of every milestone.
+	if milestoneFilter != "" || labelFilter != "" {
+		ready = restrictToSet(ready, filtered)
 	}
 
 	// Gather paths for each ready issue.
