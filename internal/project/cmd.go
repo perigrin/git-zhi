@@ -7,6 +7,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	actorpkg "github.com/perigrin/git-zhi/internal/actor"
 )
 
 // NewProjectCommand creates and returns the root Cobra command for git-zhi-project.
@@ -75,8 +77,27 @@ func newNextCommand(format *string) *cobra.Command {
 		Short: "Cross-repo next-issue recommendation for a specific worker",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if actor == "" {
-				return fmt.Errorf("--actor is required")
+			// A declared identity stands in for the flag. This command has
+			// required --actor since it shipped, and until a process could
+			// declare one there was no way to be a distinct worker — so the
+			// cross-repo layer was unreachable rather than merely awkward.
+			worker := actor
+			if worker == "" {
+				resolved, err := actorpkg.Resolve("", "", "")
+				if err != nil {
+					return err
+				}
+				if actorpkg.Declared("") {
+					// The bare identifier, not the "type:id" form. Worker
+					// names in a project definition are plain strings and are
+					// compared against them directly (project.go:367, :409),
+					// where the chain compares full typed actors instead.
+					worker = resolved.ID
+				}
+			}
+			if worker == "" {
+				return fmt.Errorf("no worker identity: pass --actor, or export %s (e.g. %s=agent:worker-3)",
+					actorpkg.EnvVar, actorpkg.EnvVar)
 			}
 
 			projectFile := args[0]
@@ -85,7 +106,7 @@ func newNextCommand(format *string) *cobra.Command {
 				return fmt.Errorf("load project: %w", err)
 			}
 
-			repoPath, issueID, err := NextForActor(def, actor)
+			repoPath, issueID, err := NextForActor(def, worker)
 			if err != nil {
 				return err
 			}
@@ -129,7 +150,7 @@ func newNextCommand(format *string) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&actor, "actor", "", "worker identity to find next issue for (required)")
+	cmd.Flags().StringVar(&actor, "actor", "", "worker identity to find next issue for (defaults to ZHI_ACTOR)")
 	return cmd
 }
 
