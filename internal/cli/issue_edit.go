@@ -235,7 +235,13 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 			if openIdx >= 0 {
 				commitCount, countErr := app.Store.CountCommits(iss.Sessions[openIdx].StartSHA, currentHEAD)
 				if countErr != nil {
-					return fmt.Errorf("count commits: %w", countErr)
+					// If counting fails (e.g., after rebase), close with zero
+					// commits, as cancel does. A rewritten history orphans the
+					// recorded start SHA, and every exit from in-progress
+					// counts first — treating that as fatal left the issue
+					// with no way out, and put the failure ahead of the
+					// --force check that is documented to override it.
+					commitCount = 0
 				}
 				iss.Sessions[openIdx].EndSHA = currentHEAD
 				iss.Sessions[openIdx].EndedAt = &now

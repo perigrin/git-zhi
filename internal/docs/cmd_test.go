@@ -296,6 +296,36 @@ func TestDocsCLI_Health_ProducesOutputWithCoversDocs(t *testing.T) {
 	}
 }
 
+// TestDocsCLI_Health_ScaffoldedRepoIsNotReportedHealthy — docs init writes
+// covers: [] into both templates it creates, so docs health run immediately
+// after was observing nothing while printing three zeros that read as a clean
+// bill of health. The plain renderer must say so, and name the files.
+func TestDocsCLI_Health_ScaffoldedRepoIsNotReportedHealthy(t *testing.T) {
+	root := t.TempDir()
+	repo := initBareRepo(t, root)
+
+	if err := docs.Scaffold(root); err != nil {
+		t.Fatalf("setup scaffold: %v", err)
+	}
+
+	out, err := runDocsCLI(t, root, repo, "health")
+	if err != nil {
+		t.Fatalf("docs health returned error: %v\noutput: %s", err, out)
+	}
+
+	if strings.Contains(out, "Summary: 0 high drift, 0 low drift, 0 coverage gap(s)") {
+		t.Errorf("three zeros read as a clean bill of health while watching nothing; got:\n%s", out)
+	}
+	for _, want := range []string{
+		"docs/contributing/coding-conventions.md",
+		"docs/contributing/development-workflow.md",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %s to be named as unmonitored; got:\n%s", want, out)
+		}
+	}
+}
+
 // --------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------
