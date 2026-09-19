@@ -42,6 +42,47 @@ alternative was rejected for a reason worth remembering, or when the
 implementation diverges from what a PRD or plan asserts. Routine
 implementation choices do not need one.
 
+### Relationship to other decision series
+
+crochet keeps its own series at `docs/decisions/`, in the same shape. The two
+are independent series that share a format, not one series spread across two
+repositories, and that is a deliberate choice rather than an accident of
+filing.
+
+Three reasons, in descending weight. Both series number from 0001, so a bare
+citation of "0002" is ambiguous the moment they are read together, and the
+number is the whole of a decision's identity. A link between repositories
+cannot be checked mechanically: a symmetry rule works because both halves land
+in one tree in one commit, and a cross-repository link is unverifiable at
+exactly the moment it matters, when the other repository moves. And crochet
+already models its dependencies on git-zhi as environmental preconditions with
+a version floor rather than as links, so a decision here that crochet relies on
+surfaces there as a minimum version, not as a citation.
+
+A reference to another repository's decision therefore goes in prose, naming
+both — "crochet ADR 0002" — and never in a link field.
+
+### Link fields
+
+Relations within this series are recorded in frontmatter, so that a checker can
+read them without parsing prose: `supersedes`, `superseded-by`, `amends`,
+`amended-by`, each a list of four-digit numbers.
+
+They are introduced when there is a first relation to record, not before. The
+entries written so far have none, and carry none.
+
+When they do arrive: `supersedes` and `superseded-by` are written even when
+empty, because supersession is the series' core vocabulary and a reader should
+meet the concept on every entry. `amends` and `amended-by` are written only
+when the relation exists.
+
+That asymmetry is not the same question as an empty `covers:` in a document's
+frontmatter, which was a defect precisely because something read it — the drift
+sensor consumed the list, found nothing, and reported health, so the emptiness
+was load-bearing and silent. An empty `supersedes:` is inert; nothing computes
+from it. The test is not whether a field may be empty. It is whether anything
+depends on it being non-empty.
+
 ## Consequences
 
 Decisions become reviewable as decisions, separately from the code that
