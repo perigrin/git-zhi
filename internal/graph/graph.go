@@ -395,9 +395,18 @@ func (g *Graph) headGlobal() (*issue.Issue, error) {
 }
 
 // headForActor implements per-worker WIP=1 semantics for a named actor.
-// Assignment preference: when picking from the ready set, issues assigned to
-// the actor are preferred over unassigned issues, which are preferred over
-// issues assigned to a different actor.
+//
+// An actor holding an in-progress issue gets that issue back. Otherwise the
+// candidates are the ready issues not currently held by another worker, and an
+// issue assigned to this actor is preferred over one that is not. Issues
+// assigned to a different actor are not deprioritised relative to unassigned
+// ones; assignment is a preference for its own actor, not an exclusion.
+//
+// Readiness is computed on the whole graph and the exclusion applied to the
+// result. Excluding held issues from the graph first would take their edges
+// with them, leaving their downstream with a dangling upstream — which
+// ReadySet reads as a satisfied one, so a blocked issue would be handed to the
+// one worker who must not have it.
 func (g *Graph) headForActor(actor string) (*issue.Issue, error) {
 	// Step 1: check if this actor already has an in-progress issue.
 	for _, iss := range g.issues {
@@ -406,44 +415,51 @@ func (g *Graph) headForActor(actor string) (*issue.Issue, error) {
 		}
 	}
 
-	// Build the set of issue IDs currently held by other workers (in-progress
-	// issues whose last-transition actor is someone other than this actor).
-	otherWorkerIDs := make(map[string]bool)
+	// Issues currently held by other workers: in-progress, last moved by
+	// someone else. These are off limits, but they still block their
+	// downstream, so they stay in the graph.
+	heldByOthers := make(map[uuid.UUID]bool)
 	for _, iss := range g.issues {
-		if iss.State == issue.StateInProgress {
-			if a := lastTransitionActor(iss); a != actor {
-				otherWorkerIDs[iss.ID.String()] = true
-			}
+		if iss.State == issue.StateInProgress && lastTransitionActor(iss) != actor {
+			heldByOthers[iss.ID] = true
 		}
 	}
 
-	// Step 2: build a temporary sub-graph that excludes issues held by other
-	// workers, then apply the standard head logic on it. Within that sub-graph,
-	// check for assigned issues first so that issues explicitly assigned to this
-	// actor are preferred over unassigned issues from the ready set.
-	var filtered []*issue.Issue
-	for _, iss := range g.issues {
-		if !otherWorkerIDs[iss.ID.String()] {
-			filtered = append(filtered, iss)
+	// Step 2: candidates are ready issues — computed against every issue,
+	// including the held ones — minus anything held by another worker.
+	var candidates []*issue.Issue
+	for _, iss := range g.ReadySet() {
+		if !heldByOthers[iss.ID] {
+			candidates = append(candidates, iss)
 		}
 	}
-	if len(filtered) == 0 {
+	if len(candidates) == 0 {
 		return nil, fmt.Errorf("graph: no actionable issues for actor %s", actor)
 	}
 
-	sub, _ := Build(filtered)
-
-	// Step 3: prefer pending issues assigned to this actor that are in the ready
-	// set over the standard critical-chain resolution. This respects the explicit
-	// assignment while still honouring graph constraints (unblocked only).
-	readySet := sub.ReadySet()
-	for _, iss := range readySet {
+	// Step 3: prefer a candidate explicitly assigned to this actor.
+	for _, iss := range candidates {
 		if iss.Assigned == actor {
 			return iss, nil
 		}
 	}
 
-	return sub.headGlobal()
+	// Otherwise take the candidate that comes first on the critical chain, so
+	// per-worker selection follows the same priority as the global head. The
+	// chain is computed on the whole graph for the same reason readiness is.
+	candidateIDs := make(map[uuid.UUID]bool, len(candidates))
+	for _, iss := range candidates {
+		candidateIDs[iss.ID] = true
+	}
+	for _, iss := range g.CriticalChain() {
+		if candidateIDs[iss.ID] {
+			return iss, nil
+		}
+	}
+
+	// No candidate is on the critical chain: ReadySet is already sorted for
+	// determinism, so take the first.
+	return candidates[0], nil
 }
 
 // lastTransitionActor returns the actor field from the last entry in
