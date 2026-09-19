@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/perigrin/git-zhi/internal/actor"
 	"github.com/perigrin/git-zhi/internal/graph"
 	"github.com/perigrin/git-zhi/internal/issue"
 )
@@ -16,17 +17,36 @@ import (
 // Without --actor this is identical to v0.1 behavior: HEAD resolution via
 // global WIP=1 semantics. --label restricts the candidate set to labeled issues.
 func runChainNext(cmd *cobra.Command, args []string) error {
-	actor, _ := cmd.Flags().GetString("actor")
+	actorFlag, _ := cmd.Flags().GetString("actor")
 	labelFilter, _ := cmd.Flags().GetString("label")
-
-	// Without --actor and without --label, preserve v0.1 global behavior.
-	if actor == "" && labelFilter == "" {
-		return runIssueShow(cmd, []string{})
-	}
 
 	app := GetApp(cmd.Context())
 	if app == nil {
 		return fmt.Errorf("no git repository found")
+	}
+
+	// An identity declared by the process is as good as one passed on the
+	// command line: declaring it once and having both sides of an operation
+	// honour it is the point, and a caller who passes --actor to next and
+	// forgets it on edit is the split identity this exists to prevent.
+	//
+	// Only a *declared* identity switches to per-worker resolution. Resolve
+	// always yields an actor, falling back to the git author, so using it
+	// unconditionally here would quietly move every existing caller off the
+	// global semantics they have today.
+	actorName := actorFlag
+	if actorName == "" && actor.Declared("") {
+		name, email := app.Store.AuthorInfo()
+		resolved, resolveErr := actor.Resolve("", name, email)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		actorName = resolved.String()
+	}
+
+	// Without an actor and without --label, preserve v0.1 global behavior.
+	if actorName == "" && labelFilter == "" {
+		return runIssueShow(cmd, []string{})
 	}
 
 	allIssues, err := issue.LoadAllIssues(app.Store)
@@ -62,9 +82,9 @@ func runChainNext(cmd *cobra.Command, args []string) error {
 		return runIssueShow(cmd, []string{labeled[0].ID.String()})
 	}
 
-	head, err := g.Head(actor)
+	head, err := g.Head(actorName)
 	if err != nil {
-		return fmt.Errorf("resolve HEAD for actor %q: %w", actor, err)
+		return fmt.Errorf("resolve HEAD for actor %q: %w", actorName, err)
 	}
 
 	// Pass the full UUID string so runIssueShow resolves it via UUID prefix.

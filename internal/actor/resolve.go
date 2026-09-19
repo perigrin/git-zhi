@@ -27,6 +27,14 @@ const EnvVar = "ZHI_ACTOR"
 // worker names; but at the point a new identity enters the system, defaulting
 // would record agents as humans and say nothing. explicit keeps the lenient
 // parse for exactly that reason: it is a flag, not a new boundary.
+// Declared reports whether this process was given an identity, rather than
+// falling back to the git author. Resolve always yields an actor, so a caller
+// that changes behaviour only for a declared identity — per-worker resolution
+// instead of global — has to ask this rather than test the resolved value.
+func Declared(explicit string) bool {
+	return explicit != "" || strings.TrimSpace(os.Getenv(EnvVar)) != ""
+}
+
 func Resolve(explicit, gitName, gitEmail string) (Actor, error) {
 	if explicit != "" {
 		return ParseActor(explicit), nil
