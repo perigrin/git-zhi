@@ -308,6 +308,29 @@ func (g *Graph) CriticalChain() []*issue.Issue {
 // every blocker done or cancelled. Reopened counts because `--state start` is
 // legal from it, so excluding it hid genuinely available work from every
 // caller that asks what to work on next.
+// UnresolvedBlockers returns the upstream issues of id that are neither done
+// nor cancelled, sorted for determinism. An issue with none is ready to start.
+//
+// Callers must ask the graph rather than read an issue's BlockedBy field: Build
+// derives edges from Blocks declarations, so the two can disagree, and the
+// graph is what every other scheduling decision is made against.
+func (g *Graph) UnresolvedBlockers(id uuid.UUID) []*issue.Issue {
+	var blockers []*issue.Issue
+	for _, upID := range g.backward[id] {
+		up, ok := g.issues[upID]
+		if !ok {
+			// A blocker that no longer exists cannot be waited on. This
+			// matches ReadySet, which treats a missing upstream as satisfied.
+			continue
+		}
+		if up.State != issue.StateDone && up.State != issue.StateCancelled {
+			blockers = append(blockers, up)
+		}
+	}
+	sortIssues(blockers)
+	return blockers
+}
+
 func (g *Graph) ReadySet() []*issue.Issue {
 	var ready []*issue.Issue
 	for _, iss := range g.issues {

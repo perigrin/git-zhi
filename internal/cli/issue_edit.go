@@ -222,6 +222,9 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 			if findOpenSession(iss.Sessions) >= 0 {
 				return fmt.Errorf("cannot %s: a measurement session is already open", stateAction)
 			}
+			if blockErr := checkBlockers(app, iss, force); blockErr != nil {
+				return blockErr
+			}
 			if wipErr := checkWIPLimit(cmd.ErrOrStderr(), app, iss, force); wipErr != nil {
 				return wipErr
 			}
@@ -680,6 +683,50 @@ func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string)
 // check before any of them writes, overshooting by up to N-1. Acceptable
 // because the cap is a scheduling hint and the overshoot drains as issues
 // finish; upgrade path if it ever matters is a CAS on a counter ref.
+// checkBlockers refuses to start an issue whose dependencies are unresolved.
+// Readiness was previously only consulted by `next`, so a caller who skipped it
+// could start blocked work directly and nothing would say so.
+//
+// The blockers come from the graph rather than from the issue's own BlockedBy
+// field, because Build derives edges from Blocks declarations and the two can
+// disagree — and the graph is what every other scheduling decision uses.
+func checkBlockers(app *App, starting *issue.Issue, force bool) error {
+	if force {
+		return nil
+	}
+
+	// resume re-opens a session on an issue already in progress. Its blockers
+	// were settled when it started, and gating it would strand work in flight
+	// if an upstream were reopened afterwards — the same trap the WIP limit
+	// avoids for the same reason.
+	if starting.State == issue.StateInProgress {
+		return nil
+	}
+
+	all, err := issue.LoadAllIssues(app.Store)
+	if err != nil {
+		return fmt.Errorf("load issues for blocker check: %w", err)
+	}
+	g, err := graph.Build(all)
+	if err != nil {
+		// A graph that will not build cannot answer the question. Refuse
+		// rather than starting on the assumption that silence means ready.
+		return fmt.Errorf("build graph for blocker check: %w", err)
+	}
+
+	blockers := g.UnresolvedBlockers(starting.ID)
+	if len(blockers) == 0 {
+		return nil
+	}
+
+	names := make([]string, len(blockers))
+	for i, b := range blockers {
+		names[i] = fmt.Sprintf("%s %s (%s)", b.ID.String()[:8], b.Title, b.State)
+	}
+	return fmt.Errorf("cannot start: %d unresolved blocker(s):\n  %s\nfinish or cancel them first, or pass --force",
+		len(blockers), strings.Join(names, "\n  "))
+}
+
 func checkWIPLimit(warn io.Writer, app *App, starting *issue.Issue, force bool) error {
 	if force {
 		return nil
