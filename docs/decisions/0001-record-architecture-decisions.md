@@ -4,7 +4,8 @@ Date: 2026-09-19
 
 ## Status
 
-Accepted
+Accepted — `docs/decisions/` exists and holds this series, and `git zhi docs
+check` enforces its numbering and its exemption from the reachability check.
 
 ## Context
 
@@ -31,11 +32,39 @@ Architecture decisions are recorded as ADRs in `docs/decisions/`, numbered
 sequentially from 0001, in the format described by Michael Nygard in
 "Documenting Architecture Decisions".
 
-Decisions are append-only. A decision that no longer holds is superseded by a
-new one that says so and links back; it is never edited into agreement with
-the present or deleted. `git zhi docs check` validates that the numbering has
-no gaps, and treats this directory as exempt from the reachability check —
-ADRs are indexed by their numbering, not by links from `CONTRIBUTING.md`.
+### Status
+
+An entry is **Proposed** until the thing it decides exists in the code, and
+**Accepted** once it does. Nothing else changes the status: not agreement, not
+a request to build it, not time passing.
+
+The status is a claim like any other in these documents, so it has to be one a
+reader can check. "Accepted by being asked for" records a conversation nobody
+can verify afterwards; "Accepted because the code is there" can be falsified by
+going and looking. An entry marked Accepted with nothing built is the exact
+failure this series exists to catch, wearing the series' own badge.
+
+### Append-only, and when it starts
+
+Append-only binds an Accepted entry. Its reasoning was live while code was
+built against it, so the reasoning is history: an Accepted decision that no
+longer holds is superseded by a new entry that says so and links back, never
+edited into agreement with the present and never deleted.
+
+A Proposed entry is a draft. Nothing depends on it, so it is edited in place
+like any other unfinished document, and git holds the record of what it said
+before. A second file explaining that the first file was wrong would duplicate
+what version control already does and leave a reader to find the correction
+after meeting the error.
+
+Correcting a factual error is not editing into agreement with the present in
+either case. The rule protects a record of what was believed when a decision
+was made; it does not require preserving a claim that was untrue when it was
+written.
+
+`git zhi docs check` validates that the numbering has no gaps, and treats this
+directory as exempt from the reachability check — ADRs are indexed by their
+numbering, not by links from `CONTRIBUTING.md`.
 
 An ADR is warranted when a choice constrains future work, when a reasonable
 alternative was rejected for a reason worth remembering, or when the
