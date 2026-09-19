@@ -11,10 +11,15 @@ git-zhi is a git-native task graph that manages development work as a dependency
 ## Build & Test
 
 ```bash
-go build -o git-zhi ./cmd/git-zhi/    # single unified binary
+make build              # single unified binary — use this, not go build
 go test ./...
 go test -race ./...
 ```
+
+`make build` is the only supported build path. The Makefile defines VERSION,
+COMMIT and LDFLAGS, and the release workflow calls it, so local and released
+binaries report their version the same way. Bare `go build` produces a binary
+reporting `unknown (built without make)`.
 
 All commands ship in one binary. The plugin command trees (historian, jira,
 mermaid, etc.) are registered as subcommands in `cmd/git-zhi/main.go` — they

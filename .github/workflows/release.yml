@@ -99,8 +99,13 @@ jobs:
         CGO_ENABLED: '0'
       run: |
         mkdir -p build/release
-        LDFLAGS="-s -w -X 'github.com/perigrin/git-zhi/internal/version.Version=${VERSION}' -X 'github.com/perigrin/git-zhi/internal/version.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)' -X 'github.com/perigrin/git-zhi/internal/version.CommitHash=${COMMIT}'"
-        go build -ldflags="$LDFLAGS" -o build/release/git-zhi-${{ matrix.platform }}${{ matrix.ext }} ./cmd/git-zhi
+        # Build through the Makefile so the release and a local `make build`
+        # share one definition of the ldflags. VERSION and COMMIT are passed
+        # explicitly: the tag is authoritative here, not `git describe`.
+        make build \
+          VERSION="${VERSION}" \
+          COMMIT="${COMMIT}" \
+          OUT="build/release/git-zhi-${{ matrix.platform }}${{ matrix.ext }}"
 
     - name: Test binary
       if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
@@ -225,8 +230,13 @@ jobs:
           echo "tar -xzf git-zhi-${VERSION}-<platform>.tar.gz"
           echo "chmod +x git-zhi-*"
           echo "mv git-zhi-* ~/.local/bin/git-zhi"
-          echo "git zhi setup    # create companion symlinks"
+          echo "git zhi version  # confirm what landed"
           echo '```'
+          echo ""
+          echo "Everything ships in the one binary; there are no companion"
+          echo "executables to link. If an earlier version left"
+          echo "\`git-zhi-<plugin>\` symlinks on your \$PATH, they no longer"
+          echo "dispatch anything and can be removed."
         } > release_notes.md
 
     - name: Create GitHub Release

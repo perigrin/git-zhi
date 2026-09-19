@@ -76,8 +76,12 @@ Or build from source:
 ```bash
 git clone https://github.com/perigrin/git-zhi.git
 cd git-zhi
-go build -o git-zhi ./cmd/git-zhi/
+make build
 ```
+
+Use `make build` rather than `go build`: the Makefile stamps the version,
+commit and build time, and a binary built without it reports
+`unknown (built without make)`.
 
 Place `git-zhi` on your `$PATH`. Git discovers it automatically — `git zhi`
 just works. The plugin commands (historian, jira, verify, sanbao, docs,
