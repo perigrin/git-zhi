@@ -511,3 +511,32 @@ func TestClusterToIssue_TwoCommitNoTicket(t *testing.T) {
 		t.Errorf("Source = %q, want single-commit for 2-commit cluster without ticket ref", iss.Source)
 	}
 }
+
+// TestEnrichIgnoresDeclaredActor verifies that an ambient ZHI_ACTOR does not
+// reach historian's reconstruction. enrich recovers who acted in the past from
+// the commits it is reading; the identity the current process declared is a
+// fact about now, and letting it leak here would rewrite history into the
+// running worker's name. ADR 0003 puts historian out of scope for this reason.
+func TestEnrichIgnoresDeclaredActor(t *testing.T) {
+	t.Setenv("ZHI_ACTOR", "agent:the-importing-worker")
+
+	commits := []extract.CommitData{
+		makeCommit("b001", "alice", "alice@example.com", "alice work 1", []string{"a.go"}, nil, baseTime),
+		makeCommit("b002", "alice", "alice@example.com", "alice work 2", []string{"a.go"}, nil, baseTime.Add(time.Hour)),
+	}
+	c := makeCluster("cluster-declared", "", commits)
+
+	iss := enrich.ClusterToIssue(&c)
+
+	if len(iss.Transitions) == 0 {
+		t.Fatal("expected transitions to be populated")
+	}
+	for _, tr := range iss.Transitions {
+		if tr.Actor == "agent:the-importing-worker" {
+			t.Fatalf("the declared identity leaked into a reconstructed transition: %v", iss.Transitions)
+		}
+		if tr.Actor != "human:alice" {
+			t.Errorf("expected the commit author human:alice, got %q", tr.Actor)
+		}
+	}
+}
