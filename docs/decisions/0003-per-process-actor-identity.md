@@ -10,7 +10,7 @@ Date: 2026-09-19
 
 ## Status
 
-Accepted — committed to by being refined into work. Not yet implemented.
+Accepted — committed to by being refined into work.
 
 ## Context
 
@@ -190,6 +190,6 @@ accepted exactly as given. That is appropriate for a coordination mechanism and
 would not be for an authorization one; nothing here should ever become an
 access control decision.
 
-This decision is accepted and not yet implemented. Its reasoning is now
-something work is being built against, so it is superseded rather than edited
-from here; the three contract behaviours are what "implemented" will mean.
+This decision is accepted, and the three contract behaviours it names are
+implemented and covered by tests. Its reasoning is something code depends on,
+so it is superseded rather than edited from here.

@@ -181,6 +181,39 @@ Plugin commands (invoked as `git zhi <name>`):
 - `mermaid gantt` — Gantt chart from JSON stdin
 - `mermaid dag` — DAG visualization from JSON stdin
 
+### Worker Identity (`ZHI_ACTOR`)
+
+A process declares who it is by exporting `ZHI_ACTOR`. Every transition it
+records carries that identity, and `next` resolves per-worker rather than
+globally, so two agents in one repository stop looking like the same worker.
+
+```bash
+export ZHI_ACTOR=agent:worker-3     # or human:chris
+```
+
+The value must name its type — `agent:` or `human:` — and is refused without
+one. A bare name would be recorded as a human, silently.
+
+Resolution order is `--actor` where a command has one (`next`,
+`project next` — no write command takes it, see ADR 0004), then `ZHI_ACTOR`,
+then git's `user.name`. With nothing declared, behaviour is exactly what it was
+before the variable existed. Commit authorship is untouched either way: blame
+records who wrote the code, the chain records who moved the work.
+
+Two properties worth knowing before relying on it.
+
+It is **ambient**. An exported value applies to every git-zhi process in that
+shell and does not appear in the command that ran. To record one action under a
+different identity, prefix the invocation rather than exporting:
+
+```bash
+ZHI_ACTOR=human:chris git zhi issue edit <id> --state done
+```
+
+It is **unverified**. `ZHI_ACTOR=agent:someone-else` is accepted as given. That
+is correct for coordinating workers and wrong for anything else — nothing
+should ever read an actor to decide what a worker is permitted to do.
+
 ### Issue Identity
 
 UUIDv7 — time-ordered, globally unique. Displayed truncated (8 chars).
