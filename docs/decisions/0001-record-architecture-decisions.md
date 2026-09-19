@@ -34,15 +34,28 @@ sequentially from 0001, in the format described by Michael Nygard in
 
 ### Status
 
-An entry is **Proposed** until the thing it decides exists in the code, and
-**Accepted** once it does. Nothing else changes the status: not agreement, not
-a request to build it, not time passing.
+A status records a judgment, not a state of the code. **Proposed** is under
+discussion; **Accepted** is committed to; **Superseded** has been replaced by a
+later entry that says so.
 
-The status is a claim like any other in these documents, so it has to be one a
-reader can check. "Accepted by being asked for" records a conversation nobody
-can verify afterwards; "Accepted because the code is there" can be falsified by
-going and looking. An entry marked Accepted with nothing built is the exact
-failure this series exists to catch, wearing the series' own badge.
+Acceptance is an act, and the act is asking for the decision to be refined into
+work. Nobody decomposes a proposal they have not decided to build, so the
+request is the commitment and there is no separate ceremony to perform.
+Refinement writes the status as a side effect of being invoked; being asked
+again would turn the evidence back into a ritual.
+
+Accepted does not mean built. Deciding to do something and having done it are
+different events, and the interval between them is where decisions get
+abandoned — so the two are kept apart deliberately. Collapsing them would make
+a decision that was agreed and never built indistinguishable from one nobody
+ever agreed to, which is the state most worth being able to see.
+
+Whether a decision is implemented is a separate question, and this project does
+not answer it mechanically. crochet derives it by querying for `Implements:
+NNNN` commit trailers; adopting that here would be its own decision, with the
+trailer convention as its cost. Until then an Accepted entry's implementation
+status is established by reading the code — weaker than a query, and named here
+so the weakness stays visible rather than being assumed away.
 
 ### Append-only, and when it starts
 

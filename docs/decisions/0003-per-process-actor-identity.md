@@ -4,7 +4,7 @@ Date: 2026-09-19
 
 ## Status
 
-Proposed — nothing here is built.
+Accepted — committed to by being refined into work. Not yet implemented.
 
 ## Context
 
@@ -126,14 +126,25 @@ commit authors it is reconstructing, which is correct — it is recovering who
 did something in the past, not declaring who is acting now, and an ambient
 `ZHI_ACTOR` must not rewrite history into the current worker's name.
 
-### Prerequisite
+### Prerequisite — satisfied
 
-The exclusion defect above is fixed first. This is a sequencing constraint, not
-a preference: single-actor use never exercises the filtered sub-graph, so the
-defect is unreachable today for the same reason `headForActor` is. Shipping
-this decision without the fix does not introduce the bug — it makes it
-reachable, and the first thing to reach it is a second worker being dispatched
-onto an issue whose dependency is mid-flight in someone else's worktree.
+The exclusion defect above had to be fixed first. This was a sequencing
+constraint, not a preference: single-actor use never exercises the filtered
+sub-graph, so the defect was unreachable for the same reason `headForActor` is.
+Shipping this decision without the fix would not have introduced the bug — it
+would have made it reachable, and the first thing to reach it would have been a
+second worker dispatched onto an issue whose dependency was mid-flight in
+someone else's worktree.
+
+It is fixed. `headForActor` now computes readiness against the whole graph and
+applies the exclusion to the result, and the selection fallback narrows to the
+same candidate set rather than resolving over a rebuilt sub-graph. `graph.go`'s
+three-tier comment has been corrected to describe the one tier that exists.
+Separately, `issue edit --state start` now refuses an issue with unresolved
+blockers, so the readiness that `next` enforces cannot be bypassed by not
+calling it.
+
+Nothing in this section remains to be built.
 
 ### Contract
 
@@ -172,7 +183,6 @@ accepted exactly as given. That is appropriate for a coordination mechanism and
 would not be for an authorization one; nothing here should ever become an
 access control decision.
 
-This decision is proposed, and stays proposed until the resolver exists and
-the three contract behaviours can be demonstrated. Until then it is a draft and
-is corrected in place; once it is accepted, code depends on its reasoning and
-it is superseded rather than edited.
+This decision is accepted and not yet implemented. Its reasoning is now
+something work is being built against, so it is superseded rather than edited
+from here; the three contract behaviours are what "implemented" will mean.
