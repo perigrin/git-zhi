@@ -38,7 +38,8 @@ import `internal/cli`, so `cli.NewRootCommand` cannot register them itself.
 - Use `slices.Contains` and `slices.DeleteFunc` for UUID slice work — don't hand-roll loops.
 - `issue.LoadAllIssues(store)` is the shared loader — don't reimplement issue scanning.
 - `actor.TypeHuman` and `actor.TypeAgent` constants — use them instead of string literals for actor types.
-- `Store.AuthorInfo()` returns git author name/email — use with `actor.DeriveActor()`.
+- `Store.AuthorInfo()` returns git author name/email — feed it to `actor.Resolve()`, not `DeriveActor()` directly.
+- `ZHI_ACTOR` declares a process's worker identity (`agent:`/`human:` prefix required). `actor.Resolve` picks flag > env > git author; `actor.Declared` says whether one was declared at all, which is what distinguishes per-worker from global resolution. Ambient and unverified — never an authorization input.
 - `Store.DiffNameOnly(from, to)` returns changed files between two SHAs.
 - Issue `Transitions` field records state changes with actor identity — append on every state change.
 - Issue `ObservedPaths` field records files touched during sessions — set at `--state done`.

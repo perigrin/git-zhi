@@ -298,10 +298,12 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Record a Transition for every state change. Derive the actor from
-		// the Store's git author config so lineage tracking knows who acted.
-		authorName, authorEmail := app.Store.AuthorInfo()
-		a := actor.DeriveActor(authorName, authorEmail)
+		// Record a Transition for every state change, under whoever this
+		// process declared itself to be.
+		a, actorErr := resolveActor(app)
+		if actorErr != nil {
+			return actorErr
+		}
 		iss.Transitions = append(iss.Transitions, issue.Transition{
 			State:     string(newState),
 			Actor:     a.String(),
@@ -683,6 +685,18 @@ func removeBlockEdge(app *App, iss *issue.Issue, issUUIDStr, targetInput string)
 // check before any of them writes, overshooting by up to N-1. Acceptable
 // because the cap is a scheduling hint and the overshoot drains as issues
 // finish; upgrade path if it ever matters is a CAS on a counter ref.
+// resolveActor returns the identity to record on a transition: whatever this
+// process declared, falling back to the git author config that was the only
+// source before. It is the single place the CLI asks, so the two transition
+// write sites cannot drift apart.
+//
+// The explicit argument is empty because no write command takes an --actor flag
+// yet; whether one should is an open question in ADR 0003.
+func resolveActor(app *App) (actor.Actor, error) {
+	name, email := app.Store.AuthorInfo()
+	return actor.Resolve("", name, email)
+}
+
 // checkBlockers refuses to start an issue whose dependencies are unresolved.
 // Readiness was previously only consulted by `next`, so a caller who skipped it
 // could start blocked work directly and nothing would say so.
@@ -1577,9 +1591,11 @@ func applyBatchOp(app *App, op batchOp) error {
 			if transErr != nil {
 				return transErr
 			}
-			// Record the transition with actor identity derived from git config.
-			authorName, authorEmail := app.Store.AuthorInfo()
-			a := actor.DeriveActor(authorName, authorEmail)
+			// Record the transition under this process's declared identity.
+			a, actorErr := resolveActor(app)
+			if actorErr != nil {
+				return actorErr
+			}
 			iss.Transitions = append(iss.Transitions, issue.Transition{
 				State:     string(newState),
 				Actor:     a.String(),
