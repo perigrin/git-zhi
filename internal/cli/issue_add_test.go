@@ -13,6 +13,7 @@ import (
 
 	"github.com/perigrin/git-zhi/internal/cli"
 	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 )
 
 func setupIssueAddTest(t *testing.T, stdinContent string) (*bytes.Buffer, *bytes.Buffer, *cli.App, func(args ...string) error) {
@@ -440,5 +441,134 @@ func TestIssueAdd_DefaultMilestone(t *testing.T) {
 	}
 	if iss.Milestone != "v0.1" {
 		t.Fatalf("expected milestone 'v0.1', got %q", iss.Milestone)
+	}
+}
+
+// TestIssueAdd_LazyMilestoneCreation verifies that the first `issue add` with
+// no --milestone flag creates the default milestone ref lazily, and that the
+// created issue resolves against it.
+func TestIssueAdd_LazyMilestoneCreation(t *testing.T) {
+	input := "---\ntitle: \"First issue, no milestone flag\"\n---\n"
+	_, _, app, run := setupIssueAddTest(t, input)
+
+	if err := app.EnsureInitialized(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if app.Store.RefExists(milestone.RefPrefix + "v0.1") {
+		t.Fatal("expected no default milestone ref before issue add")
+	}
+
+	if err := run("issue", "add"); err != nil {
+		t.Fatalf("issue add failed: %v", err)
+	}
+
+	if !app.Store.RefExists(milestone.RefPrefix + "v0.1") {
+		t.Fatal("expected default milestone ref to be created lazily by issue add")
+	}
+	ms, err := milestone.LoadMilestone(app.Store, "v0.1")
+	if err != nil {
+		t.Fatalf("LoadMilestone failed: %v", err)
+	}
+	if ms.Name != "v0.1" {
+		t.Fatalf("milestone Name: got %q, want %q", ms.Name, "v0.1")
+	}
+
+	refs, err := app.Store.ListRefs("refs/zhi/_/issues/")
+	if err != nil {
+		t.Fatalf("ListRefs failed: %v", err)
+	}
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 issue ref, got %d", len(refs))
+	}
+	content, err := app.Store.ReadEntity(refs[0], "issue.md")
+	if err != nil {
+		t.Fatalf("ReadEntity failed: %v", err)
+	}
+	iss, err := issue.Parse(content)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if iss.Milestone != "v0.1" {
+		t.Fatalf("expected issue to resolve against milestone 'v0.1', got %q", iss.Milestone)
+	}
+}
+
+// TestIssueAdd_LazyMilestoneNamed verifies that `issue add --milestone
+// <new-name>` creates that milestone ref too, not just the default.
+func TestIssueAdd_LazyMilestoneNamed(t *testing.T) {
+	input := "---\ntitle: \"Issue with an explicit new milestone\"\n---\n"
+	_, _, app, run := setupIssueAddTest(t, input)
+
+	if err := app.EnsureInitialized(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if app.Store.RefExists(milestone.RefPrefix + "v2.0") {
+		t.Fatal("expected no v2.0 milestone ref before issue add")
+	}
+
+	if err := run("issue", "add", "--milestone", "v2.0"); err != nil {
+		t.Fatalf("issue add --milestone failed: %v", err)
+	}
+
+	if !app.Store.RefExists(milestone.RefPrefix + "v2.0") {
+		t.Fatal("expected v2.0 milestone ref to be created lazily by issue add --milestone")
+	}
+	// The untouched default milestone must not have been created as a
+	// side effect of naming a different one.
+	if app.Store.RefExists(milestone.RefPrefix + "v0.1") {
+		t.Fatal("expected default milestone v0.1 NOT to be created when --milestone names a different one")
+	}
+}
+
+// TestIssueAdd_LazyMilestoneIdempotent verifies that a second `issue add`
+// naming a milestone that already has a ref does not create a duplicate ref
+// or reset the existing milestone's fields.
+func TestIssueAdd_LazyMilestoneIdempotent(t *testing.T) {
+	input := "---\ntitle: \"First issue\"\n---\n"
+	_, _, app, run := setupIssueAddTest(t, input)
+
+	if err := app.EnsureInitialized(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if err := run("issue", "add"); err != nil {
+		t.Fatalf("first issue add failed: %v", err)
+	}
+
+	// Mutate the milestone so a reset would be observable.
+	if err := run("milestone", "edit", "v0.1", "--due", "2026-01-01"); err != nil {
+		t.Fatalf("milestone edit --due failed: %v", err)
+	}
+	before, err := milestone.LoadMilestone(app.Store, "v0.1")
+	if err != nil {
+		t.Fatalf("LoadMilestone before second add failed: %v", err)
+	}
+	if before.Due == nil {
+		t.Fatal("expected Due to be set before second issue add")
+	}
+
+	if err := run("issue", "add"); err != nil {
+		t.Fatalf("second issue add failed: %v", err)
+	}
+
+	after, err := milestone.LoadMilestone(app.Store, "v0.1")
+	if err != nil {
+		t.Fatalf("LoadMilestone after second add failed: %v", err)
+	}
+	if after.Due == nil || !after.Due.Equal(*before.Due) {
+		t.Fatalf("expected Due to survive a second issue add naming the same milestone: before %v, after %v", before.Due, after.Due)
+	}
+
+	milestoneRefs, err := app.Store.ListRefs(milestone.RefPrefix)
+	if err != nil {
+		t.Fatalf("ListRefs failed: %v", err)
+	}
+	count := 0
+	for _, ref := range milestoneRefs {
+		if strings.HasSuffix(ref, "/v0.1") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 milestone ref for v0.1, got %d: %v", count, milestoneRefs)
 	}
 }
