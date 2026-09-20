@@ -306,6 +306,47 @@ func TestMilestoneEdit_StdinBody_Empty(t *testing.T) {
 	}
 }
 
+// TestMilestoneEdit_StdinEmpty covers --resolution - and --postmortem - with
+// zero bytes on stdin, mirroring TestMilestoneEdit_StdinBody_Empty: the
+// field must stay untouched and the command must fail rather than exit 0.
+func TestMilestoneEdit_StdinEmpty(t *testing.T) {
+	for _, tc := range []struct {
+		flag, seedFlag, seedValue string
+	}{
+		{flag: "resolution", seedFlag: "resolution", seedValue: "make test"},
+		{flag: "postmortem", seedFlag: "postmortem", seedValue: "existing postmortem"},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			app, run := setupMilestoneTest(t)
+
+			if _, err := run("milestone", "edit", "v0.1", "--"+tc.seedFlag, tc.seedValue); err != nil {
+				t.Fatalf("seed --%s: %v", tc.seedFlag, err)
+			}
+
+			_, _, err := runWithStdin(app, "", "milestone", "edit", "v0.1", "--"+tc.flag, "-")
+
+			ms, loadErr := milestone.LoadMilestone(app.Store, "v0.1")
+			if loadErr != nil {
+				t.Fatalf("LoadMilestone: %v", loadErr)
+			}
+			var got string
+			switch tc.flag {
+			case "resolution":
+				got = ms.Resolution
+			case "postmortem":
+				got = ms.Postmortem
+			}
+			if got != tc.seedValue {
+				t.Fatalf("--%s - overwrote field with empty stdin: got %q, want %q", tc.flag, got, tc.seedValue)
+			}
+
+			if err == nil {
+				t.Fatalf("expected --%s - with empty stdin to fail, got nil error", tc.flag)
+			}
+		})
+	}
+}
+
 // TestMilestoneEdit_NoFlags verifies that `milestone edit <name>` with no
 // flags returns the "no changes specified" error, and that its guidance
 // covers both --body and --resolution (the knownMilestoneEditFlags guard).
