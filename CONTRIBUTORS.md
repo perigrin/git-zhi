@@ -110,7 +110,7 @@ they only add facts (two-phase set pattern for dependencies).
 
 - **Per-entity refs** over single-file state: eliminates merge conflicts
 - **UUIDv7** over git OIDs or sequential numbers: stable across rebases
-- **Lazy init** over explicit `init` command: first mutating command bootstraps
+- **Lazy init** over explicit `init` command: first mutating command bootstraps chain config eagerly, but the milestone ref only lazily — created when an issue names it, or a human runs `milestone add`
 - **Events as commits**: event type is implicit in the diff between commits
 - **Markdown+YAML** for issues (human-readable), **YAML frontmatter + markdown body** for milestones (backward-compatible with pure YAML v0.1 milestones)
 - **Critical Chain scheduling** (Goldratt): safety pooled into shared buffer

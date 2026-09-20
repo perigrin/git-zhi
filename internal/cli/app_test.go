@@ -10,11 +10,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	git "github.com/go-git/go-git/v5"
 	gitconfig "github.com/go-git/go-git/v5/config"
 
 	"github.com/perigrin/git-zhi/internal/cli"
+	"github.com/perigrin/git-zhi/internal/milestone"
 	"github.com/perigrin/git-zhi/internal/storage"
 )
 
@@ -34,7 +36,11 @@ func TestWithApp_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestEnsureInitialized_CreatesConfigAndMilestone(t *testing.T) {
+// TestEnsureInitialized_NoEagerMilestone verifies that a fresh repository's
+// first git-zhi command creates the chain config but does not manufacture a
+// milestone ref nobody asked for. A milestone ref exists only if an issue
+// names it, or a human runs `milestone add`.
+func TestEnsureInitialized_NoEagerMilestone(t *testing.T) {
 	dir := t.TempDir()
 	repo, err := git.PlainInit(dir, false)
 	if err != nil {
@@ -53,13 +59,59 @@ func TestEnsureInitialized_CreatesConfigAndMilestone(t *testing.T) {
 	if !store.RefExists("refs/zhi/_/config") {
 		t.Fatal("expected refs/zhi/_/config to exist after init")
 	}
-	if !store.RefExists("refs/zhi/_/milestones/v0.1") {
-		t.Fatal("expected refs/zhi/_/milestones/v0.1 to exist after init")
+	if store.RefExists("refs/zhi/_/milestones/v0.1") {
+		t.Fatal("expected refs/zhi/_/milestones/v0.1 NOT to exist after init: milestones are created lazily")
 	}
 
 	// Second call should be a no-op
 	if err := app.EnsureInitialized(); err != nil {
 		t.Fatalf("second EnsureInitialized failed: %v", err)
+	}
+}
+
+// TestEnsureInitialized_ExistingMilestoneUntouched verifies that init is
+// forward-only: a repository that already has the default milestone (from an
+// older git-zhi, or a human-created one) is left exactly as it is.
+func TestEnsureInitialized_ExistingMilestoneUntouched(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+	store, err := storage.NewStore(repo)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	app := &cli.App{Store: store, Repo: repo}
+
+	ms := &milestone.Milestone{
+		Name:        "v0.1",
+		Description: "pre-existing milestone",
+		Created:     time.Now(),
+	}
+	msData, err := milestone.MarshalMilestone(ms)
+	if err != nil {
+		t.Fatalf("MarshalMilestone failed: %v", err)
+	}
+	refPath := "refs/zhi/_/milestones/v0.1"
+	if err := store.WriteEntity(refPath, "milestone.yaml", msData, "seed existing milestone"); err != nil {
+		t.Fatalf("WriteEntity failed: %v", err)
+	}
+	before, err := store.ReadEntity(refPath, "milestone.yaml")
+	if err != nil {
+		t.Fatalf("ReadEntity before init failed: %v", err)
+	}
+
+	if err := app.EnsureInitialized(); err != nil {
+		t.Fatalf("EnsureInitialized failed: %v", err)
+	}
+
+	after, err := store.ReadEntity(refPath, "milestone.yaml")
+	if err != nil {
+		t.Fatalf("ReadEntity after init failed: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Fatalf("expected existing milestone content untouched:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }
 

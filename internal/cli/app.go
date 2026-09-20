@@ -9,13 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/goccy/go-yaml"
 
 	"github.com/perigrin/git-zhi/internal/config"
-	"github.com/perigrin/git-zhi/internal/milestone"
 	"github.com/perigrin/git-zhi/internal/storage"
 )
 
@@ -153,9 +151,10 @@ func gitRevParse(dir, flag string) (string, error) {
 }
 
 // EnsureInitialized checks for chain state and creates it if missing.
-// Writes default config and default milestone on first use. Any output
-// (e.g., push refspec guidance) is discarded. Use EnsureInitializedWithOutput
-// when init output should be shown to the user.
+// Writes default config on first use; the default milestone ref is created
+// lazily (see runIssueAdd), not here. Any output (e.g., push refspec
+// guidance) is discarded. Use EnsureInitializedWithOutput when init output
+// should be shown to the user.
 func (a *App) EnsureInitialized() error {
 	return a.EnsureInitializedWithOutput(io.Discard)
 }
@@ -167,34 +166,16 @@ func (a *App) EnsureInitialized() error {
 func (a *App) EnsureInitializedWithOutput(w io.Writer) error {
 	cfg := config.Default()
 	configExists := a.Store.RefExists("refs/zhi/_/config")
-	milestoneExists := a.Store.RefExists("refs/zhi/_/milestones/" + cfg.DefaultMilestone)
-	if configExists && milestoneExists {
+	if configExists {
 		return nil
 	}
 
-	if !configExists {
-		cfgData, err := yaml.Marshal(cfg)
-		if err != nil {
-			return fmt.Errorf("marshal config: %w", err)
-		}
-		if err := a.Store.WriteEntity("refs/zhi/_/config", "config.yaml", cfgData, "Initialize chain config"); err != nil {
-			return fmt.Errorf("write config: %w", err)
-		}
+	cfgData, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
 	}
-
-	if !milestoneExists {
-		ms := &milestone.Milestone{
-			Name:    cfg.DefaultMilestone,
-			Created: time.Now(),
-		}
-		msData, err := milestone.MarshalMilestone(ms)
-		if err != nil {
-			return fmt.Errorf("marshal milestone: %w", err)
-		}
-		refPath := "refs/zhi/_/milestones/" + cfg.DefaultMilestone
-		if err := a.Store.WriteEntity(refPath, "milestone.yaml", msData, "Create default milestone: "+cfg.DefaultMilestone); err != nil {
-			return fmt.Errorf("write milestone: %w", err)
-		}
+	if err := a.Store.WriteEntity("refs/zhi/_/config", "config.yaml", cfgData, "Initialize chain config"); err != nil {
+		return fmt.Errorf("write config: %w", err)
 	}
 
 	// Print push refspec guidance when a remote is present. go-git's
