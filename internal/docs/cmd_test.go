@@ -202,6 +202,26 @@ func TestDocsCLI_Check_JSONFormat(t *testing.T) {
 	}
 }
 
+// TestDocsCLI_Check_NothingExaminedNotReportedReachable — when every file
+// under docs/ is reachability-exempt, the plain renderer must not print
+// "✓ All files reachable from CONTRIBUTING.md": nothing was examined, so
+// that line would claim a clean bill of health for a check that never ran.
+func TestDocsCLI_Check_NothingExaminedNotReportedReachable(t *testing.T) {
+	root := t.TempDir()
+
+	// The only file under docs/ is reachability-exempt; no CONTRIBUTING.md.
+	writeFile(t, root, "docs/decisions/0001-a.md", "# First ADR\n")
+
+	out, err := runDocsCLI(t, root, nil, "check")
+	if err != nil {
+		t.Fatalf("docs check returned error: %v\noutput: %s", err, out)
+	}
+
+	if strings.Contains(out, "All files reachable") {
+		t.Errorf("expected output to not claim reachability was checked; got:\n%s", out)
+	}
+}
+
 // --------------------------------------------------------------------------
 // docs health
 // --------------------------------------------------------------------------

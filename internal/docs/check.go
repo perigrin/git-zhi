@@ -36,6 +36,13 @@ type CheckResult struct {
 	// entries that do not resolve to an existing file or directory.
 	InvalidCovers []string `json:"invalid_covers"`
 
+	// ReachabilityFilesExamined is the count of non-exempt docs/ files the
+	// reachability check considered. It is zero when docs/ does not exist or
+	// every file under it is reachability-exempt. UnreachableFiles being
+	// empty in that case means nothing was examined, not that everything is
+	// reachable, and callers must not read the two as the same thing.
+	ReachabilityFilesExamined int `json:"reachability_files_examined"`
+
 	// OK is true when all four categories are empty.
 	OK bool `json:"ok"`
 }
@@ -59,11 +66,12 @@ type docFrontmatter struct {
 func Check(repoRoot string) (*CheckResult, error) {
 	result := &CheckResult{}
 
-	unreachable, err := checkReachability(repoRoot)
+	unreachable, examined, err := checkReachability(repoRoot)
 	if err != nil {
 		return nil, err
 	}
 	result.UnreachableFiles = unreachable
+	result.ReachabilityFilesExamined = examined
 
 	deadLinks, err := checkDeadLinks(repoRoot)
 	if err != nil {
@@ -117,12 +125,15 @@ func isExemptFromReachability(slashRel string) bool {
 
 // checkReachability returns the list of files inside docs/ (relative to
 // repoRoot) that are not reachable by following markdown links starting
-// from CONTRIBUTING.md. Files in docs/decisions/ and docs/postmortems/ are
-// exempt — they are indexed by sequential numbering, not by explicit links.
-func checkReachability(repoRoot string) ([]string, error) {
+// from CONTRIBUTING.md, plus the count of non-exempt files it examined.
+// Files in docs/decisions/ and docs/postmortems/ are exempt — they are
+// indexed by sequential numbering, not by explicit links. The examined count
+// lets callers tell "nothing to check" (docs/ absent, or every file exempt)
+// apart from "everything reachable" — both leave UnreachableFiles empty.
+func checkReachability(repoRoot string) ([]string, int, error) {
 	docsDir := filepath.Join(repoRoot, "docs")
 	if _, err := os.Stat(docsDir); os.IsNotExist(err) {
-		return nil, nil
+		return nil, 0, nil
 	}
 
 	// Collect every file under docs/ that is not exempt.
@@ -144,17 +155,17 @@ func checkReachability(repoRoot string) ([]string, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("walk docs/: %w", err)
+		return nil, 0, fmt.Errorf("walk docs/: %w", err)
 	}
 
 	if len(all) == 0 {
-		return nil, nil
+		return nil, 0, nil
 	}
 
 	// BFS from CONTRIBUTING.md collecting reachable paths.
 	reachable, err := reachableFromContributing(repoRoot)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	var unreachable []string
@@ -164,7 +175,7 @@ func checkReachability(repoRoot string) ([]string, error) {
 		}
 	}
 	sort.Strings(unreachable)
-	return unreachable, nil
+	return unreachable, len(all), nil
 }
 
 // reachableFromContributing performs a BFS from CONTRIBUTING.md and returns
