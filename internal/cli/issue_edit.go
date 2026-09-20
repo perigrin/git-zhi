@@ -125,11 +125,14 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("read body from stdin: %w", readErr)
 			}
 			trimmed := strings.TrimSpace(string(bodyBytes))
-			if trimmed != "" {
-				newBody = trimmed
-				bodyChanged = true
+			if trimmed == "" {
+				// Empty stdin with '-' sentinel: no-op (no body change), but
+				// fail the command — a generator that produced nothing must
+				// not be reported as if it had succeeded.
+				return fmt.Errorf("--body -: read empty input; body left unchanged")
 			}
-			// Empty stdin with '-' sentinel: no-op (no body change).
+			newBody = trimmed
+			bodyChanged = true
 		case bodyValue != "":
 			// Non-empty inline value — use it directly.
 			newBody = strings.TrimSpace(bodyValue)
