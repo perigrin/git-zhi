@@ -52,7 +52,7 @@ func runMilestoneAdd(cmd *cobra.Command, args []string) error {
 	// literally here rather than treated as the clear sentinel.
 	if cmd.Flags().Changed("body") {
 		bodyValue, _ := cmd.Flags().GetString("body")
-		body, ok, readErr := readTextArg(cmd, bodyValue)
+		body, ok, readErr := readTextArg(cmd, "body", bodyValue)
 		if readErr != nil {
 			return fmt.Errorf("--body: %w", readErr)
 		}
@@ -64,7 +64,7 @@ func runMilestoneAdd(cmd *cobra.Command, args []string) error {
 	}
 	if cmd.Flags().Changed("resolution") {
 		resolutionValue, _ := cmd.Flags().GetString("resolution")
-		resolution, ok, readErr := readTextArg(cmd, resolutionValue)
+		resolution, ok, readErr := readTextArg(cmd, "resolution", resolutionValue)
 		if readErr != nil {
 			return fmt.Errorf("--resolution: %w", readErr)
 		}
