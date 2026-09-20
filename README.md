@@ -130,6 +130,7 @@ git zhi milestone edit <name> --state complete   # gated completion
 
 ```bash
 git zhi list                             # topological sort, grouped by milestone
+git zhi list --all                       # include done and cancelled issues
 git zhi list --critical                  # critical chain + parallel work
 git zhi list --ready                     # parallel-safe ready set with path analysis
 git zhi next                             # what should I work on? (alias: issue show HEAD)
