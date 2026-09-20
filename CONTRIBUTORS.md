@@ -171,7 +171,7 @@ Notable flags:
 - `config reindex` — rebuild label indexes from issue data
 
 Plugin commands (invoked as `git zhi <name>`):
-- `verify` — extract and run acceptance criteria from issue descriptions
+- `verify` — extract and run acceptance criteria from issue descriptions and the milestone body
 - `sanbao report` — emit observatory report (DORA/SPACE/CALMS metrics, sentiment, difficulty, complexity)
 - `docs init` — scaffold documentation structure
 - `docs check` — validate documentation completeness
