@@ -22,6 +22,7 @@ func NewMilestoneCommand() *cobra.Command {
 		newMilestoneListCommand(),
 		newMilestoneShowCommand(),
 		newMilestoneEditCommand(),
+		newMilestonePruneCommand(),
 	)
 
 	return cmd
