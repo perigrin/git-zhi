@@ -419,6 +419,7 @@ func newIssueEditCommand() *cobra.Command {
 		RunE:  runIssueEdit,
 	}
 	cmd.Flags().String("state", "", "transition state: start, pause, resume, done, cancel")
+	cmd.Flags().String("title", "", "rename the issue in place, keeping its id and graph edges")
 	cmd.Flags().String("block", "", "add forward dependency: this issue blocks <ref>")
 	cmd.Flags().String("unblock", "", "remove forward dependency")
 	cmd.Flags().String("milestone", "", "move to different milestone")

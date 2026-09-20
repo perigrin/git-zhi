@@ -32,7 +32,7 @@ import (
 // Note: --yes is not included because it only confirms a destructive operation
 // and does not independently trigger an edit.
 var knownEditFlags = []string{
-	"state", "block", "unblock", "milestone", "tag", "untag",
+	"state", "title", "block", "unblock", "milestone", "tag", "untag",
 	"label", "unlabel",
 	"assign", "unassign",
 	"before", "after", "split", "merge", "purge", "batch", "body", "body-file",
@@ -41,14 +41,14 @@ var knownEditFlags = []string{
 // runIssueEdit handles 'issue edit [ref] [flags]'.
 // stateExclusiveFlags are the flags that cannot be combined with --state.
 var stateExclusiveFlags = []string{
-	"block", "unblock", "milestone", "tag", "untag",
+	"title", "block", "unblock", "milestone", "tag", "untag",
 	"label", "unlabel", "assign", "unassign", "before", "after",
 }
 
 // issueMutatingFlags are the flags that modify the primary issue itself, so
 // setting any of them means the issue must be written back.
 var issueMutatingFlags = []string{
-	"milestone", "block", "unblock", "before", "after",
+	"title", "milestone", "block", "unblock", "before", "after",
 	"label", "unlabel", "assign", "unassign",
 }
 
@@ -369,6 +369,18 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	uuidStr := strings.TrimPrefix(refPath, issue.RefPrefix)
+
+	// --title: rename the issue in place. The ref is the issue's UUID, so a
+	// retitle touches only the body — there is no ref rewriting, unlike
+	// `milestone edit --name`, and every blocks/blocked_by edge (which points
+	// at the UUID, not the title) survives untouched.
+	if cmd.Flags().Changed("title") {
+		newTitle, _ := cmd.Flags().GetString("title")
+		if strings.TrimSpace(newTitle) == "" {
+			return fmt.Errorf("--title: title cannot be empty")
+		}
+		iss.Title = newTitle
+	}
 
 	// --milestone: update the milestone field. Reject assignment to completed milestones.
 	if cmd.Flags().Changed("milestone") {
