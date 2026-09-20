@@ -59,8 +59,12 @@ func extractFromItems(items []issue.Checkbox, subsection string, issueID uuid.UU
 	var cmds []Command
 	var dropped []Dropped
 	for _, item := range items {
-		m := parenBacktickRe.FindStringSubmatch(item.Text)
-		if m != nil {
+		// The verification command is the LAST parenthesized backtick on the
+		// line — a criterion may mention other parenthesized code inline (a
+		// delimiter, a flag, a filename) before naming its actual command.
+		matches := parenBacktickRe.FindAllStringSubmatch(item.Text, -1)
+		if matches != nil {
+			m := matches[len(matches)-1]
 			cmds = append(cmds, Command{
 				Text:       m[1],
 				Subsection: subsection,
