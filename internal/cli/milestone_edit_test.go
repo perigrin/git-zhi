@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -40,6 +41,14 @@ func createMilestoneWithResolution(t *testing.T, app *cli.App, name, resolution 
 // createTestIssueInMilestoneWithState writes an issue to the store and returns its UUID.
 func createTestIssueInMilestoneWithState(t *testing.T, app *cli.App, title string, state issue.State, ms string) uuid.UUID {
 	t.Helper()
+	return createTestIssueInMilestoneWithBody(t, app, title, state, ms, "")
+}
+
+// createTestIssueInMilestoneWithBody writes an issue with the given body to
+// the store and returns its UUID, so tests can control what verify extracts
+// from its Acceptance Criteria section.
+func createTestIssueInMilestoneWithBody(t *testing.T, app *cli.App, title string, state issue.State, ms string, body string) uuid.UUID {
+	t.Helper()
 	id, err := uuid.NewV7()
 	if err != nil {
 		t.Fatalf("uuid.NewV7: %v", err)
@@ -50,6 +59,7 @@ func createTestIssueInMilestoneWithState(t *testing.T, app *cli.App, title strin
 		Title:     title,
 		State:     state,
 		Milestone: ms,
+		Body:      body,
 		Created:   now,
 		Updated:   now,
 	}
@@ -618,6 +628,133 @@ func TestMilestoneComplete_ForwardsTimeoutToVerify(t *testing.T) {
 				t.Errorf("--timeout forwarded = %v, want %v; argv:\n%s", hasTimeout, tc.wantArg, got)
 			}
 		})
+	}
+}
+
+// buildVerifyBinary compiles the real git-zhi binary into a fresh temp
+// directory and returns that directory. The verify gate execs "git-zhi" as a
+// subprocess (internal/verify imports this package, so it cannot be called
+// in-process), and --force's exemption must be narrow enough to survive
+// verify's actual output — a hand-written fake would just restate the
+// assertion under test rather than exercise it.
+func buildVerifyBinary(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "git-zhi")
+	build := exec.Command("go", "build", "-o", bin, "github.com/perigrin/git-zhi/cmd/git-zhi")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build git-zhi for verify gate test: %v\n%s", err, out)
+	}
+	return dir
+}
+
+// noCriteriaIssueBody is a Done issue's Acceptance Criteria section that
+// carries prose but no backtick command at all, which verify extracts
+// nothing from — the case --force is meant to exempt.
+const noCriteriaIssueBody = "## Acceptance Criteria\n\n- [ ] this was reviewed by hand\n"
+
+// TestMilestoneComplete_OverrideSkipsVerify verifies that a milestone whose
+// done issues carry no extractable acceptance criteria refuses to close
+// without --force, and closes with it — reporting that the exemption was
+// applied.
+func TestMilestoneComplete_OverrideSkipsVerify(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	createMilestoneWithResolution(t, app, "release", "echo ok")
+	createTestIssueInMilestoneWithBody(t, app, "Done issue", issue.StateDone, "release", noCriteriaIssueBody)
+
+	binDir := buildVerifyBinary(t)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+"/usr/bin:/bin")
+
+	// Without --force, the zero-extraction failure still blocks completion.
+	if _, err := run("milestone", "edit", "release", "--state", "complete"); err == nil {
+		t.Fatal("expected verify gate to refuse a criteria-free milestone without --force")
+	} else if !strings.Contains(err.Error(), "verify gate failed") {
+		t.Fatalf("expected 'verify gate failed' without --force, got: %v", err)
+	}
+
+	// With --force, the same milestone closes, and the exemption is reported.
+	stdout, err := run("milestone", "edit", "release", "--state", "complete", "--force")
+	if err != nil {
+		t.Fatalf("milestone edit --state complete --force failed: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "--force") {
+		t.Errorf("expected output to report the --force exemption, got: %q", stdout.String())
+	}
+
+	ms, err := milestone.LoadMilestone(app.Store, "release")
+	if err != nil {
+		t.Fatalf("LoadMilestone after complete: %v", err)
+	}
+	if ms.State != "completed" {
+		t.Errorf("expected State 'completed', got %q", ms.State)
+	}
+}
+
+// TestMilestoneComplete_OverrideKeepsIssueGate verifies that --force does not
+// let an unfinished issue through the issue gate, which runs before verify is
+// ever invoked.
+func TestMilestoneComplete_OverrideKeepsIssueGate(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	createMilestoneWithResolution(t, app, "release", "echo ok")
+	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+	createTestIssueInMilestoneWithState(t, app, "Pending blocker", issue.StatePending, "release")
+
+	_, err := run("milestone", "edit", "release", "--state", "complete", "--force")
+	if err == nil {
+		t.Fatal("expected --force to still refuse completion with an unfinished issue")
+	}
+	if !strings.Contains(err.Error(), "Pending blocker") {
+		t.Errorf("expected blocking issue title in error, got: %v", err)
+	}
+}
+
+// TestMilestoneComplete_OverrideKeepsResolutionGate verifies that --force does
+// not let a failing resolution command through, since it runs before verify
+// is ever invoked.
+func TestMilestoneComplete_OverrideKeepsResolutionGate(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	createMilestoneWithResolution(t, app, "release", "exit 1")
+	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+
+	_, err := run("milestone", "edit", "release", "--state", "complete", "--force")
+	if err == nil {
+		t.Fatal("expected --force to still refuse completion with a failing resolution command")
+	}
+	if !strings.Contains(err.Error(), "resolution command failed") {
+		t.Errorf("expected 'resolution command failed' in error, got: %v", err)
+	}
+}
+
+// TestMilestoneComplete_OverrideIsNotAPass verifies that --force does not
+// suppress a genuine regression: a milestone whose acceptance criteria ran
+// and failed still refuses to close, even with the flag set. This is the
+// distinction the flag exists to preserve — "nothing was examined" is
+// exemptible, "something was examined and it failed" is not.
+func TestMilestoneComplete_OverrideIsNotAPass(t *testing.T) {
+	app, run := setupMilestoneTest(t)
+
+	createMilestoneWithResolution(t, app, "release", "echo ok")
+	createTestIssueInMilestoneWithBody(t, app, "Done issue", issue.StateDone, "release",
+		"## Acceptance Criteria\n\n- [ ] always fails (`exit 1`)\n")
+
+	binDir := buildVerifyBinary(t)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+"/usr/bin:/bin")
+
+	if _, err := run("milestone", "edit", "release", "--state", "complete", "--force"); err == nil {
+		t.Fatal("expected --force to still refuse completion on a genuine regression")
+	} else if !strings.Contains(err.Error(), "verify gate failed") {
+		t.Fatalf("expected 'verify gate failed' for a genuine regression, got: %v", err)
+	}
+
+	ms, err := milestone.LoadMilestone(app.Store, "release")
+	if err != nil {
+		t.Fatalf("LoadMilestone: %v", err)
+	}
+	if ms.State == "completed" {
+		t.Error("milestone should not be completed when a criterion genuinely fails, even with --force")
 	}
 }
 

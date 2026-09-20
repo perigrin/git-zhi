@@ -169,6 +169,7 @@ Notable flags:
 - `milestone edit --resolve` — run the milestone's resolution command
 - `milestone prune --dry-run` — report which empty, unauthored milestones would be removed
 - `milestone edit --state complete` — run quality gates and mark milestone completed
+- `milestone edit --force` — with `--state complete`, close a milestone whose issues extracted zero acceptance criteria; does not skip the issue or resolution gates, and does not exempt a genuine regression
 - `config reindex` — rebuild label indexes from issue data
 
 Plugin commands (invoked as `git zhi <name>`):

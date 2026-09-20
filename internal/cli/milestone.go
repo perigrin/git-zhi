@@ -75,6 +75,7 @@ func newMilestoneEditCommand() *cobra.Command {
 	cmd.Flags().Bool("resolve", false, "execute the milestone's resolution command")
 	cmd.Flags().String("state", "", "transition milestone state (only 'complete' is supported)")
 	cmd.Flags().Int("timeout", 0, "per-criterion timeout in seconds for the --state complete verify gate (0 = verify's default)")
+	cmd.Flags().Bool("force", false, "with --state complete, close a milestone whose issues extracted zero acceptance criteria (does not skip the issue or resolution gates, and does not override a genuine regression)")
 	cmd.Flags().String("body", "", "replace the body: inline text, '-' for stdin, or '' to open $EDITOR")
 	cmd.Flags().String("resolution", "", "set the resolution command ('none' clears it)")
 	cmd.Flags().String("postmortem", "", "attach a retrospective: inline text or '-' for stdin")
