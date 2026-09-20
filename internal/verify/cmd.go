@@ -132,7 +132,8 @@ tests, or no acceptance criteria extracted at all.`,
 			// name, not the issue refs (HEAD, a UUID prefix, a title) that most
 			// other commands accept, so a wrong argument here needs to say what
 			// kind of name it wanted.
-			if _, err := milestone.LoadMilestone(app.Store, milestoneName); err != nil {
+			ms, err := milestone.LoadMilestone(app.Store, milestoneName)
+			if err != nil {
 				// Keep the underlying error: LoadMilestone also fails on a
 				// milestone that exists but will not parse, and reporting that
 				// as "no milestone" sends the user looking for something they
@@ -192,7 +193,121 @@ tests, or no acceptance criteria extracted at all.`,
 			unverifiableCount := 0
 			earlyStop := false
 
+			// runBodyGroup executes one subsection (positive or negative) of
+			// milestone-body commands. It closes over the shared counters
+			// and jsonResults above so a milestone-body criterion folds into
+			// the same tally an issue's would, including the zero-extraction
+			// check below: a milestone with no done issues but real body
+			// criteria must count as non-empty.
+			runBodyGroup := func(cmds []Command, label string) (stop bool) {
+				if len(cmds) == 0 {
+					return false
+				}
+				if !dryRun && format != "json" {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s:\n", label)
+				}
+				for _, c := range cmds {
+					totalCount++
+					if dryRun {
+						fmt.Fprintf(cmd.OutOrStdout(), "[dry-run] milestone body  %s  %s\n", c.Subsection, c.Text)
+						continue
+					}
+					if format != "json" {
+						fmt.Fprintf(cmd.OutOrStdout(), "    %s ", c.Text)
+					}
+					repoRoot := repoRootFromApp(app)
+					result := Execute(c.Text, repoRoot, cmdTimeout)
+					passed, vacuous := classify(result)
+					if format != "json" {
+						switch {
+						case passed:
+							fmt.Fprintln(cmd.OutOrStdout(), "✓")
+						case vacuous:
+							fmt.Fprintln(cmd.OutOrStdout(), "⚠  ← NO TESTS RAN")
+						default:
+							fmt.Fprintln(cmd.OutOrStdout(), "✗  ← REGRESSION")
+						}
+					}
+					switch {
+					case passed:
+						passedCount++
+					case vacuous:
+						vacuousCount++
+					default:
+						failedCount++
+					}
+					jsonResults = append(jsonResults, JSONResultEntry{
+						IssueTitle: milestoneName,
+						Subsection: c.Subsection,
+						Command:    c.Text,
+						Passed:     passed,
+						NoTestsRan: result.NoTestsRan,
+						ExitCode:   result.ExitCode,
+						Stdout:     result.Stdout,
+						Stderr:     result.Stderr,
+					})
+					if failFast && !passed {
+						return true
+					}
+				}
+				return false
+			}
+
+			// Milestone-body acceptance criteria are extracted with the same
+			// parser used for an issue's body, just pointed at the milestone's
+			// own Body instead. A body criterion has no issue to name, so it
+			// is reported in its own section above the issue rows rather than
+			// as a pseudo-titled issue row. The header is conditional on the
+			// body actually yielding criteria: every fixture in this package
+			// builds a milestone with an empty body, and an unconditional
+			// header would break all of them at once.
+			bodySections := issue.ParseSections(ms.Body)
+			bodyCmds, bodyDropped := ExtractCommands(bodySections, uuid.Nil, milestoneName)
+			if len(bodyCmds) > 0 || len(bodyDropped) > 0 {
+				var bodyPositives, bodyNegatives []Command
+				for _, c := range bodyCmds {
+					if c.Subsection == "negative" {
+						bodyNegatives = append(bodyNegatives, c)
+					} else {
+						bodyPositives = append(bodyPositives, c)
+					}
+				}
+
+				if !dryRun && format != "json" {
+					fmt.Fprintf(cmd.OutOrStdout(), "Milestone Acceptance Criteria:\n")
+				}
+
+				if runBodyGroup(bodyPositives, "Positive") {
+					earlyStop = true
+				}
+				if !earlyStop && runBodyGroup(bodyNegatives, "Negative") {
+					earlyStop = true
+				}
+
+				if len(bodyDropped) > 0 && !dryRun && format != "json" {
+					fmt.Fprintf(cmd.OutOrStdout(), "  Unverifiable:\n")
+				}
+				for _, d := range bodyDropped {
+					unverifiableCount++
+					if dryRun {
+						fmt.Fprintf(cmd.OutOrStdout(), "[dry-run] milestone body  %s  unverifiable: %s\n", d.Subsection, d.Text)
+						continue
+					}
+					if format != "json" {
+						fmt.Fprintf(cmd.OutOrStdout(), "    ⚠ %s          ← no (`command`) form\n", d.Text)
+					}
+					jsonUnverifiable = append(jsonUnverifiable, JSONUnverifiableEntry{
+						IssueTitle: milestoneName,
+						Subsection: d.Subsection,
+						Item:       d.Text,
+					})
+				}
+			}
+
 			for _, iss := range prioritized {
+				if earlyStop {
+					break
+				}
 				sections := issue.ParseSections(iss.Body)
 				cmds, dropped := ExtractCommands(sections, iss.ID, iss.Title)
 				if len(cmds) == 0 && len(dropped) == 0 {

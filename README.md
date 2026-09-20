@@ -145,7 +145,7 @@ git zhi config default_milestone v0.2    # set default
 **Verify Plugin**
 
 ```bash
-git zhi verify <milestone>               # run all AC commands
+git zhi verify <milestone>               # run all AC commands from done issues and the milestone body
 git zhi verify <milestone> --fail-fast   # stop on first failure
 git zhi verify <milestone> --dry-run     # list commands without running
 git zhi verify <milestone> --format json # structured results
