@@ -126,6 +126,7 @@ git zhi milestone prune --dry-run        # report what would be pruned
 ```bash
 git zhi milestone edit <name> --resolve          # execute resolution command
 git zhi milestone edit <name> --state complete   # gated completion
+git zhi milestone edit <name> --state complete --force   # close despite zero extracted criteria; a genuine regression still refuses to close
 ```
 
 **Chain**
