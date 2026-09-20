@@ -281,10 +281,9 @@ func TestMilestoneEdit_StdinBody(t *testing.T) {
 }
 
 // TestMilestoneEdit_StdinBody_Empty verifies that --body - with zero bytes on
-// stdin never overwrites an existing body with an empty string. The AC also
-// expects a non-zero exit or an editor fallback in this case; the shipped
-// code takes neither path (see the t.Skip note below) but does preserve the
-// invariant that actually matters.
+// stdin never overwrites an existing body with an empty string, and that the
+// command reports failure: a generator that produced nothing must not be
+// indistinguishable from one that succeeded.
 func TestMilestoneEdit_StdinBody_Empty(t *testing.T) {
 	app, run := setupMilestoneTest(t)
 
@@ -303,11 +302,7 @@ func TestMilestoneEdit_StdinBody_Empty(t *testing.T) {
 	}
 
 	if err == nil {
-		t.Skip("gap vs AC: `milestone edit --body - ` with zero-byte stdin returns exit 0 " +
-			"(applyMilestoneWrites' readTextArg reports ok=false, prints " +
-			"\"body left unchanged\", and no-ops) instead of the AC-required non-zero exit " +
-			"or editor fallback. The safety invariant the AC cares about most — never " +
-			"overwrite the body with empty — does hold, verified above.")
+		t.Fatal("expected --body - with empty stdin to fail, got nil error")
 	}
 }
 
