@@ -144,7 +144,7 @@ All commands support `--format json` for machine-readable output.
 
 **Top-level:** `list`, `config`, `next`
 **Issue:** `add`, `list`, `show`, `edit`
-**Milestone:** `add`, `list`, `show`, `edit`
+**Milestone:** `add`, `list`, `show`, `edit`, `prune`
 
 Notable flags:
 - `list --ready` — show the ready set with path-overlap analysis
@@ -158,6 +158,7 @@ Notable flags:
 - `milestone show --workers N` — include parallelization forecast up to N workers
 - `milestone show --label <name>` — filter milestone issues by label
 - `milestone edit --resolve` — run the milestone's resolution command
+- `milestone prune --dry-run` — report which empty, unauthored milestones would be removed
 - `milestone edit --state complete` — run quality gates and mark milestone completed
 - `config reindex` — rebuild label indexes from issue data
 

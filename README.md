@@ -117,6 +117,8 @@ git zhi milestone show --workers 3       # completion forecast with worker count
 git zhi milestone edit v0.1 --name "Parser MVP"
 git zhi milestone edit v0.1 --resolve    # execute resolution command
 git zhi milestone edit v0.1 --state complete  # gated completion
+git zhi milestone prune                  # remove empty, unauthored milestones
+git zhi milestone prune --dry-run        # report what would be pruned
 ```
 
 **Quality Gates**
