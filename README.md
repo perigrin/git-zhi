@@ -100,6 +100,7 @@ git zhi issue show --format json         # structured output for agents
 git zhi issue edit <ref> --state start   # start working (records HEAD sha)
 git zhi issue edit <ref> --state pause   # pause (closes measurement window)
 git zhi issue edit <ref> --state done    # complete (closes final window)
+git zhi issue edit <ref> --title "New title" # rename in place, keeps id and graph edges
 git zhi issue edit <ref> --block <other> # add dependency edge
 git zhi issue edit <ref> --tag parser    # lightweight named reference
 git zhi issue edit <ref> --split         # split into multiple issues (stdin)

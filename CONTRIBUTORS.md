@@ -159,6 +159,7 @@ Notable flags:
 - `list --label <name>` — filter by label (graph built from all issues, display filtered)
 - `next --actor <id>` — resolve HEAD for a specific worker identity
 - `next --label <name>` — filter ready set by label
+- `issue edit --title` — rename in place; the ref is the issue's UUID, so this keeps the id and every `blocks` edge
 - `issue edit --label/--unlabel` — add/remove labels
 - `issue edit --assign/--unassign` — set/clear worker assignment
 - `issue edit --batch` — bulk edit from JSON stdin (used by sync plugins)
