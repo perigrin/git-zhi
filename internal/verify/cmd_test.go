@@ -267,7 +267,10 @@ func TestVerifyCLI_UnknownMilestone(t *testing.T) {
 	}
 }
 
-// TestVerifyCLI_NoDoneIssues verifies output when milestone has no done issues.
+// TestVerifyCLI_NoDoneIssues verifies output when milestone has no done
+// issues. A pending issue's criteria are not examined, so this extracts
+// nothing and — like any zero-extraction verify — is now a non-zero exit
+// rather than a silent "0/0 passing".
 func TestVerifyCLI_NoDoneIssues(t *testing.T) {
 	app, run := setupVerifyTest(t)
 
@@ -296,12 +299,71 @@ func TestVerifyCLI_NoDoneIssues(t *testing.T) {
 	}
 	writeIssue(t, app.Store, iss)
 
-	stdout, _, err := run("v0.1")
-	if err != nil {
-		t.Fatalf("verify with no done issues should succeed (exit 0), got: %v", err)
+	_, _, err := run("v0.1")
+	if err == nil {
+		t.Fatal("verify with no done issues extracts nothing and should exit non-zero")
 	}
-	if !strings.Contains(stdout, "0") {
-		t.Logf("output was: %s", stdout)
+	if !strings.Contains(err.Error(), "v0.1") {
+		t.Errorf("expected error to name the milestone, got: %v", err)
+	}
+}
+
+// TestVerifyCLI_ZeroExtractionIsError verifies that a milestone whose done
+// issues carry no extractable acceptance criteria (no backtick commands at
+// all, not even a malformed one) exits non-zero instead of reporting a
+// vacuous "0/0 passing". The error must name the milestone and how many done
+// issues were examined so it reads differently from an empty milestone.
+func TestVerifyCLI_ZeroExtractionIsError(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	// A done issue with an Acceptance Criteria section, but items that carry
+	// no backtick text at all — genuine prose, extracting nothing.
+	body := "## Acceptance Criteria\n\n- [ ] this was reviewed by hand\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err == nil {
+		t.Fatalf("expected non-zero exit when nothing is extracted, got nil\noutput:\n%s", stdout)
+	}
+	if !strings.Contains(err.Error(), "v0.1") {
+		t.Errorf("expected error to name the milestone, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "1") {
+		t.Errorf("expected error to name the number of done issues examined (1), got: %v", err)
+	}
+}
+
+// TestVerifyCLI_EmptyMilestoneIsError verifies that a milestone with no
+// issues at all also exits non-zero, and that its error is distinguishable
+// from TestVerifyCLI_ZeroExtractionIsError's by the issue count named in the
+// message (0 examined vs. 1 examined).
+func TestVerifyCLI_EmptyMilestoneIsError(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	stdout, _, err := run("v0.1")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for a milestone with no issues, got nil\noutput:\n%s", stdout)
+	}
+	if !strings.Contains(err.Error(), "v0.1") {
+		t.Errorf("expected error to name the milestone, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "0") {
+		t.Errorf("expected error to name the number of done issues examined (0), got: %v", err)
 	}
 }
 
