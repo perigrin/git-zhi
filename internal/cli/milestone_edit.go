@@ -299,7 +299,7 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 				fmt.Fprintf(w, "%s: body updated\n", ms.Name)
 				changed = true
 			} else {
-				fmt.Fprintf(w, "%s: --body - read empty input; body left unchanged\n", ms.Name)
+				return false, fmt.Errorf("%s: --body - read empty input; body left unchanged", ms.Name)
 			}
 		}
 	}
@@ -320,7 +320,7 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 				fmt.Fprintf(w, "%s: resolution → %s\n", ms.Name, resolution)
 				changed = true
 			} else {
-				fmt.Fprintf(w, "%s: --resolution - read empty input; resolution left unchanged\n", ms.Name)
+				return false, fmt.Errorf("%s: --resolution - read empty input; resolution left unchanged", ms.Name)
 			}
 		}
 	}
@@ -336,7 +336,7 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 			fmt.Fprintf(w, "%s: postmortem attached\n", ms.Name)
 			changed = true
 		} else {
-			fmt.Fprintf(w, "%s: --postmortem - read empty input; postmortem left unchanged\n", ms.Name)
+			return false, fmt.Errorf("%s: --postmortem - read empty input; postmortem left unchanged", ms.Name)
 		}
 	}
 
