@@ -383,3 +383,77 @@ func TestParseACSubsections_FlatListGoesToPositive(t *testing.T) {
 		t.Fatalf("expected 2 AcceptanceCriteria for flat AC list, got %d", len(s.AcceptanceCriteria))
 	}
 }
+
+func TestParseACSubsections_BareHeadingWithNegatives(t *testing.T) {
+	// Criteria written directly under the bare H2, followed by a
+	// ### Negative Scenarios subsection. The unnamed leading block must
+	// land in PositiveScenarios, not be dropped.
+	body := `## Acceptance Criteria
+
+- [ ] positional params work
+- [ ] variadic params work
+
+### Negative Scenarios
+- [ ] rejects duplicate param names`
+
+	s := issue.ParseSections(body)
+
+	if len(s.PositiveScenarios) != 2 {
+		t.Fatalf("expected 2 PositiveScenarios, got %d", len(s.PositiveScenarios))
+	}
+	if s.PositiveScenarios[0].Text != "positional params work" {
+		t.Errorf("PositiveScenarios[0].Text = %q", s.PositiveScenarios[0].Text)
+	}
+	if s.PositiveScenarios[1].Text != "variadic params work" {
+		t.Errorf("PositiveScenarios[1].Text = %q", s.PositiveScenarios[1].Text)
+	}
+
+	if len(s.NegativeScenarios) != 1 {
+		t.Fatalf("expected 1 NegativeScenarios, got %d", len(s.NegativeScenarios))
+	}
+	if s.NegativeScenarios[0].Text != "rejects duplicate param names" {
+		t.Errorf("NegativeScenarios[0].Text = %q", s.NegativeScenarios[0].Text)
+	}
+
+	if len(s.AcceptanceCriteria) != 3 {
+		t.Fatalf("expected 3 AcceptanceCriteria (union), got %d", len(s.AcceptanceCriteria))
+	}
+}
+
+func TestParseACSubsections_NegativesOnly(t *testing.T) {
+	// An AC block holding only a ### Negative Scenarios subsection must not
+	// echo those items into PositiveScenarios.
+	body := `## Acceptance Criteria
+
+### Negative Scenarios
+- [ ] rejects duplicate param names`
+
+	s := issue.ParseSections(body)
+
+	if len(s.PositiveScenarios) != 0 {
+		t.Errorf("expected 0 PositiveScenarios, got %d", len(s.PositiveScenarios))
+	}
+	if len(s.NegativeScenarios) != 1 {
+		t.Fatalf("expected 1 NegativeScenarios, got %d", len(s.NegativeScenarios))
+	}
+}
+
+func TestParseACSubsections_UnknownSubsection(t *testing.T) {
+	// An unrecognised ### subsection must be ignored, not folded into positives.
+	body := `## Acceptance Criteria
+
+### Other
+- [ ] some unrelated criterion`
+
+	s := issue.ParseSections(body)
+
+	if len(s.PositiveScenarios) != 0 {
+		t.Errorf("expected 0 PositiveScenarios, got %d", len(s.PositiveScenarios))
+	}
+	if len(s.NegativeScenarios) != 0 {
+		t.Errorf("expected 0 NegativeScenarios, got %d", len(s.NegativeScenarios))
+	}
+	if len(s.AcceptanceCriteria) != 0 {
+		t.Errorf("expected 0 AcceptanceCriteria, got %d", len(s.AcceptanceCriteria))
+	}
+}
