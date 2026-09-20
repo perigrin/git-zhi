@@ -281,10 +281,9 @@ func TestMilestoneEdit_StdinBody(t *testing.T) {
 }
 
 // TestMilestoneEdit_StdinBody_Empty verifies that --body - with zero bytes on
-// stdin never overwrites an existing body with an empty string. The AC also
-// expects a non-zero exit or an editor fallback in this case; the shipped
-// code takes neither path (see the t.Skip note below) but does preserve the
-// invariant that actually matters.
+// stdin never overwrites an existing body with an empty string, and that the
+// command reports failure: a generator that produced nothing must not be
+// indistinguishable from one that succeeded.
 func TestMilestoneEdit_StdinBody_Empty(t *testing.T) {
 	app, run := setupMilestoneTest(t)
 
@@ -303,11 +302,48 @@ func TestMilestoneEdit_StdinBody_Empty(t *testing.T) {
 	}
 
 	if err == nil {
-		t.Skip("gap vs AC: `milestone edit --body - ` with zero-byte stdin returns exit 0 " +
-			"(applyMilestoneWrites' readTextArg reports ok=false, prints " +
-			"\"body left unchanged\", and no-ops) instead of the AC-required non-zero exit " +
-			"or editor fallback. The safety invariant the AC cares about most — never " +
-			"overwrite the body with empty — does hold, verified above.")
+		t.Fatal("expected --body - with empty stdin to fail, got nil error")
+	}
+}
+
+// TestMilestoneEdit_StdinEmpty covers --resolution - and --postmortem - with
+// zero bytes on stdin, mirroring TestMilestoneEdit_StdinBody_Empty: the
+// field must stay untouched and the command must fail rather than exit 0.
+func TestMilestoneEdit_StdinEmpty(t *testing.T) {
+	for _, tc := range []struct {
+		flag, seedFlag, seedValue string
+	}{
+		{flag: "resolution", seedFlag: "resolution", seedValue: "make test"},
+		{flag: "postmortem", seedFlag: "postmortem", seedValue: "existing postmortem"},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			app, run := setupMilestoneTest(t)
+
+			if _, err := run("milestone", "edit", "v0.1", "--"+tc.seedFlag, tc.seedValue); err != nil {
+				t.Fatalf("seed --%s: %v", tc.seedFlag, err)
+			}
+
+			_, _, err := runWithStdin(app, "", "milestone", "edit", "v0.1", "--"+tc.flag, "-")
+
+			ms, loadErr := milestone.LoadMilestone(app.Store, "v0.1")
+			if loadErr != nil {
+				t.Fatalf("LoadMilestone: %v", loadErr)
+			}
+			var got string
+			switch tc.flag {
+			case "resolution":
+				got = ms.Resolution
+			case "postmortem":
+				got = ms.Postmortem
+			}
+			if got != tc.seedValue {
+				t.Fatalf("--%s - overwrote field with empty stdin: got %q, want %q", tc.flag, got, tc.seedValue)
+			}
+
+			if err == nil {
+				t.Fatalf("expected --%s - with empty stdin to fail, got nil error", tc.flag)
+			}
+		})
 	}
 }
 

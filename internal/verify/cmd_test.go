@@ -267,7 +267,10 @@ func TestVerifyCLI_UnknownMilestone(t *testing.T) {
 	}
 }
 
-// TestVerifyCLI_NoDoneIssues verifies output when milestone has no done issues.
+// TestVerifyCLI_NoDoneIssues verifies output when milestone has no done
+// issues. A pending issue's criteria are not examined, so this extracts
+// nothing and — like any zero-extraction verify — is now a non-zero exit
+// rather than a silent "0/0 passing".
 func TestVerifyCLI_NoDoneIssues(t *testing.T) {
 	app, run := setupVerifyTest(t)
 
@@ -296,12 +299,169 @@ func TestVerifyCLI_NoDoneIssues(t *testing.T) {
 	}
 	writeIssue(t, app.Store, iss)
 
-	stdout, _, err := run("v0.1")
-	if err != nil {
-		t.Fatalf("verify with no done issues should succeed (exit 0), got: %v", err)
+	_, _, err := run("v0.1")
+	if err == nil {
+		t.Fatal("verify with no done issues extracts nothing and should exit non-zero")
 	}
-	if !strings.Contains(stdout, "0") {
-		t.Logf("output was: %s", stdout)
+	if !strings.Contains(err.Error(), "v0.1") {
+		t.Errorf("expected error to name the milestone, got: %v", err)
+	}
+}
+
+// TestVerifyCLI_ZeroExtractionIsError verifies that a milestone whose done
+// issues carry no extractable acceptance criteria (no backtick commands at
+// all, not even a malformed one) exits non-zero instead of reporting a
+// vacuous "0/0 passing". The error must name the milestone and how many done
+// issues were examined so it reads differently from an empty milestone.
+func TestVerifyCLI_ZeroExtractionIsError(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	// A done issue with an Acceptance Criteria section, but items that carry
+	// no backtick text at all — genuine prose, extracting nothing.
+	body := "## Acceptance Criteria\n\n- [ ] this was reviewed by hand\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err == nil {
+		t.Fatalf("expected non-zero exit when nothing is extracted, got nil\noutput:\n%s", stdout)
+	}
+	if !strings.Contains(err.Error(), "v0.1") {
+		t.Errorf("expected error to name the milestone, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "1") {
+		t.Errorf("expected error to name the number of done issues examined (1), got: %v", err)
+	}
+}
+
+// TestVerifyCLI_EmptyMilestoneIsError verifies that a milestone with no
+// issues at all also exits non-zero, and that its error is distinguishable
+// from TestVerifyCLI_ZeroExtractionIsError's by the issue count named in the
+// message (0 examined vs. 1 examined).
+func TestVerifyCLI_EmptyMilestoneIsError(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	stdout, _, err := run("v0.1")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for a milestone with no issues, got nil\noutput:\n%s", stdout)
+	}
+	if !strings.Contains(err.Error(), "v0.1") {
+		t.Errorf("expected error to name the milestone, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "0") {
+		t.Errorf("expected error to name the number of done issues examined (0), got: %v", err)
+	}
+}
+
+// TestVerifyCLI_DryRunPendingIssues verifies that --dry-run lists criteria
+// from pending issues, not only done ones — this is the state a
+// pre-execution review actually runs in, before any issue in the milestone
+// has reached done.
+func TestVerifyCLI_DryRunPendingIssues(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	now := time.Now()
+	iss := &issue.Issue{
+		ID:            issueID(t),
+		Title:         "Pending Issue",
+		State:         issue.StatePending,
+		Urgency:       issue.UrgencyNormal,
+		Milestone:     "v0.1",
+		Created:       now,
+		Updated:       now,
+		Sessions:      []issue.Session{},
+		Transitions:   []issue.Transition{},
+		ObservedPaths: []string{},
+		Body:          "## Acceptance Criteria\n\n- [ ] pending check (`echo pending`)\n",
+	}
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1", "--dry-run")
+	if err != nil {
+		t.Fatalf("--dry-run over pending issues should not fail, got: %v", err)
+	}
+	if !strings.Contains(stdout, "echo pending") {
+		t.Errorf("expected pending issue's command listed in dry-run output, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_DryRunCancelledExcluded verifies that --dry-run does not list
+// criteria from cancelled issues — cancelled work is not pending
+// verification.
+func TestVerifyCLI_DryRunCancelledExcluded(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	now := time.Now()
+	iss := &issue.Issue{
+		ID:            issueID(t),
+		Title:         "Cancelled Issue",
+		State:         issue.StateCancelled,
+		Urgency:       issue.UrgencyNormal,
+		Milestone:     "v0.1",
+		Created:       now,
+		Updated:       now,
+		Sessions:      []issue.Session{},
+		Transitions:   []issue.Transition{},
+		ObservedPaths: []string{},
+		Body:          "## Acceptance Criteria\n\n- [ ] cancelled check (`echo cancelled`)\n",
+	}
+	writeIssue(t, app.Store, iss)
+
+	// A pending issue alongside it, so the milestone extracts something. The
+	// claim under test is that the cancelled issue is excluded, not that an
+	// empty extraction succeeds — extracting nothing is its own error now.
+	pending := &issue.Issue{
+		ID:            issueID(t),
+		Title:         "Pending Issue",
+		State:         issue.StatePending,
+		Urgency:       issue.UrgencyNormal,
+		Milestone:     "v0.1",
+		Created:       now,
+		Updated:       now,
+		Sessions:      []issue.Session{},
+		Transitions:   []issue.Transition{},
+		ObservedPaths: []string{},
+		Body:          "## Acceptance Criteria\n\n- [ ] pending check (`echo pending`)\n",
+	}
+	writeIssue(t, app.Store, pending)
+
+	stdout, _, err := run("v0.1", "--dry-run")
+	if err != nil {
+		t.Fatalf("--dry-run should not fail, got: %v", err)
+	}
+	if strings.Contains(stdout, "echo cancelled") {
+		t.Errorf("expected cancelled issue's command NOT listed in dry-run output, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "echo pending") {
+		t.Errorf("expected pending issue's command listed in dry-run output, got:\n%s", stdout)
 	}
 }
 
@@ -532,5 +692,150 @@ func TestVerifyCLI_NoTestsRanJSON(t *testing.T) {
 	}
 	if r := report.Results[0]; r.Passed || r.ExitCode != 0 || !r.NoTestsRan {
 		t.Errorf("entry = {passed:%v exit_code:%d no_tests_ran:%v}, want {false 0 true}", r.Passed, r.ExitCode, r.NoTestsRan)
+	}
+}
+
+// TestVerifyCLI_MilestoneBodyCriteria verifies that acceptance criteria
+// written in the milestone's own body are extracted and run alongside the
+// issues' criteria, not just read by eye.
+func TestVerifyCLI_MilestoneBodyCriteria(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+		Body:    "## Acceptance Criteria\n\n- [ ] milestone-level check (`echo from-body`)\n",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] echo works (`echo hello`)\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err != nil {
+		t.Fatalf("verify v0.1 failed: %v\noutput:\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "echo from-body") {
+		t.Errorf("expected milestone-body command in output, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "echo hello") {
+		t.Errorf("expected issue command still in output, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_MilestoneBodySection verifies milestone-body criteria are
+// reported under their own section header, positioned above the issue rows,
+// rather than folded in as a pseudo-titled issue row.
+func TestVerifyCLI_MilestoneBodySection(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+		Body:    "## Acceptance Criteria\n\n- [ ] milestone-level check (`echo from-body`)\n",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] echo works (`echo hello`)\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err != nil {
+		t.Fatalf("verify v0.1 failed: %v\noutput:\n%s", err, stdout)
+	}
+
+	sectionIdx := strings.Index(stdout, "Milestone Acceptance Criteria")
+	if sectionIdx < 0 {
+		t.Fatalf("expected a milestone-body section header, got:\n%s", stdout)
+	}
+	issueRowIdx := strings.Index(stdout, iss.Title)
+	if issueRowIdx < 0 {
+		t.Fatalf("expected the issue row in output, got:\n%s", stdout)
+	}
+	if sectionIdx > issueRowIdx {
+		t.Errorf("expected milestone-body section above the issue rows, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_MilestoneBodyEmpty verifies that a milestone with an empty
+// body (the shape every other fixture in this file builds) contributes no
+// criteria and emits no section header at all. The header must stay
+// conditional on the body actually yielding criteria, or every other fixture
+// in this file breaks at once.
+func TestVerifyCLI_MilestoneBodyEmpty(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] echo works (`echo hello`)\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err != nil {
+		t.Fatalf("verify v0.1 failed: %v\noutput:\n%s", err, stdout)
+	}
+	if strings.Contains(stdout, "Milestone Acceptance Criteria") {
+		t.Errorf("expected no milestone-body section header for an empty body, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_MilestoneBodyUnverifiable verifies a milestone-body criterion
+// with backtick text but no parenthesized command is reported through the
+// same Dropped/unverifiable path an issue's malformed criterion would be.
+func TestVerifyCLI_MilestoneBodyUnverifiable(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+		Body:    "## Acceptance Criteria\n\n- [ ] greet works: `bash test.sh`\n",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] echo works (`echo hello`)\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for a dropped milestone-body command, got nil\noutput:\n%s", stdout)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "unverifiable") {
+		t.Errorf("expected 'unverifiable' in output, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_MilestoneBodyOnlyNoIssues verifies that a milestone with no
+// done issues but real body criteria runs those criteria and does not trip
+// the zero-extraction error — the body is a second source of commands, not
+// a fallback that only counts when the issue set is empty.
+func TestVerifyCLI_MilestoneBodyOnlyNoIssues(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+		Body:    "## Acceptance Criteria\n\n- [ ] milestone-level check (`echo from-body`)\n",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	stdout, _, err := run("v0.1")
+	if err != nil {
+		t.Fatalf("expected milestone-body-only criteria to run cleanly, got: %v\noutput:\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "echo from-body") {
+		t.Errorf("expected milestone-body command in output, got:\n%s", stdout)
 	}
 }

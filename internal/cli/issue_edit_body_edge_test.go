@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/perigrin/git-zhi/internal/cli"
 	"github.com/perigrin/git-zhi/internal/issue"
@@ -73,52 +72,59 @@ func TestIssueEditBody_EmptyString(t *testing.T) {
 	}
 }
 
-// TestIssueEditBody_StdinSentinel_TTY documents a genuine implementation gap:
-// --body - reads unconditionally via io.ReadAll(cmd.InOrStdin()), with no
-// check for whether stdin is an interactive terminal. When stdin behaves like
-// a TTY that has not yet delivered input (i.e. a reader that blocks instead
-// of returning EOF), the command hangs forever instead of returning a clear,
-// prompt error as the acceptance criterion requires.
+// TestIssueEditBody_StdinSentinel_TTY verifies that --body - refuses to read
+// when stdin is a terminal, instead of blocking forever waiting for input
+// that will never arrive.
 //
-// This test proves the hang deterministically and safely: it runs the
-// command in a goroutine and races it against a bounded timeout using a
-// blocking io.Pipe reader (which never returns EOF until closed) as the
-// stand-in for an unfed TTY. If the command does not return within the
-// timeout, the pipe is closed to unblock the goroutine (avoiding a leak) and
-// the test is skipped with an explanation, per instructions to never modify
-// production code and never leave a failing assertion in place.
+// A real interactive terminal can't be opened in a test process, so this
+// stands in a character-device file (/dev/null, or its platform equivalent)
+// as the TTY signal: like a real terminal, its Stat().Mode() reports
+// os.ModeCharDevice, which is exactly what the production guard checks.
+// Unlike a real terminal it also returns EOF immediately on read, so this
+// test needs no goroutine or timeout to stay safe — if the guard is missing,
+// the command proceeds to read /dev/null's EOF and returns nil, which the
+// assertion below catches directly.
 func TestIssueEditBody_StdinSentinel_TTY(t *testing.T) {
 	app, _ := setupEditTest(t)
 	uuidStr := createEditTestIssue(t, app, "Issue for TTY stdin sentinel")
 	prefix := uuidStr[:8]
 	originalBody := bodyEdgeReadBody(t, app, uuidStr)
 
-	pr, pw := io.Pipe()
-	defer pw.Close()
+	tty, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatalf("open %s: %v", os.DevNull, err)
+	}
+	defer tty.Close()
 
-	done := make(chan error, 1)
-	go func() {
-		_, _, err := bodyEdgeRunWithReader(app, pr, "issue", "edit", prefix, "--body", "-")
-		done <- err
-	}()
+	_, _, err = bodyEdgeRunWithReader(app, tty, "issue", "edit", prefix, "--body", "-")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for --body - on TTY-like stdin, got nil")
+	}
+	if !strings.Contains(err.Error(), "--body") {
+		t.Fatalf("expected error to name the --body flag, got: %v", err)
+	}
+	if got := bodyEdgeReadBody(t, app, uuidStr); got != originalBody {
+		t.Fatalf("expected body unchanged, got: %q", got)
+	}
+}
 
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatalf("expected non-zero exit for --body - on TTY-like stdin, got nil")
-		}
-		if got := bodyEdgeReadBody(t, app, uuidStr); got != originalBody {
-			t.Fatalf("expected body unchanged, got: %q", got)
-		}
-	case <-time.After(500 * time.Millisecond):
-		// Genuine gap: unblock the goroutine so it doesn't leak past the test,
-		// then report via Skip rather than leaving a hang or a failing assert.
-		pw.Close()
-		<-done
-		t.Skip("implementation gap: 'issue edit --body -' has no TTY detection " +
-			"(internal/cli/issue_edit.go reads via io.ReadAll(cmd.InOrStdin()) unconditionally) " +
-			"and hangs indefinitely instead of returning a prompt, actionable error " +
-			"when stdin is an interactive terminal that has not delivered input")
+// TestIssueEditBody_StdinSentinel_Empty verifies that --body - reading zero
+// bytes from a genuinely empty (non-TTY) stdin leaves the body untouched
+// and fails the command, rather than silently exiting 0. Mirrors
+// TestMilestoneEdit_StdinBody_Empty's fix for the same readTextArg shape.
+func TestIssueEditBody_StdinSentinel_Empty(t *testing.T) {
+	app, _ := setupEditTest(t)
+	uuidStr := createEditTestIssue(t, app, "Issue for empty stdin sentinel")
+	prefix := uuidStr[:8]
+	originalBody := bodyEdgeReadBody(t, app, uuidStr)
+
+	_, _, err := runWithStdin(app, "", "issue", "edit", prefix, "--body", "-")
+	if err == nil {
+		t.Fatalf("expected --body - with empty stdin to fail, got nil error")
+	}
+
+	if got := bodyEdgeReadBody(t, app, uuidStr); got != originalBody {
+		t.Fatalf("body was overwritten by empty stdin: got %q, want %q", got, originalBody)
 	}
 }
 

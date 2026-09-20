@@ -19,6 +19,7 @@ import (
 
 	"github.com/perigrin/git-zhi/internal/config"
 	"github.com/perigrin/git-zhi/internal/issue"
+	"github.com/perigrin/git-zhi/internal/milestone"
 	"github.com/perigrin/git-zhi/internal/resolve"
 )
 
@@ -240,6 +241,36 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// A milestone ref exists only if an issue names it, or a human ran
+	// `milestone add`. EnsureInitialized no longer creates one eagerly, so
+	// the first issue naming a milestone with no ref creates it here.
+	seenMilestones := make(map[string]struct{})
+	for _, iss := range created {
+		if iss.Milestone == "" {
+			continue
+		}
+		if _, ok := seenMilestones[iss.Milestone]; ok {
+			continue
+		}
+		seenMilestones[iss.Milestone] = struct{}{}
+
+		refPath := milestone.RefPrefix + iss.Milestone
+		if app.Store.RefExists(refPath) {
+			continue
+		}
+		ms := &milestone.Milestone{
+			Name:    iss.Milestone,
+			Created: now,
+		}
+		msData, marshalErr := milestone.MarshalMilestone(ms)
+		if marshalErr != nil {
+			return fmt.Errorf("marshal milestone %s: %w", iss.Milestone, marshalErr)
+		}
+		if writeErr := app.Store.WriteEntity(refPath, "milestone.yaml", msData, "Create milestone: "+iss.Milestone); writeErr != nil {
+			return fmt.Errorf("write milestone %s: %w", iss.Milestone, writeErr)
+		}
+	}
+
 	// Persist each issue
 	for _, iss := range created {
 		data, marshalErr := issue.Marshal(iss)
@@ -388,6 +419,7 @@ func newIssueEditCommand() *cobra.Command {
 		RunE:  runIssueEdit,
 	}
 	cmd.Flags().String("state", "", "transition state: start, pause, resume, done, cancel")
+	cmd.Flags().String("title", "", "rename the issue in place, keeping its id and graph edges")
 	cmd.Flags().String("block", "", "add forward dependency: this issue blocks <ref>")
 	cmd.Flags().String("unblock", "", "remove forward dependency")
 	cmd.Flags().String("milestone", "", "move to different milestone")

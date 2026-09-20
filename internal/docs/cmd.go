@@ -224,7 +224,12 @@ func countCheckIssues(r *CheckResult) int {
 func printCheckResult(cmd *cobra.Command, r *CheckResult) {
 	w := cmd.OutOrStdout()
 
-	if len(r.UnreachableFiles) == 0 {
+	if len(r.UnreachableFiles) == 0 && r.ReachabilityFilesExamined == 0 {
+		// Nothing was examined — every docs/ file was reachability-exempt, or
+		// docs/ doesn't exist. Saying "reachable" here would claim a result
+		// for a check that never ran.
+		fmt.Fprintln(w, "○ No files to check for reachability")
+	} else if len(r.UnreachableFiles) == 0 {
 		fmt.Fprintln(w, "✓ All files reachable from CONTRIBUTING.md")
 	} else {
 		fmt.Fprintf(w, "✗ %d unreachable file(s):\n", len(r.UnreachableFiles))

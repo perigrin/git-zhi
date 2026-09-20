@@ -191,16 +191,17 @@ func TestMilestoneEdit_ContentSurvivesRename(t *testing.T) {
 }
 
 // TestMilestoneEdit_EmptyStdinLeavesFieldAlone verifies that '-' reading an
-// empty stream is a no-op. A generator that fails and emits nothing must not
-// erase the field it was meant to fill.
+// empty stream leaves the field untouched but fails the command: a
+// generator that fails and emits nothing must not be reported as a success,
+// and must not erase the field it was meant to fill.
 func TestMilestoneEdit_EmptyStdinLeavesFieldAlone(t *testing.T) {
 	_, runStdin := setupMilestoneWriteTestWithStdin(t)
 
 	if _, err := runStdin("", "milestone", "add", "rel", "--body", "original body"); err != nil {
 		t.Fatalf("milestone add: %v", err)
 	}
-	if _, err := runStdin("", "milestone", "edit", "rel", "--body", "-"); err != nil {
-		t.Fatalf("--body - with empty stdin: %v", err)
+	if _, err := runStdin("", "milestone", "edit", "rel", "--body", "-"); err == nil {
+		t.Fatal("expected --body - with empty stdin to fail, got nil error")
 	}
 
 	stdout, err := runStdin("", "milestone", "show", "rel", "--format", "json")

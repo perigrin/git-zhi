@@ -123,6 +123,88 @@ func TestCheck_NoDocs_NoUnreachable(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
+// TestCheck_NothingExamined — a repository whose only docs/ files are
+// reachability-exempt must report that reachability examined nothing, not
+// that everything is reachable. checkReachability used to return early on an
+// empty examine set, which let "examined zero files" look identical to
+// "everything reachable" in both the result and the printed output.
+// --------------------------------------------------------------------------
+
+func TestCheck_NothingExamined(t *testing.T) {
+	cases := []struct {
+		name       string
+		writeExtra func(t *testing.T, root string)
+	}{
+		{
+			name:       "no CONTRIBUTING.md",
+			writeExtra: func(t *testing.T, root string) {},
+		},
+		{
+			name: "CONTRIBUTING.md present but links nothing",
+			writeExtra: func(t *testing.T, root string) {
+				writeFile(t, root, "CONTRIBUTING.md", "# Contributing\n")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+
+			// The only file under docs/ is reachability-exempt.
+			writeFile(t, root, "docs/decisions/0001-a.md", "# First ADR\n")
+			tc.writeExtra(t, root)
+
+			result, err := docs.Check(root)
+			if err != nil {
+				t.Fatalf("Check returned error: %v", err)
+			}
+
+			if len(result.UnreachableFiles) != 0 {
+				t.Errorf("expected no unreachable files, got %v", result.UnreachableFiles)
+			}
+			if result.ReachabilityFilesExamined != 0 {
+				t.Errorf("expected ReachabilityFilesExamined=0 when every docs/ file is exempt, got %d",
+					result.ReachabilityFilesExamined)
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// TestCheck_MissingRootStillUnreachable — a missing CONTRIBUTING.md is not
+// the cause of the false green: it already fails loudly. Non-exempt docs
+// with no CONTRIBUTING.md must remain reported unreachable.
+// --------------------------------------------------------------------------
+
+func TestCheck_MissingRootStillUnreachable(t *testing.T) {
+	root := t.TempDir()
+
+	// A non-exempt doc exists, but there is no CONTRIBUTING.md to reach it from.
+	writeFile(t, root, "docs/guides/g.md", "# Guide\n")
+
+	result, err := docs.Check(root)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if result.OK {
+		t.Errorf("expected OK=false when CONTRIBUTING.md is missing and non-exempt docs exist")
+	}
+
+	found := false
+	for _, f := range result.UnreachableFiles {
+		if filepath.ToSlash(f) == "docs/guides/g.md" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected docs/guides/g.md in UnreachableFiles, got %v", result.UnreachableFiles)
+	}
+}
+
+// --------------------------------------------------------------------------
 // TestCheck_DeadLinks — relative markdown links that point to missing files.
 // --------------------------------------------------------------------------
 

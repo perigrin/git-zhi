@@ -244,6 +244,29 @@ func TestExtractCommands_ParenCommandNotDropped(t *testing.T) {
 	}
 }
 
+func TestExtractCommands_TrailingWins(t *testing.T) {
+	// An AC line can mention a parenthesized backtick inline as prose (e.g. a
+	// delimiter or flag) before its actual verification command. The trailing
+	// parenthesized command — the convention — must win, not the first one.
+	body := "## Acceptance Criteria\n\n" +
+		"- [ ] stdin with a body section but no frontmatter delimiter (`---`) must " +
+		"parse as body-only (`go test -run TestMilestoneAdd_NoFrontmatterDelimiter ./internal/cli/... -count=1`)\n"
+
+	sections := issue.ParseSections(body)
+	cmds, dropped := verify.ExtractCommands(sections, issueID(t), "Trailing Issue")
+
+	if len(cmds) != 1 {
+		t.Fatalf("expected 1 command, got %d: %v", len(cmds), cmds)
+	}
+	want := "go test -run TestMilestoneAdd_NoFrontmatterDelimiter ./internal/cli/... -count=1"
+	if cmds[0].Text != want {
+		t.Errorf("cmds[0].Text = %q, want %q", cmds[0].Text, want)
+	}
+	if len(dropped) != 0 {
+		t.Fatalf("expected 0 dropped, got %d: %v", len(dropped), dropped)
+	}
+}
+
 func TestExtractCommands_ProseOnlyNotDropped(t *testing.T) {
 	// An AC item with no backtick text at all is genuinely prose — not a dropped
 	// command. It is skipped silently, never flagged.

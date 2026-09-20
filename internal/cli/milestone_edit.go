@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os/exec"
@@ -94,7 +95,8 @@ func runMilestoneEdit(cmd *cobra.Command, args []string) error {
 			if verifyTimeout < 0 {
 				return fmt.Errorf("invalid --timeout %d: must be a positive number of seconds, or omit it for verify's default", verifyTimeout)
 			}
-			return runMilestoneComplete(app, ms, w, verifyTimeout)
+			force, _ := cmd.Flags().GetBool("force")
+			return runMilestoneComplete(app, ms, w, verifyTimeout, force)
 		case "reopen":
 			return runMilestoneReopen(app, ms, w)
 		default:
@@ -239,9 +241,12 @@ const clearSentinel = "none"
 // ok is false when "-" produced nothing, which the caller must treat as "leave
 // the field alone". A generator that fails and emits an empty stream should not
 // erase the field it was meant to fill.
-func readTextArg(cmd *cobra.Command, value string) (text string, ok bool, err error) {
+func readTextArg(cmd *cobra.Command, flagName, value string) (text string, ok bool, err error) {
 	if value != "-" {
 		return strings.TrimSpace(value), true, nil
+	}
+	if ttyErr := rejectInteractiveStdin(cmd, flagName); ttyErr != nil {
+		return "", false, ttyErr
 	}
 	raw, readErr := io.ReadAll(cmd.InOrStdin())
 	if readErr != nil {
@@ -287,7 +292,7 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 				changed = true
 			}
 		} else {
-			body, ok, err := readTextArg(cmd, value)
+			body, ok, err := readTextArg(cmd, "body", value)
 			if err != nil {
 				return false, fmt.Errorf("--body: %w", err)
 			}
@@ -296,7 +301,7 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 				fmt.Fprintf(w, "%s: body updated\n", ms.Name)
 				changed = true
 			} else {
-				fmt.Fprintf(w, "%s: --body - read empty input; body left unchanged\n", ms.Name)
+				return false, fmt.Errorf("%s: --body - read empty input; body left unchanged", ms.Name)
 			}
 		}
 	}
@@ -308,7 +313,7 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 			fmt.Fprintf(w, "%s: resolution → (cleared)\n", ms.Name)
 			changed = true
 		} else {
-			resolution, ok, err := readTextArg(cmd, value)
+			resolution, ok, err := readTextArg(cmd, "resolution", value)
 			if err != nil {
 				return false, fmt.Errorf("--resolution: %w", err)
 			}
@@ -317,14 +322,14 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 				fmt.Fprintf(w, "%s: resolution → %s\n", ms.Name, resolution)
 				changed = true
 			} else {
-				fmt.Fprintf(w, "%s: --resolution - read empty input; resolution left unchanged\n", ms.Name)
+				return false, fmt.Errorf("%s: --resolution - read empty input; resolution left unchanged", ms.Name)
 			}
 		}
 	}
 
 	if cmd.Flags().Changed("postmortem") {
 		value, _ := cmd.Flags().GetString("postmortem")
-		postmortem, ok, err := readTextArg(cmd, value)
+		postmortem, ok, err := readTextArg(cmd, "postmortem", value)
 		if err != nil {
 			return false, fmt.Errorf("--postmortem: %w", err)
 		}
@@ -333,12 +338,20 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 			fmt.Fprintf(w, "%s: postmortem attached\n", ms.Name)
 			changed = true
 		} else {
-			fmt.Fprintf(w, "%s: --postmortem - read empty input; postmortem left unchanged\n", ms.Name)
+			return false, fmt.Errorf("%s: --postmortem - read empty input; postmortem left unchanged", ms.Name)
 		}
 	}
 
 	return changed, nil
 }
+
+// zeroExtractionMarker is the substring unique to verify's own error for
+// extracting zero commands (internal/verify/cmd.go's "no acceptance criteria
+// extracted from %d done issue(s)"). It is what --force is allowed to
+// exempt: a milestone whose criteria ran and failed produces a different
+// message (naming a regression, unverifiable item, or vacuous pass) and is
+// never exempted, no matter what force is set to.
+const zeroExtractionMarker = "no acceptance criteria extracted from"
 
 // runMilestoneComplete enforces quality gates before marking a milestone as
 // completed. Gates are applied in this order:
@@ -349,9 +362,15 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 //     and skip. The gate runs as a subprocess because internal/verify imports
 //     this package, so it cannot be called in-process.
 //
+// force exempts only the verify gate's zero-extraction failure — a
+// milestone whose issues carried no runnable criteria — so a deliberately
+// criteria-free milestone can still close. It does not skip the issue or
+// resolution gates, and it does not exempt a verify failure that ran
+// criteria and found a regression, an unverifiable item, or a vacuous pass.
+//
 // If all gates pass, the milestone State is set to "completed", the Completed
 // timestamp is recorded, and the milestone is written back to storage.
-func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer, verifyTimeout int) error {
+func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer, verifyTimeout int, force bool) error {
 	// Gate 1: all issues in the milestone must be done or cancelled.
 	allIssues, err := issue.LoadAllIssues(app.Store)
 	if err != nil {
@@ -395,12 +414,23 @@ func runMilestoneComplete(app *App, ms *milestone.Milestone, w io.Writer, verify
 		}
 		fmt.Fprintf(w, "Running verify gate over %s (per-criterion timeout: %s; every acceptance criterion re-runs, so this can take a while)...\n", ms.Name, limit)
 
+		// Captured alongside the live stream to w so a zero-extraction failure
+		// can be told apart from a genuine one: the two produce different
+		// error text, and only the capture lets --force distinguish them
+		// without re-running verify a second time.
+		var captured bytes.Buffer
+		teed := io.MultiWriter(w, &captured)
+
 		verifyCmd := exec.Command(zhiPath, VerifyGateArgs(ms.Name, verifyTimeout)...)
 		verifyCmd.Dir = repoRoot
-		verifyCmd.Stdout = w
-		verifyCmd.Stderr = w
+		verifyCmd.Stdout = teed
+		verifyCmd.Stderr = teed
 		if runErr := verifyCmd.Run(); runErr != nil {
-			return fmt.Errorf("verify gate failed: %w", runErr)
+			if force && strings.Contains(captured.String(), zeroExtractionMarker) {
+				fmt.Fprintf(w, "%s: --force exempts the empty-criteria verify failure; a genuine regression still refuses to close\n", ms.Name)
+			} else {
+				return fmt.Errorf("verify gate failed: %w", runErr)
+			}
 		}
 	}
 

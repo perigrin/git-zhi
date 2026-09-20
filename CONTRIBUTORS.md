@@ -110,10 +110,17 @@ they only add facts (two-phase set pattern for dependencies).
 
 - **Per-entity refs** over single-file state: eliminates merge conflicts
 - **UUIDv7** over git OIDs or sequential numbers: stable across rebases
-- **Lazy init** over explicit `init` command: first mutating command bootstraps
+- **Lazy init** over explicit `init` command: first mutating command bootstraps chain config eagerly, but the milestone ref only lazily — created when an issue names it, or a human runs `milestone add`
 - **Events as commits**: event type is implicit in the diff between commits
 - **Markdown+YAML** for issues (human-readable), **YAML frontmatter + markdown body** for milestones (backward-compatible with pure YAML v0.1 milestones)
 - **Critical Chain scheduling** (Goldratt): safety pooled into shared buffer
+- **`docs check` reachability exemptions**: `docs/decisions/` and `docs/postmortems/`
+  are exempt from the reachability check — ADRs and postmortems form a
+  sequential record indexed by number, not by explicit links from
+  CONTRIBUTING.md, so requiring a link would be a false positive on every
+  entry. The exempt list is `reachabilityExemptPrefixes` in
+  `internal/docs/check.go`; add a directory there, with a reason, if it needs
+  the same exemption.
 
 ## Conventions
 
@@ -144,13 +151,15 @@ All commands support `--format json` for machine-readable output.
 
 **Top-level:** `list`, `config`, `next`
 **Issue:** `add`, `list`, `show`, `edit`
-**Milestone:** `add`, `list`, `show`, `edit`
+**Milestone:** `add`, `list`, `show`, `edit`, `prune`
 
 Notable flags:
+- `list --all` — include done and cancelled issues, composes with `--milestone`/`--label`
 - `list --ready` — show the ready set with path-overlap analysis
 - `list --label <name>` — filter by label (graph built from all issues, display filtered)
 - `next --actor <id>` — resolve HEAD for a specific worker identity
 - `next --label <name>` — filter ready set by label
+- `issue edit --title` — rename in place; the ref is the issue's UUID, so this keeps the id and every `blocks` edge
 - `issue edit --label/--unlabel` — add/remove labels
 - `issue edit --assign/--unassign` — set/clear worker assignment
 - `issue edit --batch` — bulk edit from JSON stdin (used by sync plugins)
@@ -158,11 +167,13 @@ Notable flags:
 - `milestone show --workers N` — include parallelization forecast up to N workers
 - `milestone show --label <name>` — filter milestone issues by label
 - `milestone edit --resolve` — run the milestone's resolution command
+- `milestone prune --dry-run` — report which empty, unauthored milestones would be removed
 - `milestone edit --state complete` — run quality gates and mark milestone completed
+- `milestone edit --force` — with `--state complete`, close a milestone whose issues extracted zero acceptance criteria; does not skip the issue or resolution gates, and does not exempt a genuine regression
 - `config reindex` — rebuild label indexes from issue data
 
 Plugin commands (invoked as `git zhi <name>`):
-- `verify` — extract and run acceptance criteria from issue descriptions
+- `verify` — extract and run acceptance criteria from issue descriptions and the milestone body
 - `sanbao report` — emit observatory report (DORA/SPACE/CALMS metrics, sentiment, difficulty, complexity)
 - `docs init` — scaffold documentation structure
 - `docs check` — validate documentation completeness

@@ -171,10 +171,16 @@ func runChainList(cmd *cobra.Command, args []string) error {
 	// applied here: the sort comes from the graph, which was deliberately
 	// built from every issue so that blockers outside the filter still
 	// constrain readiness, so anything not re-applied to the sort is silently
-	// ignored.
-	if milestoneFilter != "" || labelFilter != "" {
-		sorted = restrictToSet(sorted, filtered)
-	}
+	// ignored. That includes the default state filter — without --all,
+	// filtered already excludes done/cancelled, and skipping this call
+	// whenever no other filter is active let them back into the sort.
+	sorted = restrictToSet(sorted, filtered)
+
+	// TopologicalSort only orders active issues (graph.Graph.activeIssues),
+	// so under --all the done/cancelled members of filtered never appear in
+	// sorted for restrictToSet to keep. Append them here; they have no
+	// dependency ordering left to preserve.
+	sorted = appendMissing(sorted, filtered)
 
 	if format == "json" {
 		out := chainListJSON{Issues: sorted}
@@ -200,6 +206,24 @@ func restrictToSet(ordered, keep []*issue.Issue) []*issue.Issue {
 	var result []*issue.Issue
 	for _, iss := range ordered {
 		if keepIDs[iss.ID] {
+			result = append(result, iss)
+		}
+	}
+	return result
+}
+
+// appendMissing appends members of extra not already present in base,
+// preserving extra's order. Used to add issues restrictToSet can't have
+// kept because they weren't in the ordered list it filtered — under --all,
+// done/cancelled issues that TopologicalSort excludes entirely.
+func appendMissing(base, extra []*issue.Issue) []*issue.Issue {
+	present := make(map[uuid.UUID]bool, len(base))
+	for _, iss := range base {
+		present[iss.ID] = true
+	}
+	result := base
+	for _, iss := range extra {
+		if !present[iss.ID] {
 			result = append(result, iss)
 		}
 	}
