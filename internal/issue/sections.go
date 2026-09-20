@@ -131,7 +131,7 @@ func parseACWithSubsections(text string) (all, positive, negative []Checkbox) {
 
 	for _, sub := range subs {
 		switch strings.ToLower(sub.name) {
-		case "positive scenarios":
+		case "", "positive scenarios":
 			positive = append(positive, parseCheckboxes(sub.text)...)
 		case "negative scenarios":
 			negative = append(negative, parseCheckboxes(sub.text)...)
