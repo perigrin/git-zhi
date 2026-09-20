@@ -147,6 +147,73 @@ func TestChainList_Default(t *testing.T) {
 	}
 }
 
+// TestChainList_AllIncludesDone verifies the top-level list --all flag includes
+// done and cancelled issues, which the default view omits.
+func TestChainList_AllIncludesDone(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	createTestIssueWithDeps(t, app, "Active issue", issue.StatePending, "v0.1", nil)
+	createTestIssueWithDeps(t, app, "Done issue", issue.StateDone, "v0.1", nil)
+	createTestIssueWithDeps(t, app, "Cancelled issue", issue.StateCancelled, "v0.1", nil)
+
+	stdout, err := run("--format", "json", "list", "--all")
+	if err != nil {
+		t.Fatalf("list --all failed: %v", err)
+	}
+
+	titles := listedTitles(t, stdout.String())
+	if len(titles) != 3 {
+		t.Errorf("expected all 3 issues with --all, got %v", titles)
+	}
+}
+
+// TestChainList_DefaultOmitsDone verifies the top-level list command without
+// --all still omits done and cancelled issues.
+func TestChainList_DefaultOmitsDone(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	createTestIssueWithDeps(t, app, "Active issue", issue.StatePending, "v0.1", nil)
+	createTestIssueWithDeps(t, app, "Done issue", issue.StateDone, "v0.1", nil)
+	createTestIssueWithDeps(t, app, "Cancelled issue", issue.StateCancelled, "v0.1", nil)
+
+	stdout, err := run("--format", "json", "list")
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+
+	titles := listedTitles(t, stdout.String())
+	if len(titles) != 1 || titles[0] != "Active issue" {
+		t.Errorf("expected only [Active issue] without --all, got %v", titles)
+	}
+}
+
+// TestChainList_AllWithMilestone verifies --all composes with --milestone
+// rather than replacing it: --all must not drop the milestone restriction.
+func TestChainList_AllWithMilestone(t *testing.T) {
+	app, run := setupChainListTest(t)
+
+	createTestMilestone(t, app, "alpha", nil)
+	createTestMilestone(t, app, "beta", nil)
+	createTestIssueWithDeps(t, app, "Alpha done", issue.StateDone, "alpha", nil)
+	createTestIssueWithDeps(t, app, "Alpha active", issue.StatePending, "alpha", nil)
+	createTestIssueWithDeps(t, app, "Beta done", issue.StateDone, "beta", nil)
+
+	stdout, err := run("--format", "json", "list", "--all", "--milestone", "alpha")
+	if err != nil {
+		t.Fatalf("list --all --milestone failed: %v", err)
+	}
+
+	titles := listedTitles(t, stdout.String())
+	if len(titles) != 2 {
+		t.Errorf("expected both alpha issues with --all --milestone alpha, got %v", titles)
+	}
+	for _, title := range titles {
+		if title == "Beta done" {
+			t.Errorf("--all --milestone alpha leaked an issue from beta: %v", titles)
+		}
+	}
+}
+
 // TestChainList_Critical verifies --critical shows the critical chain with arrow separators.
 func TestChainList_Critical(t *testing.T) {
 	app, run := setupChainListTest(t)
