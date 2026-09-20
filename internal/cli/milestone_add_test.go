@@ -44,6 +44,13 @@ func setupMilestoneTest(t *testing.T) (*cli.App, func(args ...string) (*bytes.Bu
 		return stdout, err
 	}
 
+	// The default milestone is no longer created eagerly by EnsureInitialized;
+	// most callers of this helper still expect a "v0.1" milestone to exist,
+	// so create it explicitly the way a human would.
+	if _, err := run("milestone", "add", "v0.1"); err != nil {
+		t.Fatalf("failed to seed default milestone v0.1: %v", err)
+	}
+
 	return app, run
 }
 
@@ -99,7 +106,7 @@ func TestMilestoneAdd_InvalidName(t *testing.T) {
 func TestMilestoneAdd_Duplicate(t *testing.T) {
 	_, run := setupMilestoneTest(t)
 
-	// v0.1 is created by EnsureInitialized; adding it again should error.
+	// v0.1 is seeded by setupMilestoneTest; adding it again should error.
 	_, err := run("milestone", "add", "v0.1")
 	if err == nil {
 		t.Fatal("expected error when adding duplicate milestone, got nil")
