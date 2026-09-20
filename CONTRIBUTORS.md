@@ -114,6 +114,13 @@ they only add facts (two-phase set pattern for dependencies).
 - **Events as commits**: event type is implicit in the diff between commits
 - **Markdown+YAML** for issues (human-readable), **YAML frontmatter + markdown body** for milestones (backward-compatible with pure YAML v0.1 milestones)
 - **Critical Chain scheduling** (Goldratt): safety pooled into shared buffer
+- **`docs check` reachability exemptions**: `docs/decisions/` and `docs/postmortems/`
+  are exempt from the reachability check — ADRs and postmortems form a
+  sequential record indexed by number, not by explicit links from
+  CONTRIBUTING.md, so requiring a link would be a false positive on every
+  entry. The exempt list is `reachabilityExemptPrefixes` in
+  `internal/docs/check.go`; add a directory there, with a reason, if it needs
+  the same exemption.
 
 ## Conventions
 
