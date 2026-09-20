@@ -102,8 +102,8 @@ extracts backtick-delimited commands from their Acceptance Criteria sections,
 and executes each command in priority order (recently-changed paths first).
 
 Exit code 0 means every acceptance criterion was verified and passed. Exit code
-1 means at least one regression, unverifiable criterion, or criterion that ran
-no tests.`,
+1 means at least one regression, unverifiable criterion, criterion that ran no
+tests, or no acceptance criteria extracted at all.`,
 		Args: cobra.ExactArgs(1),
 		// SilenceUsage prevents Cobra from printing usage on every error.
 		SilenceUsage:  true,
@@ -359,6 +359,17 @@ no tests.`,
 						Item:       d.Text,
 					})
 				}
+			}
+
+			// Extracting nothing at all — not even a dropped, malformed
+			// command — is a distinct failure from every criterion passing.
+			// Without this, a milestone whose issues carry no runnable
+			// criteria (or no issues at all) reports "0/0 passing" and exits
+			// 0, indistinguishable from one whose criteria all passed. The
+			// issue count in the message is what tells an empty milestone
+			// apart from one whose issues simply extracted nothing.
+			if totalCount == 0 && unverifiableCount == 0 {
+				return fmt.Errorf("milestone %s: no acceptance criteria extracted from %d done issue(s)", milestoneName, len(doneIssues))
 			}
 
 			// If dry-run, nothing to summarize.
