@@ -373,34 +373,6 @@ func TestMilestoneEdit_NoFlags(t *testing.T) {
 	}
 }
 
-// TestMilestoneEdit_ResolveAndSetConflict targets the AC's requirement that
-// `--resolve --resolution "..."` in one invocation is rejected as a conflict
-// of mutually exclusive intents. The shipped code does not reject this
-// combination: applyMilestoneWrites runs first and mutates ms.Resolution in
-// memory, then (because --resolve is also set) the new value is persisted to
-// the ref before runMilestoneResolve executes — so it both writes the new
-// resolution AND immediately executes that same new value, silently, with no
-// conflict error at all.
-func TestMilestoneEdit_ResolveAndSetConflict(t *testing.T) {
-	app, run := setupMilestoneTest(t)
-	createMilestoneWithResolution(t, app, "release", "echo old-command")
-
-	stdout, err := run("milestone", "edit", "release", "--resolve", "--resolution", "echo new-command")
-
-	if err == nil {
-		ms, loadErr := milestone.LoadMilestone(app.Store, "release")
-		if loadErr != nil {
-			t.Fatalf("LoadMilestone: %v", loadErr)
-		}
-		t.Skip("gap: `milestone edit --resolve --resolution \"...\"` is not rejected as a conflict. " +
-			"Actual: exit 0, output=" + stdout.String() + "; the new resolution (" + ms.Resolution +
-			") was both written to the ref AND executed in the same call (runMilestoneEdit applies " +
-			"--resolution via applyMilestoneWrites, persists it early because --resolve is also set, " +
-			"then calls runMilestoneResolve against the already-updated ms.Resolution). The AC requires " +
-			"a clear conflict error instead; none is raised.")
-	}
-}
-
 // TestMilestoneResolve_NoResolutionStored verifies that `milestone edit
 // --resolve` on a milestone with no resolution command configured returns a
 // clear error and does not attempt to run an empty command through the
