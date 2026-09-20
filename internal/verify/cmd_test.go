@@ -435,12 +435,33 @@ func TestVerifyCLI_DryRunCancelledExcluded(t *testing.T) {
 	}
 	writeIssue(t, app.Store, iss)
 
+	// A pending issue alongside it, so the milestone extracts something. The
+	// claim under test is that the cancelled issue is excluded, not that an
+	// empty extraction succeeds — extracting nothing is its own error now.
+	pending := &issue.Issue{
+		ID:            issueID(t),
+		Title:         "Pending Issue",
+		State:         issue.StatePending,
+		Urgency:       issue.UrgencyNormal,
+		Milestone:     "v0.1",
+		Created:       now,
+		Updated:       now,
+		Sessions:      []issue.Session{},
+		Transitions:   []issue.Transition{},
+		ObservedPaths: []string{},
+		Body:          "## Acceptance Criteria\n\n- [ ] pending check (`echo pending`)\n",
+	}
+	writeIssue(t, app.Store, pending)
+
 	stdout, _, err := run("v0.1", "--dry-run")
 	if err != nil {
 		t.Fatalf("--dry-run should not fail, got: %v", err)
 	}
 	if strings.Contains(stdout, "echo cancelled") {
 		t.Errorf("expected cancelled issue's command NOT listed in dry-run output, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "echo pending") {
+		t.Errorf("expected pending issue's command listed in dry-run output, got:\n%s", stdout)
 	}
 }
 
