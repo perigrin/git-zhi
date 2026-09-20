@@ -117,6 +117,9 @@ func runIssueEdit(cmd *cobra.Command, args []string) error {
 		switch {
 		case bodyValue == "-":
 			// '-' is an explicit sentinel meaning "read from stdin".
+			if ttyErr := rejectInteractiveStdin(cmd, "body"); ttyErr != nil {
+				return ttyErr
+			}
 			bodyBytes, readErr := io.ReadAll(cmd.InOrStdin())
 			if readErr != nil {
 				return fmt.Errorf("read body from stdin: %w", readErr)

@@ -3,6 +3,8 @@
 package cli_test
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -614,6 +616,59 @@ func TestMilestoneComplete_ForwardsTimeoutToVerify(t *testing.T) {
 			}
 			if hasTimeout := strings.Contains(got, "--timeout\n7\n"); hasTimeout != tc.wantArg {
 				t.Errorf("--timeout forwarded = %v, want %v; argv:\n%s", hasTimeout, tc.wantArg, got)
+			}
+		})
+	}
+}
+
+// runMilestoneEditWithReader runs 'milestone edit' with an arbitrary reader as
+// stdin, so tests can supply something other than the empty reader that
+// setupMilestoneTest's run() always wires up.
+func runMilestoneEditWithReader(app *cli.App, in *os.File, args ...string) error {
+	cmd := cli.NewRootCommand()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetIn(in)
+	cmd.SetArgs(args)
+	cmd.SetContext(cli.WithApp(context.Background(), app))
+	return cmd.Execute()
+}
+
+// TestMilestoneEdit_StdinTTY verifies that readTextArg's "-" sentinel refuses
+// to read when stdin is a terminal, for all three flags it serves
+// (--body, --resolution, --postmortem), mirroring
+// TestIssueEditBody_StdinSentinel_TTY. Without this guard, each of these
+// flags would hang forever reading from an unfed terminal.
+func TestMilestoneEdit_StdinTTY(t *testing.T) {
+	for _, flag := range []string{"body", "resolution", "postmortem"} {
+		t.Run(flag, func(t *testing.T) {
+			app, _ := setupMilestoneTest(t)
+
+			before, err := milestone.LoadMilestone(app.Store, "v0.1")
+			if err != nil {
+				t.Fatalf("LoadMilestone: %v", err)
+			}
+
+			tty, openErr := os.Open(os.DevNull)
+			if openErr != nil {
+				t.Fatalf("open %s: %v", os.DevNull, openErr)
+			}
+			defer tty.Close()
+
+			err = runMilestoneEditWithReader(app, tty, "milestone", "edit", "v0.1", "--"+flag, "-")
+			if err == nil {
+				t.Fatalf("expected non-zero exit for --%s - on TTY-like stdin, got nil", flag)
+			}
+			if !strings.Contains(err.Error(), flag) {
+				t.Fatalf("expected error to name --%s, got: %v", flag, err)
+			}
+
+			after, err := milestone.LoadMilestone(app.Store, "v0.1")
+			if err != nil {
+				t.Fatalf("LoadMilestone after: %v", err)
+			}
+			if after.Body != before.Body || after.Resolution != before.Resolution || after.Postmortem != before.Postmortem {
+				t.Fatalf("expected milestone unchanged, before=%+v after=%+v", before, after)
 			}
 		})
 	}

@@ -239,9 +239,12 @@ const clearSentinel = "none"
 // ok is false when "-" produced nothing, which the caller must treat as "leave
 // the field alone". A generator that fails and emits an empty stream should not
 // erase the field it was meant to fill.
-func readTextArg(cmd *cobra.Command, value string) (text string, ok bool, err error) {
+func readTextArg(cmd *cobra.Command, flagName, value string) (text string, ok bool, err error) {
 	if value != "-" {
 		return strings.TrimSpace(value), true, nil
+	}
+	if ttyErr := rejectInteractiveStdin(cmd, flagName); ttyErr != nil {
+		return "", false, ttyErr
 	}
 	raw, readErr := io.ReadAll(cmd.InOrStdin())
 	if readErr != nil {
@@ -287,7 +290,7 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 				changed = true
 			}
 		} else {
-			body, ok, err := readTextArg(cmd, value)
+			body, ok, err := readTextArg(cmd, "body", value)
 			if err != nil {
 				return false, fmt.Errorf("--body: %w", err)
 			}
@@ -308,7 +311,7 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 			fmt.Fprintf(w, "%s: resolution → (cleared)\n", ms.Name)
 			changed = true
 		} else {
-			resolution, ok, err := readTextArg(cmd, value)
+			resolution, ok, err := readTextArg(cmd, "resolution", value)
 			if err != nil {
 				return false, fmt.Errorf("--resolution: %w", err)
 			}
@@ -324,7 +327,7 @@ func applyMilestoneWrites(cmd *cobra.Command, ms *milestone.Milestone, w io.Writ
 
 	if cmd.Flags().Changed("postmortem") {
 		value, _ := cmd.Flags().GetString("postmortem")
-		postmortem, ok, err := readTextArg(cmd, value)
+		postmortem, ok, err := readTextArg(cmd, "postmortem", value)
 		if err != nil {
 			return false, fmt.Errorf("--postmortem: %w", err)
 		}
