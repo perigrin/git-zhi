@@ -305,6 +305,83 @@ func TestVerifyCLI_NoDoneIssues(t *testing.T) {
 	}
 }
 
+// TestVerifyCLI_DryRunPendingIssues verifies that --dry-run lists criteria
+// from pending issues, not only done ones — this is the state a
+// pre-execution review actually runs in, before any issue in the milestone
+// has reached done.
+func TestVerifyCLI_DryRunPendingIssues(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	now := time.Now()
+	iss := &issue.Issue{
+		ID:            issueID(t),
+		Title:         "Pending Issue",
+		State:         issue.StatePending,
+		Urgency:       issue.UrgencyNormal,
+		Milestone:     "v0.1",
+		Created:       now,
+		Updated:       now,
+		Sessions:      []issue.Session{},
+		Transitions:   []issue.Transition{},
+		ObservedPaths: []string{},
+		Body:          "## Acceptance Criteria\n\n- [ ] pending check (`echo pending`)\n",
+	}
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1", "--dry-run")
+	if err != nil {
+		t.Fatalf("--dry-run over pending issues should not fail, got: %v", err)
+	}
+	if !strings.Contains(stdout, "echo pending") {
+		t.Errorf("expected pending issue's command listed in dry-run output, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_DryRunCancelledExcluded verifies that --dry-run does not list
+// criteria from cancelled issues — cancelled work is not pending
+// verification.
+func TestVerifyCLI_DryRunCancelledExcluded(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	now := time.Now()
+	iss := &issue.Issue{
+		ID:            issueID(t),
+		Title:         "Cancelled Issue",
+		State:         issue.StateCancelled,
+		Urgency:       issue.UrgencyNormal,
+		Milestone:     "v0.1",
+		Created:       now,
+		Updated:       now,
+		Sessions:      []issue.Session{},
+		Transitions:   []issue.Transition{},
+		ObservedPaths: []string{},
+		Body:          "## Acceptance Criteria\n\n- [ ] cancelled check (`echo cancelled`)\n",
+	}
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1", "--dry-run")
+	if err != nil {
+		t.Fatalf("--dry-run should not fail, got: %v", err)
+	}
+	if strings.Contains(stdout, "echo cancelled") {
+		t.Errorf("expected cancelled issue's command NOT listed in dry-run output, got:\n%s", stdout)
+	}
+}
+
 // TestVerifyCLI_PositiveNegativeSubsections verifies that positive and negative
 // subsections are shown distinctly in human-readable output.
 func TestVerifyCLI_PositiveNegativeSubsections(t *testing.T) {

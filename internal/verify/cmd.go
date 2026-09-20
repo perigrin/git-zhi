@@ -140,7 +140,13 @@ no tests.`,
 				return fmt.Errorf("%w (%s)", err, milestoneHint(app.Store, milestoneName))
 			}
 
-			// Load all issues and filter to done issues in this milestone.
+			// Load all issues and filter to this milestone. A real run only
+			// executes done issues — running a pending issue's criteria would
+			// report failures for work not yet done. --dry-run lists rather
+			// than executes, so it selects by milestone alone (minus
+			// cancelled issues, which are not pending verification): a
+			// pre-execution review runs while every issue is still pending,
+			// and a dry-run limited to done issues would extract nothing.
 			allIssues, err := issue.LoadAllIssues(app.Store)
 			if err != nil {
 				return fmt.Errorf("load issues: %w", err)
@@ -148,7 +154,16 @@ no tests.`,
 
 			var doneIssues []*issue.Issue
 			for _, iss := range allIssues {
-				if iss.Milestone == milestoneName && iss.State == issue.StateDone {
+				if iss.Milestone != milestoneName {
+					continue
+				}
+				if dryRun {
+					if iss.State != issue.StateCancelled {
+						doneIssues = append(doneIssues, iss)
+					}
+					continue
+				}
+				if iss.State == issue.StateDone {
 					doneIssues = append(doneIssues, iss)
 				}
 			}
