@@ -28,19 +28,24 @@ func newMilestonePruneCommand() *cobra.Command {
 	return cmd
 }
 
-// isPrunable reports whether a milestone matches the narrow "machine-made and
-// empty" predicate: zero issues, no body, no resolution, no postmortem, no
-// due date, not completed, and not tagged. This is exactly what
-// EnsureInitialized used to manufacture and nothing a human typed — a single
-// authored field, or a tag, is enough to spare it.
-func isPrunable(ms *milestone.Milestone, issueCount int, tagged bool) bool {
+// isBare reports whether a milestone has zero issues and no authored
+// content: no body, no resolution, no postmortem, no due date, and not
+// completed. This is exactly what EnsureInitialized used to manufacture and
+// nothing a human typed — a single authored field is enough to spare it.
+func isBare(ms *milestone.Milestone, issueCount int) bool {
 	return issueCount == 0 &&
 		ms.Body == "" &&
 		ms.Resolution == "" &&
 		ms.Postmortem == "" &&
 		ms.Due == nil &&
-		ms.State != "completed" &&
-		!tagged
+		ms.State != "completed"
+}
+
+// isPrunable reports whether a milestone matches the full prune predicate:
+// bare, and also not tagged. A tag ref pointing at a milestone is itself
+// authored content — pruning the milestone would leave the tag dangling.
+func isPrunable(ms *milestone.Milestone, issueCount int, tagged bool) bool {
+	return isBare(ms, issueCount) && !tagged
 }
 
 // loadTagTargets reads every tag ref and returns a map from the ref path it
@@ -98,13 +103,15 @@ func runMilestonePrune(cmd *cobra.Command, args []string) error {
 		refPath := milestone.RefPrefix + ms.Name
 		tagName, tagged := tagTargets[refPath]
 
-		if !isPrunable(ms, issueCounts[ms.Name], false) {
+		if !isBare(ms, issueCounts[ms.Name]) {
 			continue
 		}
 		if tagged {
 			fmt.Fprintf(out, "%s: skipped, tagged %q\n", ms.Name, tagName)
 			continue
 		}
+		// Reaching here means isBare was true and tagged was false, i.e.
+		// isPrunable(ms, issueCounts[ms.Name], tagged) holds.
 
 		if dryRun {
 			fmt.Fprintf(out, "[dry-run] would prune %s\n", ms.Name)
