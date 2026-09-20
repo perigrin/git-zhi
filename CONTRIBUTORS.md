@@ -154,6 +154,7 @@ All commands support `--format json` for machine-readable output.
 **Milestone:** `add`, `list`, `show`, `edit`, `prune`
 
 Notable flags:
+- `list --all` — include done and cancelled issues, composes with `--milestone`/`--label`
 - `list --ready` — show the ready set with path-overlap analysis
 - `list --label <name>` — filter by label (graph built from all issues, display filtered)
 - `next --actor <id>` — resolve HEAD for a specific worker identity
