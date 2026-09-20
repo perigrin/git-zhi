@@ -157,9 +157,12 @@ func TestMilestoneEdit_PostmortemSurvivesStateComplete(t *testing.T) {
 	if _, err := run("milestone", "add", "rel"); err != nil {
 		t.Fatalf("milestone add: %v", err)
 	}
-	// No issues in the milestone, so the issue gate passes and the verify gate
-	// is skipped (git-zhi is not on PATH under test).
-	if _, err := run("milestone", "edit", "rel", "--state", "complete", "--postmortem", "closing notes"); err != nil {
+	// The milestone has no issues, so the verify gate finds nothing to extract
+	// and refuses to close it. That is the case --force exists for, and it is
+	// the only thing --force exempts. Relying on git-zhi being absent from PATH
+	// instead would make this test's result depend on what is installed on the
+	// machine running it.
+	if _, err := run("milestone", "edit", "rel", "--state", "complete", "--force", "--postmortem", "closing notes"); err != nil {
 		t.Fatalf("--state complete --postmortem: %v", err)
 	}
 

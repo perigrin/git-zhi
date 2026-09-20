@@ -302,8 +302,11 @@ func TestMilestoneComplete_AllIssuesDone(t *testing.T) {
 	// Create a milestone with a passing resolution command.
 	createMilestoneWithResolution(t, app, "release", "echo ok")
 
-	// Add issues that are all done or cancelled.
-	createTestIssueInMilestoneWithState(t, app, "Feature A", issue.StateDone, "release")
+	// Add issues that are all done or cancelled. The done one carries a real
+	// acceptance criterion: the verify gate refuses to close a milestone it
+	// could extract nothing from, so a completable milestone must have
+	// something to verify.
+	createTestIssueInMilestoneWithBody(t, app, "Feature A", issue.StateDone, "release", passingCriteriaIssueBody)
 	createTestIssueInMilestoneWithState(t, app, "Feature B", issue.StateCancelled, "release")
 
 	_, err := run("milestone", "edit", "release", "--state", "complete")
@@ -393,7 +396,7 @@ func TestIssueEdit_MilestoneLocked(t *testing.T) {
 
 	// Create and complete the release milestone.
 	createMilestoneWithResolution(t, app, "release", "echo ok")
-	createTestIssueInMilestoneWithState(t, app, "Done issue", issue.StateDone, "release")
+	createTestIssueInMilestoneWithBody(t, app, "Done issue", issue.StateDone, "release", passingCriteriaIssueBody)
 	if _, err := run("milestone", "edit", "release", "--state", "complete"); err != nil {
 		t.Fatalf("complete milestone: %v", err)
 	}
@@ -652,6 +655,12 @@ func buildVerifyBinary(t *testing.T) string {
 // carries prose but no backtick command at all, which verify extracts
 // nothing from — the case --force is meant to exempt.
 const noCriteriaIssueBody = "## Acceptance Criteria\n\n- [ ] this was reviewed by hand\n"
+
+// passingCriteriaIssueBody is a done issue's Acceptance Criteria section
+// carrying a real, passing command. A milestone can only be completed when the
+// verify gate finds something to run, so any test that expects completion to
+// succeed needs an issue shaped like this rather than one with prose alone.
+const passingCriteriaIssueBody = "## Acceptance Criteria\n\n- [ ] the criterion runs (`true`)\n"
 
 // TestMilestoneComplete_OverrideSkipsVerify verifies that a milestone whose
 // done issues carry no extractable acceptance criteria refuses to close
