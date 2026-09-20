@@ -108,6 +108,26 @@ func TestIssueEditBody_StdinSentinel_TTY(t *testing.T) {
 	}
 }
 
+// TestIssueEditBody_StdinSentinel_Empty verifies that --body - reading zero
+// bytes from a genuinely empty (non-TTY) stdin leaves the body untouched
+// and fails the command, rather than silently exiting 0. Mirrors
+// TestMilestoneEdit_StdinBody_Empty's fix for the same readTextArg shape.
+func TestIssueEditBody_StdinSentinel_Empty(t *testing.T) {
+	app, _ := setupEditTest(t)
+	uuidStr := createEditTestIssue(t, app, "Issue for empty stdin sentinel")
+	prefix := uuidStr[:8]
+	originalBody := bodyEdgeReadBody(t, app, uuidStr)
+
+	_, _, err := runWithStdin(app, "", "issue", "edit", prefix, "--body", "-")
+	if err == nil {
+		t.Fatalf("expected --body - with empty stdin to fail, got nil error")
+	}
+
+	if got := bodyEdgeReadBody(t, app, uuidStr); got != originalBody {
+		t.Fatalf("body was overwritten by empty stdin: got %q, want %q", got, originalBody)
+	}
+}
+
 // TestIssueEditBody_NoEditor verifies that --body "" (which opens $EDITOR)
 // fails cleanly, without panicking or persisting a zero-length body, when no
 // editor can be resolved at all. PATH is scrubbed so the underlying

@@ -27,5 +27,5 @@ func rejectInteractiveStdin(cmd *cobra.Command, flagName string) error {
 	if info.Mode()&os.ModeCharDevice == 0 {
 		return nil
 	}
-	return fmt.Errorf("--%s -: stdin is a terminal, not a pipe; pipe input instead, e.g. echo \"text\" | git zhi ... --%s -", flagName, flagName)
+	return fmt.Errorf("--%s -: stdin is a character device, not a pipe or file; pipe input instead, e.g. echo \"text\" | git zhi ... --%s -", flagName, flagName)
 }
