@@ -694,3 +694,148 @@ func TestVerifyCLI_NoTestsRanJSON(t *testing.T) {
 		t.Errorf("entry = {passed:%v exit_code:%d no_tests_ran:%v}, want {false 0 true}", r.Passed, r.ExitCode, r.NoTestsRan)
 	}
 }
+
+// TestVerifyCLI_MilestoneBodyCriteria verifies that acceptance criteria
+// written in the milestone's own body are extracted and run alongside the
+// issues' criteria, not just read by eye.
+func TestVerifyCLI_MilestoneBodyCriteria(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+		Body:    "## Acceptance Criteria\n\n- [ ] milestone-level check (`echo from-body`)\n",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] echo works (`echo hello`)\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err != nil {
+		t.Fatalf("verify v0.1 failed: %v\noutput:\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "echo from-body") {
+		t.Errorf("expected milestone-body command in output, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "echo hello") {
+		t.Errorf("expected issue command still in output, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_MilestoneBodySection verifies milestone-body criteria are
+// reported under their own section header, positioned above the issue rows,
+// rather than folded in as a pseudo-titled issue row.
+func TestVerifyCLI_MilestoneBodySection(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+		Body:    "## Acceptance Criteria\n\n- [ ] milestone-level check (`echo from-body`)\n",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] echo works (`echo hello`)\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err != nil {
+		t.Fatalf("verify v0.1 failed: %v\noutput:\n%s", err, stdout)
+	}
+
+	sectionIdx := strings.Index(stdout, "Milestone Acceptance Criteria")
+	if sectionIdx < 0 {
+		t.Fatalf("expected a milestone-body section header, got:\n%s", stdout)
+	}
+	issueRowIdx := strings.Index(stdout, iss.Title)
+	if issueRowIdx < 0 {
+		t.Fatalf("expected the issue row in output, got:\n%s", stdout)
+	}
+	if sectionIdx > issueRowIdx {
+		t.Errorf("expected milestone-body section above the issue rows, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_MilestoneBodyEmpty verifies that a milestone with an empty
+// body (the shape every other fixture in this file builds) contributes no
+// criteria and emits no section header at all. The header must stay
+// conditional on the body actually yielding criteria, or every other fixture
+// in this file breaks at once.
+func TestVerifyCLI_MilestoneBodyEmpty(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] echo works (`echo hello`)\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err != nil {
+		t.Fatalf("verify v0.1 failed: %v\noutput:\n%s", err, stdout)
+	}
+	if strings.Contains(stdout, "Milestone Acceptance Criteria") {
+		t.Errorf("expected no milestone-body section header for an empty body, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_MilestoneBodyUnverifiable verifies a milestone-body criterion
+// with backtick text but no parenthesized command is reported through the
+// same Dropped/unverifiable path an issue's malformed criterion would be.
+func TestVerifyCLI_MilestoneBodyUnverifiable(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+		Body:    "## Acceptance Criteria\n\n- [ ] greet works: `bash test.sh`\n",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] echo works (`echo hello`)\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for a dropped milestone-body command, got nil\noutput:\n%s", stdout)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "unverifiable") {
+		t.Errorf("expected 'unverifiable' in output, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_MilestoneBodyOnlyNoIssues verifies that a milestone with no
+// done issues but real body criteria runs those criteria and does not trip
+// the zero-extraction error — the body is a second source of commands, not
+// a fallback that only counts when the issue set is empty.
+func TestVerifyCLI_MilestoneBodyOnlyNoIssues(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+		Body:    "## Acceptance Criteria\n\n- [ ] milestone-level check (`echo from-body`)\n",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	stdout, _, err := run("v0.1")
+	if err != nil {
+		t.Fatalf("expected milestone-body-only criteria to run cleanly, got: %v\noutput:\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "echo from-body") {
+		t.Errorf("expected milestone-body command in output, got:\n%s", stdout)
+	}
+}
