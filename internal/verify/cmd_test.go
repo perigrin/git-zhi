@@ -695,11 +695,11 @@ func TestVerifyCLI_NoTestsRanJSON(t *testing.T) {
 	}
 }
 
-// TestVerifyCLI_TimeoutMarkedDistinctFromRegression verifies a criterion
+// TestVerifyCLI_TimeoutIsNotARegression verifies a criterion
 // killed by the per-command timeout is reported with its own marker instead
 // of being folded into REGRESSION, which is indistinguishable from a command
 // that ran and genuinely failed.
-func TestVerifyCLI_TimeoutMarkedDistinctFromRegression(t *testing.T) {
+func TestVerifyCLI_TimeoutIsNotARegression(t *testing.T) {
 	app, run := setupVerifyTest(t)
 
 	writeMilestone(t, app.Store, &milestone.Milestone{
@@ -956,5 +956,35 @@ func TestVerifyCLI_MilestoneBodyOnlyNoIssues(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "echo from-body") {
 		t.Errorf("expected milestone-body command in output, got:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_TimeoutFailsGate pins the half of the fix that did not change:
+// a timed-out criterion verified nothing, so it must still fail the gate. Only
+// the reporting was reclassified. A milestone whose sole criterion timed out
+// cannot be allowed to close on the grounds that it was not a regression.
+func TestVerifyCLI_TimeoutFailsGate(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	ms := &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	}
+	writeMilestone(t, app.Store, ms)
+
+	body := "## Acceptance Criteria\n\n- [ ] outlives the budget (`sleep 5`)\n"
+	iss := newDoneIssueWithAC(t, "v0.1", body)
+	writeIssue(t, app.Store, iss)
+
+	stdout, _, err := run("v0.1", "--timeout", "1")
+	if err == nil {
+		t.Fatal("a timed-out criterion must still fail the gate, got nil error")
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("error should name the timeout, got: %v", err)
+	}
+	if strings.Contains(stdout, "REGRESSION") {
+		t.Errorf("a timeout must not be reported as a regression, got:\n%s", stdout)
 	}
 }
