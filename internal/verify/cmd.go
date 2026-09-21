@@ -28,6 +28,7 @@ type JSONResultEntry struct {
 	Command    string `json:"command"`
 	Passed     bool   `json:"passed"`
 	NoTestsRan bool   `json:"no_tests_ran,omitempty"`
+	TimedOut   bool   `json:"timed_out,omitempty"`
 	ExitCode   int    `json:"exit_code"`
 	Stdout     string `json:"stdout"`
 	Stderr     string `json:"stderr"`
@@ -48,6 +49,7 @@ type JSONReport struct {
 	Total             int                     `json:"total"`
 	Passed            int                     `json:"passed"`
 	NoTestsRan        int                     `json:"no_tests_ran"`
+	TimedOut          int                     `json:"timed_out"`
 	Failed            int                     `json:"failed"`
 	Unverifiable      int                     `json:"unverifiable"`
 	Results           []JSONResultEntry       `json:"results"`
@@ -58,8 +60,12 @@ type JSONReport struct {
 // without executing any test verified nothing, so it is neither a pass nor a
 // regression — the distinction matters when reading a red gate, and stating
 // the rule once keeps the positive and negative loops from drifting apart.
-func classify(r Result) (passed, vacuous bool) {
-	return r.ExitCode == 0 && !r.TimedOut && !r.NoTestsRan, r.NoTestsRan
+// A run killed by the per-command timeout is the same kind of non-verification:
+// nothing was verified, so it cannot pass, but it is not a genuine failure
+// either — it never ran to completion, so it gets its own category rather
+// than being read as a regression.
+func classify(r Result) (passed, vacuous, timedOut bool) {
+	return r.ExitCode == 0 && !r.TimedOut && !r.NoTestsRan, r.NoTestsRan, r.TimedOut
 }
 
 // milestoneHint explains a failed milestone lookup by naming what is actually
@@ -109,7 +115,7 @@ run limited to done issues would find nothing to report.
 
 Exit code 0 means every acceptance criterion was verified and passed. Exit code
 1 means at least one regression, unverifiable criterion, criterion that ran no
-tests, or no acceptance criteria extracted at all.`,
+tests, criterion that timed out, or no acceptance criteria extracted at all.`,
 		Args: cobra.ExactArgs(1),
 		// SilenceUsage prevents Cobra from printing usage on every error.
 		SilenceUsage:  true,
@@ -196,6 +202,7 @@ tests, or no acceptance criteria extracted at all.`,
 			passedCount := 0
 			failedCount := 0
 			vacuousCount := 0
+			timedOutCount := 0
 			unverifiableCount := 0
 			earlyStop := false
 
@@ -223,13 +230,15 @@ tests, or no acceptance criteria extracted at all.`,
 					}
 					repoRoot := repoRootFromApp(app)
 					result := Execute(c.Text, repoRoot, cmdTimeout)
-					passed, vacuous := classify(result)
+					passed, vacuous, timedOut := classify(result)
 					if format != "json" {
 						switch {
 						case passed:
 							fmt.Fprintln(cmd.OutOrStdout(), "✓")
 						case vacuous:
 							fmt.Fprintln(cmd.OutOrStdout(), "⚠  ← NO TESTS RAN")
+						case timedOut:
+							fmt.Fprintln(cmd.OutOrStdout(), "⏱  ← TIMED OUT")
 						default:
 							fmt.Fprintln(cmd.OutOrStdout(), "✗  ← REGRESSION")
 						}
@@ -239,6 +248,8 @@ tests, or no acceptance criteria extracted at all.`,
 						passedCount++
 					case vacuous:
 						vacuousCount++
+					case timedOut:
+						timedOutCount++
 					default:
 						failedCount++
 					}
@@ -248,6 +259,7 @@ tests, or no acceptance criteria extracted at all.`,
 						Command:    c.Text,
 						Passed:     passed,
 						NoTestsRan: result.NoTestsRan,
+						TimedOut:   result.TimedOut,
 						ExitCode:   result.ExitCode,
 						Stdout:     result.Stdout,
 						Stderr:     result.Stderr,
@@ -362,7 +374,7 @@ tests, or no acceptance criteria extracted at all.`,
 
 					repoRoot := repoRootFromApp(app)
 					result := Execute(c.Text, repoRoot, cmdTimeout)
-					passed, vacuous := classify(result)
+					passed, vacuous, timedOut := classify(result)
 
 					if format != "json" {
 						// The criterion text was printed before the run, so only
@@ -372,6 +384,8 @@ tests, or no acceptance criteria extracted at all.`,
 							fmt.Fprintln(cmd.OutOrStdout(), "✓")
 						case vacuous:
 							fmt.Fprintln(cmd.OutOrStdout(), "⚠  ← NO TESTS RAN")
+						case timedOut:
+							fmt.Fprintln(cmd.OutOrStdout(), "⏱  ← TIMED OUT")
 						default:
 							fmt.Fprintln(cmd.OutOrStdout(), "✗  ← REGRESSION")
 						}
@@ -382,6 +396,8 @@ tests, or no acceptance criteria extracted at all.`,
 						passedCount++
 					case vacuous:
 						vacuousCount++
+					case timedOut:
+						timedOutCount++
 					default:
 						failedCount++
 					}
@@ -393,6 +409,7 @@ tests, or no acceptance criteria extracted at all.`,
 						Command:    c.Text,
 						Passed:     passed,
 						NoTestsRan: result.NoTestsRan,
+						TimedOut:   result.TimedOut,
 						ExitCode:   result.ExitCode,
 						Stdout:     result.Stdout,
 						Stderr:     result.Stderr,
@@ -428,7 +445,7 @@ tests, or no acceptance criteria extracted at all.`,
 
 					repoRoot := repoRootFromApp(app)
 					result := Execute(c.Text, repoRoot, cmdTimeout)
-					passed, vacuous := classify(result)
+					passed, vacuous, timedOut := classify(result)
 
 					if format != "json" {
 						// The criterion text was printed before the run, so only
@@ -438,6 +455,8 @@ tests, or no acceptance criteria extracted at all.`,
 							fmt.Fprintln(cmd.OutOrStdout(), "✓")
 						case vacuous:
 							fmt.Fprintln(cmd.OutOrStdout(), "⚠  ← NO TESTS RAN")
+						case timedOut:
+							fmt.Fprintln(cmd.OutOrStdout(), "⏱  ← TIMED OUT")
 						default:
 							fmt.Fprintln(cmd.OutOrStdout(), "✗  ← REGRESSION")
 						}
@@ -448,6 +467,8 @@ tests, or no acceptance criteria extracted at all.`,
 						passedCount++
 					case vacuous:
 						vacuousCount++
+					case timedOut:
+						timedOutCount++
 					default:
 						failedCount++
 					}
@@ -459,6 +480,7 @@ tests, or no acceptance criteria extracted at all.`,
 						Command:    c.Text,
 						Passed:     passed,
 						NoTestsRan: result.NoTestsRan,
+						TimedOut:   result.TimedOut,
 						ExitCode:   result.ExitCode,
 						Stdout:     result.Stdout,
 						Stderr:     result.Stderr,
@@ -526,6 +548,7 @@ tests, or no acceptance criteria extracted at all.`,
 					Passed:            passedCount,
 					Failed:            failedCount,
 					NoTestsRan:        vacuousCount,
+					TimedOut:          timedOutCount,
 					Unverifiable:      unverifiableCount,
 					Results:           jsonResults,
 					UnverifiableItems: jsonUnverifiable,
@@ -545,14 +568,17 @@ tests, or no acceptance criteria extracted at all.`,
 				if vacuousCount > 0 {
 					fmt.Fprintf(cmd.OutOrStdout(), "      %d criterion(s) ran no tests\n", vacuousCount)
 				}
+				if timedOutCount > 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "      %d criterion(s) timed out\n", timedOutCount)
+				}
 				if failedCount > 0 {
 					fmt.Fprintf(cmd.OutOrStdout(), "      %d regression(s) detected\n", failedCount)
 				}
 			}
 
-			if failedCount > 0 || unverifiableCount > 0 || vacuousCount > 0 {
-				return fmt.Errorf("milestone %s: %d regression(s), %d unverifiable acceptance criterion(s), %d that ran no tests",
-					milestoneName, failedCount, unverifiableCount, vacuousCount)
+			if failedCount > 0 || unverifiableCount > 0 || vacuousCount > 0 || timedOutCount > 0 {
+				return fmt.Errorf("milestone %s: %d regression(s), %d unverifiable acceptance criterion(s), %d that ran no tests, %d that timed out",
+					milestoneName, failedCount, unverifiableCount, vacuousCount, timedOutCount)
 			}
 			return nil
 		},
