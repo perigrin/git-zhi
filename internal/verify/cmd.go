@@ -100,6 +100,12 @@ func NewVerifyCommand() *cobra.Command {
 		Long: `verify loads the named milestone, finds all done issues,
 extracts backtick-delimited commands from their Acceptance Criteria sections,
 and executes each command in priority order (recently-changed paths first).
+Criteria in the milestone's own body are extracted and run alongside them.
+
+--dry-run lists rather than executes, and reads every issue in the milestone
+regardless of state, including pending ones. That is deliberate: a review that
+runs before execution starts sees a chain where nothing is done yet, and a dry
+run limited to done issues would find nothing to report.
 
 Exit code 0 means every acceptance criterion was verified and passed. Exit code
 1 means at least one regression, unverifiable criterion, criterion that ran no
@@ -553,7 +559,7 @@ tests, or no acceptance criteria extracted at all.`,
 	}
 
 	cmd.Flags().BoolVar(&failFast, "fail-fast", false, "stop on first failing command")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "list commands without executing them")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "list commands without executing them, including from pending issues")
 	cmd.Flags().StringVar(&format, "format", "", "output format (json)")
 	cmd.Flags().IntVar(&timeout, "timeout", 300, "per-command timeout in seconds")
 
