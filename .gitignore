@@ -7,3 +7,6 @@ git-chain
 
 # Linked worktrees live inside the repo; never commit them as gitlinks.
 .claude/worktrees/
+
+# Machine-specific plugin capability manifest.
+.claude/crochet/capabilities.json

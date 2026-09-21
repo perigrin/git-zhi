@@ -9,6 +9,7 @@ index to everything else.
 - [Contributing guides](docs/contributing) — coding conventions and development workflow
 - [Decisions](docs/decisions) — architecture decision records (ADRs)
 - [Plans](docs/plans) — implementation plans and design documents
+- [Requests](docs/requests) — design documents written from other repositories against this one
 - [PRD](docs/PRD) — product requirements by version (v0.1 through v0.5)
 - [Fitness](docs/fitness) — release observations and smoke-test records
 - [Superpowers](docs/superpowers) — plans written against the superpowers workflow

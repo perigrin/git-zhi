@@ -120,8 +120,32 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("a title argument is required when the body comes from a flag: git zhi issue add \"Title\" --body-file <path>")
 	}
 
+	// "-" is the stdin sentinel everywhere else --body appears (issue edit,
+	// milestone add/edit); without this, it was stored as a literal 1-byte
+	// body instead of reading stdin, which silently threw away real bodies.
+	bodyFromStdin := false
+	if bodyFlag == "-" {
+		if ttyErr := rejectInteractiveStdin(cmd, "body"); ttyErr != nil {
+			return ttyErr
+		}
+		raw, readErr := io.ReadAll(cmd.InOrStdin())
+		if readErr != nil {
+			return fmt.Errorf("read stdin: %w", readErr)
+		}
+		bodyFlag = strings.TrimSpace(string(raw))
+		if bodyFlag == "" {
+			// A generator that fails and emits nothing must not look like one
+			// that worked. milestone edit --body - already refuses this; an
+			// issue created with no body has no acceptance criteria, and the
+			// milestone-level zero-extraction gate cannot see the loss because
+			// the milestone's other issues keep its count non-zero.
+			return fmt.Errorf("--body -: read empty input; no issue created")
+		}
+		bodyFromStdin = true
+	}
+
 	var blocks [][]byte
-	if bodyFlag != "" && len(args) > 0 {
+	if (bodyFlag != "" || bodyFromStdin) && len(args) > 0 {
 		// Build a synthetic frontmatter block from args (title) and --body flag.
 		synthetic := fmt.Sprintf("---\ntitle: %q\n---\n\n%s\n", args[0], bodyFlag)
 		blocks = [][]byte{[]byte(synthetic)}
