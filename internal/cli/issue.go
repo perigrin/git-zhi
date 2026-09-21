@@ -133,6 +133,14 @@ func runIssueAdd(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("read stdin: %w", readErr)
 		}
 		bodyFlag = strings.TrimSpace(string(raw))
+		if bodyFlag == "" {
+			// A generator that fails and emits nothing must not look like one
+			// that worked. milestone edit --body - already refuses this; an
+			// issue created with no body has no acceptance criteria, and the
+			// milestone-level zero-extraction gate cannot see the loss because
+			// the milestone's other issues keep its count non-zero.
+			return fmt.Errorf("--body -: read empty input; no issue created")
+		}
 		bodyFromStdin = true
 	}
 
