@@ -695,6 +695,125 @@ func TestVerifyCLI_NoTestsRanJSON(t *testing.T) {
 	}
 }
 
+// TestVerifyCLI_TimeoutMarkedDistinctFromRegression verifies a criterion
+// killed by the per-command timeout is reported with its own marker instead
+// of being folded into REGRESSION, which is indistinguishable from a command
+// that ran and genuinely failed.
+func TestVerifyCLI_TimeoutMarkedDistinctFromRegression(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	writeMilestone(t, app.Store, &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	})
+
+	body := "## Acceptance Criteria\n\n" +
+		"### Positive Scenarios\n" +
+		"- [ ] slow (`sleep 10`)\n"
+	writeIssue(t, app.Store, newDoneIssueWithAC(t, "v0.1", body))
+
+	stdout, _, err := run("v0.1", "--timeout", "1")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for a criterion that timed out\noutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "TIMED OUT") {
+		t.Errorf("expected a timeout marker in output, got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "REGRESSION") {
+		t.Errorf("a timed-out criterion was reported as a regression:\n%s", stdout)
+	}
+}
+
+// TestVerifyCLI_TimeoutJSON verifies the JSON report distinguishes a
+// timed-out criterion from a pass, a vacuous run, and a genuine regression.
+// exit_code -1 with passed=false and timed_out=true is the pairing that
+// names what --timeout 1 vs a 2s command already implies today only via the
+// undocumented exit_code -1 sentinel.
+func TestVerifyCLI_TimeoutJSON(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	writeMilestone(t, app.Store, &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	})
+
+	body := "## Acceptance Criteria\n\n" +
+		"### Positive Scenarios\n" +
+		"- [ ] slow (`sleep 10`)\n"
+	writeIssue(t, app.Store, newDoneIssueWithAC(t, "v0.1", body))
+
+	stdout, _, _ := run("v0.1", "--timeout", "1", "--format", "json")
+
+	var report struct {
+		Passed   int `json:"passed"`
+		Failed   int `json:"failed"`
+		TimedOut int `json:"timed_out"`
+		Results  []struct {
+			Passed   bool `json:"passed"`
+			ExitCode int  `json:"exit_code"`
+			TimedOut bool `json:"timed_out"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, stdout)
+	}
+
+	if report.TimedOut != 1 {
+		t.Errorf("timed_out = %d, want 1", report.TimedOut)
+	}
+	if report.Passed != 0 || report.Failed != 0 {
+		t.Errorf("timed-out criterion counted as passed=%d failed=%d, want both 0", report.Passed, report.Failed)
+	}
+	if len(report.Results) != 1 {
+		t.Fatalf("expected 1 result entry, got %d", len(report.Results))
+	}
+	if r := report.Results[0]; r.Passed || r.ExitCode != -1 || !r.TimedOut {
+		t.Errorf("entry = {passed:%v exit_code:%d timed_out:%v}, want {false -1 true}", r.Passed, r.ExitCode, r.TimedOut)
+	}
+}
+
+// TestVerifyCLI_NegatedTimeoutDoesNotPass verifies that a negated criterion
+// (`! command`) whose command is killed by the timeout is not misread as a
+// pass. Negation only flips a completed exit code, and a command killed by
+// the timeout never completes to hand the shell an exit code to negate.
+func TestVerifyCLI_NegatedTimeoutDoesNotPass(t *testing.T) {
+	app, run := setupVerifyTest(t)
+
+	writeMilestone(t, app.Store, &milestone.Milestone{
+		Name:    "v0.1",
+		Created: time.Now(),
+		State:   "open",
+	})
+
+	body := "## Acceptance Criteria\n\n" +
+		"### Negative Scenarios\n" +
+		"- [ ] never finishes (`! sleep 10`)\n"
+	writeIssue(t, app.Store, newDoneIssueWithAC(t, "v0.1", body))
+
+	stdout, _, _ := run("v0.1", "--timeout", "1", "--format", "json")
+
+	var report struct {
+		Results []struct {
+			Passed   bool `json:"passed"`
+			TimedOut bool `json:"timed_out"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, stdout)
+	}
+	if len(report.Results) != 1 {
+		t.Fatalf("expected 1 result entry, got %d", len(report.Results))
+	}
+	if report.Results[0].Passed {
+		t.Errorf("a negated criterion killed by the timeout reported passed=true, want false")
+	}
+	if !report.Results[0].TimedOut {
+		t.Errorf("a negated criterion killed by the timeout did not report timed_out=true")
+	}
+}
+
 // TestVerifyCLI_MilestoneBodyCriteria verifies that acceptance criteria
 // written in the milestone's own body are extracted and run alongside the
 // issues' criteria, not just read by eye.
